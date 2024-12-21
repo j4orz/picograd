@@ -1,0 +1,7 @@
+picograd: torch.Tensor->PTX compiler
+references:
+  - hardt/recht, hastie/tibshirani, murphy, ng/ma
+  - tao, klein, strang, deisenroth, strang
+  - recht/wright, payre, farina, scardapane, blondel/roulet
+versions:
+- 0.1.1: hackable. gpt2able.
