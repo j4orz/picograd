@@ -1,7 +1,25 @@
-picograd: torch.Tensor->PTX compiler
+picograd: torch.Tensor->{PTX, Triton} compiler
+disclaimer: this is a one man effort to compile llama2. beware of dragons.
+models:
+  system 1 (autoregressive sequence learning):
+    sequential:
+      - nn (bengio et al. 2003)
+      - rnn (mikolov et al. 2010)
+      - gru (kyunghyun cho et al. 2014)
+      - wavenet (oord et al. 2016)
+    parallel (vaswani et al. 2017):
+      - gpt2 (raford et al. 2018, 2019, 2020)
+      - llama2 (touvron et al. 2023)
+  system 2 (___ search):
+  continuous learning:
+  meta learning:
+  todo: vae, gan, diffusion, ebm
 references:
-  - hardt/recht, hastie/tibshirani, murphy, ng/ma
-  - tao, klein, strang, deisenroth, strang
-  - recht/wright, payre, farina, scardapane, blondel/roulet
+    - hardt/recht, murphy, ng/ma, goodfellow/bengio, prince, jurafsky/martin
+    - tao, klein, strang, deisenroth, strang
+    - recht/wright, payre, farina, scardapane, blondel/roulet
+    - hwu et al, cheng et al, hennesey/patterson
 versions:
-- 0.1.1: hackable. gpt2able.
+- 0.1.1: hackable. llama2able.
+- 0.1.2: multi-node. multi-gpu.
+- 0.1.3: multi-datacenter.

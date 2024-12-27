@@ -1,2 +1,4 @@
 .DS_Store
 target/
+.venv
+.ipynb_checkpoints
