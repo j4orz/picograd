@@ -1,18 +1,23 @@
 # Software 2.0 Reference
 
 **Contents**
-1. Hypotheses
-    - [Linear models](#linear-models)
-    - Non-linear non-parametric models
-    - Non-linear parametric models
+1. Models
+    - [Linear Models](#linear-models)
+    - Non-linear Parametric Models
+    - System 1: Autoregressive Models
         - FFN
         - RNN
         - CNN
         - GPT
+    - System 2: ?
+    - Non-linear Parametric Models
 2. Optimization
     - SGD
     - Adam
     - Shampoo
+3. Generalization
+
+# 1. Models
 
 ## Linear Models
 
@@ -55,12 +60,16 @@ $$
 \end{align*}
 $$
 
-where
+which is the cross entropy between the data and predictions where
 1. $\hat{p} := \hat{\boldsymbol{\theta}}$ (the estimators are 1-1)
 2. $\mathcal{L}$ is used to denote likelihood, whereas the negative log likelihood $-log\mathcal{L}$ is the entire loss function.
 3. $\in$ is used rather than $=$ to denote the potential existence of multiple optima, even though in this case, the solution is unique since the log-likelihood function is convex. Finding *the* optimum was more important back when the field was dominated by statistical learning methods, but, this has became less important over time with the empirical success of non-linear models such as deep neural networks.
 
-Finally, while $\mathop{\text{argmin}}$ is usually implemented algorithmically (as opposed to numerically or symbolically) via automatic differentiation, we will save autograd for deep neural networks, and for now, derive the gradient manually.
+Massaging the negative log likelihood into its cross entropy form is nice because it provides secondary motivation for maximum likelihood estimation from an information theoretical perspective. What the loss function effectively computes is the distance between the empirical distribution and the predicted distribution.
+
+TODO: KL-divergence. exponential family?
+
+While $\mathop{\text{argmin}}$ is usually implemented algorithmically (as opposed to numerically or symbolically) via automatic differentiation, we will save autograd for deep neural networks, and for now, derive the gradient manually.
 
 $$
 \begin{align*}
@@ -72,6 +81,11 @@ $$
 $$
 
 so $\theta^{t+1} := \theta^{t} - \eta \nabla_{\theta} \text{NLL}(\theta)$.
+
+Finally, because logistic regression is selecting a stochastic map by producing parameters for $\mathcal{Y}$'s distribution, sampling a point estimate from the distribution (called inference) is done by evaluating $\hat{y} := \underset{y}{\mathop{\text{argmax}}}[p(y|\mathbf{x}; \boldsymbol{\theta})]$
+
+
+For multi-class classification, multinouilli, softmax is the generalization of the sigmoid.
 
 **Regression**: recovers discriminative model $p(Y=y|\mathbf{X}=\mathbf{x}; \theta)$ where $Y \overset{\text{iid}}{\sim} Nor(\mu, \sigma^2).$ The linear regression assumption is to take a linear hypothesis $h_{\theta}(\mathbf{x})$ defined as
 
@@ -86,42 +100,69 @@ $$
 
 ## Non-linear Parametric Models
 
-**Neural Networks (NN)**: To motivate the functions that neural networks implement, the biological inspiration is ignored in favor of the mathematical specification. The previous family of functions that we considered as hypotheses were linear models, so the obvious idea is to come up with a non-linear function class $h(\mathbf{x}; \mathbf{w}, \mathbf{b}) := W\phi(\mathbf{x}) + \mathbf{b}$. We can recursively compose these non-linear functions with the aim of "lifting" the *representation* of the data into more complex "motifs". A loose analogy is to conceptualize a neural network with multiple compositions (layers) as a function which parses the representation of the data [(Olah 2015)](https://colah.github.io/posts/2015-09-NN-Types-FP/):
+**Neural Networks (NN)**: To motivate the functions that neural networks implement, the biological inspiration is ignored in favor of the mathematical specification. The previous family of functions that we considered as hypotheses were linear models, so the obvious idea is to come up with a non-linear function class $h(\mathbf{x}; \mathbf{w}, \mathbf{b}) := W\phi(\mathbf{x}) + \mathbf{b}$. Network design started out with manual feature engineering of $\phi: \mathbb{R}^{d_i} \to \mathbb{R}^{d_{i+1}}$, and evolved into deep learning, a suitecase term that refers to end-to-end representation learning of networks with multiple function compositions.
+
+This is done by recursively composing the non-linear functions with the aim of "lifting" the *representation* of the data into more complex "motifs". A loose analogy is to conceptualize a neural network with multiple compositions (layers) as a function which parses the representation of the data [(Olah 2015)](https://colah.github.io/posts/2015-09-NN-Types-FP):
 
 $$
 \begin{align*}
-h&: \mathbb{R}^{d_0} \to \mathbb{R}^{d_L} \\
-h(\mathbf{x}; \mathbf{w}) &:= W_l \circ (\phi \circ W_{l-1}) \circ \cdots \circ (\phi \circ W_1) \circ \mathbf{x}
+f&: \mathbb{R}^{d_0} \to \mathbb{R}^{d_L} \\
+f(\mathbf{x}; \mathbf{w}) &:= W_L \circ (\phi \circ W_{L-1}) \circ \cdots \circ (\phi \circ W_1) \circ \mathbf{x}
 \end{align*}
 $$
 
-Network design started out with manual feature engineering of $\phi: \mathbb{R}^{d_i} \to [0,1]^n$, and evolved into deep learning, a suitecase term that refers to end-to-end representation learning of networks with multiple compositions.
+where each linear + non-linear function composition is a *hidden layer*:
 
-While the optimization and generalization of other non-linear models such as kernel methods and gaussian processes are formally well-understood (with functional analysis and bayesian probability, respectively), the primary method of inquiry for neural networks have been empiricism. There are very interesting open questions for the theoretician, but for now, we proceed in this document with the agreement that the state of deep learning is more similar to alchemy than it is to chemistry.
+$$
+\begin{align*}
+h^{(1)}&:= \phi(W^{(1)}\mathbf{x} + \mathbf{b}^{(1)}) \\
+h^{(2)}&:= \phi(W^{(2)}h^{(1)} + \mathbf{b}^{(2)}) \\
+h^{(3)}&:= \phi(W^{(3)}h^{(2)} + \mathbf{b}^{(3)}) \\
+\vdots \\
+h^{(L)}&:= W^{(L)}h^{(L-1)} + \mathbf{b}^{(L)}
 
+\end{align*}
+$$
 
-With that said, the domain of modelling that we are interested in is language. The feed forward neural network (fnn) will be covered first, and each major advance in network architecture thereafter.
+These networks are optimized with gradient descent. TODO: optimization of neural networks.
+
+While the optimization and generalization of other non-linear models such as kernel methods and gaussian processes are formally well-understood (with functional analysis and bayesian probability, respectively), the primary method of inquiry for neural networks have been empiricism. There are very interesting open problems for the theoretician, but for now we proceed in this document with the understanding that the state of deep learning is more similar to alchemy than it is to chemistry.
+
+With that said, the domain of modelling that we are interested in is language, which has recently converged to autoregressive models. We will cover each advancement in network architecture from fnn to gpt.
+
+## System 1: Autoregressive Models
+
+1. Sparse conditioning: Bayes' Nets
+2. Parameterize conditionals: MADE
+3. Causal mask: CNN, GPT
+4. Infinite look back: RNN
 
 **Feedforward Neural Networks (FNN)**
+fnn (bengio et al. 2003)
 
 **Recurrent Neural Networks (RNN)**
+rnn (mikolov et al. 2010)
 
 **Convolutional Neural Networks (CNN)**
+cnn (oord et al. 2016)
 
 **Generative Pretrained Transformers (GPT)**
+gpt2 (raford et al. 2018, 2019, 2020)
 
-**ChatGPT (GPT + RLHF)**
+**ChatGPT (GPT + SFT + RLHF)**
+llama2 (touvron et al. 2023)
 
-## Optimizers
-
-## SGD
-The general definition of the derivative...important for understanding different optimizers that use momentum and preconditioning techniques. They're just using gradients with different notions of distance (inner product). Speedrun gpt2 training runs.
-
-## Adam
-
-## Shampoo
+## System 2: ?
 
 ## Non-linear Non-Parametric Models
 **Kernel Methods**
 
 **Gaussian Processes**
+
+# 2. Optimizers
+
+**SGD**
+The general definition of the derivative...important for understanding different optimizers that use momentum and preconditioning techniques. They're just using gradients with different notions of distance (inner product). Speedrun gpt2 training runs.
+
+**Momentum: Adam**
+**Preconditioining: Shampoo**
