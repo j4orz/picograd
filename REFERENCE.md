@@ -153,29 +153,50 @@ These networks are optimized with gradient descent, but the gradient is derived 
 *Reverse Mode Differentiation*
 
 
-
 While the optimization and generalization of other non-linear models such as kernel methods and gaussian processes are formally well-understood (with functional analysis and bayesian probability, respectively), the primary method of inquiry for neural networks have been empiricism. There are many interesting problems that are open for the theoretician, but for now we proceed in this document with the understanding that the state of deep learning is more similar to alchemy than it is to chemistry.
 
-With that said, the domain of modelling that we are interested in is language, which has recently converged onto autoregressive models. We will cover each advance in network architecture from fnn to gpt.
+With that said, the domain of modelling we are interested in is language, which has recently converged onto autoregressive models. Understanding the attention mechanism and the transformer model is tablestakes for language modelling. Each advance in architecture from fnn to gpt will be covered in order to understand network design from a principled basis, rather than a precedented one.
 
-## System 1: Autoregressive Models
+## System 1: Sequence Learning: Autoregressive Models
 
-1. Sparse conditioning: Bayes' Nets
-2. Parameterize conditionals: MADE
-3. Causal mask: CNN, GPT
-4. Infinite look back: RNN
+Any sequence — whether text for language, pixel for vision, or wave for audio — can be modelled probabilistically with $(\Omega, \mathcal{F}, \mathbb{P})$ where
+
+$$
+p(X_1=x_1, \ldots, X_n=x_n; \boldsymbol{\theta}) = \prod_{i=1}^{n} p(\mathbf{x}_{i}|\mathbf{x}_{<i})
+$$
+
+is the n-dimensional joint probability distribution expressed with conditionals via chain rule. Using this model results in exponential blow up because of the high dimensionality of the conditioned event. For instance, if $|\Omega|=100$, then capturing the distribution of a sequence with context length 100 requires modelling $100^{100}$ possible combinations, which is already higher than the number of atoms in the observable universe.
+
+1. Sparsify conditionals with bayesian network: The first idea is to turn high dimensional joint distribution modelling tractable is to *sparsify* the condtionals. Instead of conditioning on all the previous events (tokens), bayesian networks condition on a select few. This is effectively adding causal assumptions as an inductive bias since the model does not need to learn those causal relations.
+
+2. Parameterize conditionals with neural network:
+wavenet (oord et al. 2016)
+
+bayesian network with connections maximized.
+ffn which satisfies chain rule.
+expressive, but not enough parameter sharing for efficient training.
+
+3. Causal masked neural networks: still parameterizing conditionals but now
+gpt2 (raford et al. 2018, 2019, 2020)
+
+- parameter sharing across conditionals
+- add coordinate coding to individualize conditionals
+
+any buts?  finite context window?
+
+4. Infinite look back with recurrent neural networks:
+
+rnn (mikolov et al. 2010)
+
+expressive, but
+
+- not as amenable to parallelization
+- gradients explode/vanish
+- hard to truly have signal propagate from long history
+- if you think about it, the horizontal connections aren't actually that more expressive. handwavy...
 
 **Feedforward Neural Networks (FNN)**
 fnn (bengio et al. 2003)
-
-**Recurrent Neural Networks (RNN)**
-rnn (mikolov et al. 2010)
-
-**Convolutional Neural Networks (CNN)**
-cnn (oord et al. 2016)
-
-**Generative Pretrained Transformers (GPT)**
-gpt2 (raford et al. 2018, 2019, 2020)
 
 **ChatGPT (GPT + SFT + RLHF)**
 llama2 (touvron et al. 2023)
