@@ -9,7 +9,7 @@
         - RNN
         - CNN
         - GPT
-    - System 2: ?
+    - System 2: Chain of Thought
     - Non-linear Parametric Models
 2. Optimization
     - SGD
@@ -26,11 +26,11 @@
 $$
 \begin{align*}
 h_{\boldsymbol{\theta}}&: \mathbb{R}^{d} \to [0,1] \\
-h(\mathbf{x};\mathbf{\boldsymbol{\theta}})&:= \sigma(\boldsymbol{\theta}^{\top}\mathbf{x}) = \frac{1}{1+\mathrm{e}^{-\boldsymbol{\theta}^{\top}\mathbf{x}}}
+h(\mathbf{x};\mathbf{\boldsymbol{\theta}})&:= \sigma(\boldsymbol{\theta}^{\top}\mathbf{x}) = \frac{1}{1+\text{exp}({-\boldsymbol{\theta}^{\top}\mathbf{x}})}
 \end{align*}
 $$
 
-which typechecks since $\boldsymbol{\theta}^{\top} \in \mathbb{R}^{1,d}$ (so $\boldsymbol{\theta}^{\top}: \mathbb{R}^{d} \to \mathbb{R}$) and $\sigma: \mathbb{R} \to [0,1]$, and interpret it as $p$. That is,
+which typechecks since $\boldsymbol{\theta}^{\top} \in \mathbb{R}^{1,d}$ (so $\boldsymbol{\theta}^{\top}: \mathbb{R}^{d} \to \mathbb{R}$) and $\sigma: \mathbb{R} \to [0,1]$, and interpret it as $p$, where the final map $\sigma: \mathbb{R} \to [0,1]$ takes log odds $\frac{p}{1-p}$. That is,
 
 $$
 \begin{align*}
@@ -43,6 +43,7 @@ which we can formulate as a continuous and differentiable probability density fu
 
 1. Do not confuse the 0/1 in $\mathcal{Y}=\{0,1\}$ with the 0/1 in $h_{\theta}: \mathbb{R}^{d} \to [0,1]$. The former is the sample space mapped by random variable $Y:\Omega \to \mathbb{N}$, whereas the latter is the probability measure assigned to that event conditioned on $X$. We could change the label encodings to be $\mathcal{Y}=\{-1,1\}$. Also, multiclass classification has $\mathcal{Y}=\{0,1,...,k\}$ with the same type $h_{\theta}: \mathbb{R}^{d} \to [0,1]$.
 2. Do not confuse parameter $p$ with parameters $\boldsymbol{\theta}$. It's helpful to conceptualize the former decomposing into the latter. $;$ is used to denote the notion of "parameterized by", which is not a 1-1 substitution.
+3. We prepend vector $\mathbb{x} \in \mathbb{R}^d$ with $\mathbb{x}_0 := 1$, $\mathbb{x} \in \mathbb{R}^{d+1}$ so that $\boldsymbol{\theta}^{\top}\mathbf{x}$ has a bias term.
 
 
 Then, taking the maximum likelihood estimate (MLE) of the negative log-likelihood yields:
@@ -69,7 +70,7 @@ Massaging the negative log likelihood into its cross entropy form is nice becaus
 
 TODO: KL-divergence. exponential family?
 
-While $\mathop{\text{argmin}}$ is usually implemented algorithmically (as opposed to numerically or symbolically) via automatic differentiation, we will save autograd for deep neural networks, and for now, derive the gradient manually.
+While $\mathop{\text{argmin}}$ is usually implemented algorithmically (as opposed to numerically or symbolically) via automatic differentiation, we will save autograd for deep neural networks, and for now, derive the gradient manually via symbolic term rewriting. 
 
 $$
 \begin{align*}
@@ -82,7 +83,28 @@ $$
 
 so $\theta^{t+1} := \theta^{t} - \eta \nabla_{\theta} \text{NLL}(\theta)$.
 
-Finally, because logistic regression is selecting a stochastic map by producing parameters for $\mathcal{Y}$'s distribution, sampling a point estimate from the distribution (called inference) is done by evaluating $\hat{y} := \underset{y}{\mathop{\text{argmax}}}[p(y|\mathbf{x}; \boldsymbol{\theta})]$
+TODO: manually derive gradient.
+
+
+
+
+
+
+general def of gradient. linearizatin. direction. inner product. points in direction of steepest descent.
+
+Finally, because logistic regression is selecting a stochastic map by producing parameters for $\mathcal{Y}$'s distribution, sampling a point estimate from the distribution (called inference) is done by evaluating $\hat{y} := \underset{y}{\mathop{\text{argmax}}}[p(y|\mathbf{x}; \boldsymbol{\theta})]$ Since we have a batch of inputs from data $\{\mathbf{x}^{(i)}, \mathbf{y}^{(i)}\}_{i=1}^n$, instead of sequentially sampling the model (distribution) for each input $\mathbf{x}^{(i)}$, parallel sampling is possible with a design matrix $\mathbf{X} \in \mathbb{R}^{n \times d}$:
+
+$$
+\mathbf{X} = \begin{bmatrix}
+\mathbf{x}^{(1)}_{1} & \mathbf{x}^{(1)}_{2} & \cdots & \mathbf{x}^{(1)}_{d} \\
+\mathbf{x}^{(2)}_{1} & \mathbf{x}^{(2)}_{2} & \cdots & \mathbf{x}^{(2)}_{d} \\
+\vdots & \vdots & \vdots & \vdots \\
+\mathbf{x}^{(n)}_{1} & \mathbf{x}^{(n)}_{2} & \cdots & \mathbf{x}^{(n)}_{d}
+\end{bmatrix}
+$$
+
+and evaluate the samples for all inputs with a single matrix multiply $\mathbf{y} = \mathbf{X}\boldsymbol{\theta}$ which swaps the order of data and parameters since the shape of design matrix is $\mathbb{R}^{n \times d}$ rather than $\mathbb{R}^{d \times n}$.
+
 
 
 For multi-class classification, multinouilli, softmax is the generalization of the sigmoid.
@@ -100,7 +122,7 @@ $$
 
 ## Non-linear Parametric Models
 
-**Neural Networks (NN)**: To motivate the functions that neural networks implement, the biological inspiration is ignored in favor of the mathematical specification. The previous family of functions that we considered as hypotheses were linear models, so the obvious idea is to come up with a non-linear function class $h(\mathbf{x}; \mathbf{w}, \mathbf{b}) := W\phi(\mathbf{x}) + \mathbf{b}$. Network design started out with manual feature engineering of $\phi: \mathbb{R}^{d_i} \to \mathbb{R}^{d_{i+1}}$, and evolved into deep learning, a suitecase term that refers to end-to-end representation learning of networks with multiple function compositions.
+**Neural Networks (NN)**: To motivate the functions that neural networks implement, the biological inspiration is ignored in favor of the mathematical specification. The previous family of functions that we considered as hypotheses were linear models, so the obvious idea is to come up with a non-linear function class $h(\mathbf{x}; \mathbf{w}, \mathbf{b}) := W\phi(\mathbf{x}) + \mathbf{b}$. Network design started out with manual feature engineering of $\phi: \mathbb{R}^{d_i} \to \mathbb{R}^{d_{i+1}}$, and evolved into deep learning: the construction of networks with  end-to-end representation learning of all feature extractors $\phi$.
 
 This is done by recursively composing the non-linear functions with the aim of "lifting" the *representation* of the data into more complex "motifs". A loose analogy is to conceptualize a neural network with multiple compositions (layers) as a function which parses the representation of the data [(Olah 2015)](https://colah.github.io/posts/2015-09-NN-Types-FP):
 
@@ -124,11 +146,17 @@ h^{(L)}&:= W^{(L)}h^{(L-1)} + \mathbf{b}^{(L)}
 \end{align*}
 $$
 
-These networks are optimized with gradient descent. TODO: optimization of neural networks.
+These networks are optimized with gradient descent, but the gradient is derived with algorithmic methods rather than symbolic or numeric — the latter two methods are infeasible in practice with respect to the optimization of deep neural networks. Autodifferentiation applies the chain rule via dynamic programming on a graph $G=\{V,E\}$ where the vertices are operations and the edges are compositional derivatives. Graphs are the primary representations for compiler construction — the difference between a graph for a C program and a PyTorch program is that the latter does not have loads/stores, or branches, which is amenable to polyhedral compilation.
 
-While the optimization and generalization of other non-linear models such as kernel methods and gaussian processes are formally well-understood (with functional analysis and bayesian probability, respectively), the primary method of inquiry for neural networks have been empiricism. There are very interesting open problems for the theoretician, but for now we proceed in this document with the understanding that the state of deep learning is more similar to alchemy than it is to chemistry.
+*Forward Mode Differentiation*
 
-With that said, the domain of modelling that we are interested in is language, which has recently converged to autoregressive models. We will cover each advancement in network architecture from fnn to gpt.
+*Reverse Mode Differentiation*
+
+
+
+While the optimization and generalization of other non-linear models such as kernel methods and gaussian processes are formally well-understood (with functional analysis and bayesian probability, respectively), the primary method of inquiry for neural networks have been empiricism. There are many interesting problems that are open for the theoretician, but for now we proceed in this document with the understanding that the state of deep learning is more similar to alchemy than it is to chemistry.
+
+With that said, the domain of modelling that we are interested in is language, which has recently converged onto autoregressive models. We will cover each advance in network architecture from fnn to gpt.
 
 ## System 1: Autoregressive Models
 
@@ -152,7 +180,9 @@ gpt2 (raford et al. 2018, 2019, 2020)
 **ChatGPT (GPT + SFT + RLHF)**
 llama2 (touvron et al. 2023)
 
-## System 2: ?
+## System 2: Chain of Thought
+https://github.com/srush/awesome-o1/
+https://github.com/hijkzzz/Awesome-LLM-Strawberry
 
 ## Non-linear Non-Parametric Models
 **Kernel Methods**
