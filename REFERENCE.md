@@ -1,15 +1,13 @@
-# Software 2.0 Reference
+# Software 2.0 Math Reference
+
+Assumes familiarity with probability/statistics and matrix calculus.
 
 **Contents**
 1. Models
-    - [Linear Models](#linear-models)
+    - Linear Models
     - Non-linear Parametric Models
-    - System 1: Autoregressive Models
-        - FFN
-        - RNN
-        - CNN
-        - GPT
-    - System 2: Chain of Thought
+    - System 1 Sequence Learning: Autoregressive Models
+    - System 2 Search: ?
     - Non-linear Parametric Models
 2. Optimization
     - SGD
@@ -152,12 +150,11 @@ These networks are optimized with gradient descent, but the gradient is derived 
 
 *Reverse Mode Differentiation*
 
-
 While the optimization and generalization of other non-linear models such as kernel methods and gaussian processes are formally well-understood (with functional analysis and bayesian probability, respectively), the primary method of inquiry for neural networks have been empiricism. There are many interesting problems that are open for the theoretician, but for now we proceed in this document with the understanding that the state of deep learning is more similar to alchemy than it is to chemistry.
 
-With that said, the domain of modelling we are interested in is language, which has recently converged onto autoregressive models. Understanding the attention mechanism and the transformer model is tablestakes for language modelling. Each advance in architecture from fnn to gpt will be covered in order to understand network design from a principled basis, rather than a precedented one.
+With that said, the domain of modelling we are interested in is language, which has converged onto autoregressive models. Following [(Sutton 2019)](http://www.incompleteideas.net/IncIdeas/BitterLesson.html), system 1 like behavior is covered with autoregressive sequence learning, and system 2 like behavior is covered with a search of thoughts. Each advance in network architecture will be covered in order to understand network design and the attention mechanism from a principled basis, rather than a precedented by-fiat basis.
 
-## System 1: Sequence Learning: Autoregressive Models
+## System 1 Sequence Learning: Autoregressive Models
 
 Any sequence — whether text for language, pixel for vision, or wave for audio — can be modelled probabilistically with $(\Omega, \mathcal{F}, \mathbb{P})$ where
 
@@ -165,26 +162,51 @@ $$
 p(X_1=x_1, \ldots, X_n=x_n; \boldsymbol{\theta}) = \prod_{i=1}^{n} p(\mathbf{x}_{i}|\mathbf{x}_{<i})
 $$
 
-is the n-dimensional joint probability distribution expressed with conditionals via chain rule. Using this model results in exponential blow up because of the high dimensionality of the conditioned event. For instance, if $|\Omega|=100$, then capturing the distribution of a sequence with context length 100 requires modelling $100^{100}$ possible combinations, which is already higher than the number of atoms in the observable universe.
+is the n-dimensional joint probability distribution expressed with conditionals via factorization of the chain rule. Using this model results in exponential blow up because of the high dimensionality of the conditioned event. For instance, if $|\Omega|=1e5$, then capturing the distribution of a sequence with context length 100 requires modelling $(1e5)^{100}$ possible combinations, which is already higher than the number of atoms in the observable universe. These high dimensional distributions fall under the regime of unsupervised learning, since it's intractable to provide an exponential amount of ground truth labels.
 
-1. Sparsify conditionals with bayesian network: The first idea is to turn high dimensional joint distribution modelling tractable is to *sparsify* the condtionals. Instead of conditioning on all the previous events (tokens), bayesian networks condition on a select few. This is effectively adding causal assumptions as an inductive bias since the model does not need to learn those causal relations.
+We can represent a joint distribution as a probabilistic graphical model which is encoded as a DAG $G=\{V, E\}$ where vertices represent random variables, and edges represent conditional distributions — this is called a bayesian network. Since the graph is encoding a high dimensional joint distribution, each vertex is a graph itself (called a probability table) in order to capture all conditional dependencies. These probability tables grow exponentially because of the curse of dimensionality:
 
-2. Parameterize conditionals with neural network:
-wavenet (oord et al. 2016)
 
-bayesian network with connections maximized.
-ffn which satisfies chain rule.
-expressive, but not enough parameter sharing for efficient training.
+The next four sections will cover advances in network architecture to fight against this curse of dimensionality.
 
-3. Causal masked neural networks: still parameterizing conditionals but now
-gpt2 (raford et al. 2018, 2019, 2020)
+1. Sparsification of conditionals
+2. Parameterization conditionals
+3. Parameter sharing + individualization
+4. Infinite context window
 
+### Four network advances contra curse of dimensionality
+*1. Sparsify conditionals with bayesian network*
+
+The first idea to turn high dimensional joint distribution modelling tractable is to *sparsify* the condtionals.
+
+The two primary methods used to  adress this issue are:
+
+1. sparsification of conditionals: instead of conditioning on all the previous events (tokens), bayesian networks condition on a select few — namely, a few parents. This effectively adds causal assumptions as an inductive bias since the model does not need to learn those causal relations which can be great if the assumptions hold. However, with respect to large corpora such as wikipedia, common crawl, etc, these assumptions do not hold and end up limiting expressivity.
+
+$$
+p(X_1=x_1, \ldots, X_n=x_n; \boldsymbol{\theta}) = \prod_{i=1}^{n} p(\mathbf{x}_{i}|\mathbf{x}_{parents(i)})
+$$
+2. approximation of joint distribution
+ The probabilistic graphical model can be simulated with a neural network, as shown in [(Bengio, Bengio 1999)](https://papers.nips.cc/paper_files/paper/1999/file/e6384711491713d29bc63fc5eeb5ba4f-Paper.pdf).
+
+
+
+*2. Parameterize conditionals with neural networks*
+
+connections maximized. but no exp blow up because we use parameters in R^d to represent conditionals. no exp blow up with discrete table counting.
+
+bayesian network with connections maximized. fnn which satisfies chain rule. expressive, but not enough parameter sharing for efficient training. References: [(Germain et al 2015)](https://arxiv.org/abs/1502.03509)
+
+
+*3. Causal masks with neural networks*
+
+still parameterizing conditionals but now. References: [(Oord et al. 2016)](https://arxiv.org/abs/1609.03499), [(Vaswani et. al 2017)](https://arxiv.org/abs/1706.03762), [(Radford et al. 2018)](https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf), [(Radford et al. 2019)](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf), [(Radford et al. 2020)](https://arxiv.org/abs/2005.14165)
 - parameter sharing across conditionals
 - add coordinate coding to individualize conditionals
 
 any buts?  finite context window?
 
-4. Infinite look back with recurrent neural networks:
+*4. Infinite look back**
 
 rnn (mikolov et al. 2010)
 
@@ -195,13 +217,10 @@ expressive, but
 - hard to truly have signal propagate from long history
 - if you think about it, the horizontal connections aren't actually that more expressive. handwavy...
 
-**Feedforward Neural Networks (FNN)**
-fnn (bengio et al. 2003)
-
 **ChatGPT (GPT + SFT + RLHF)**
 llama2 (touvron et al. 2023)
 
-## System 2: Chain of Thought
+## System 2 Search: ?
 https://github.com/srush/awesome-o1/
 https://github.com/hijkzzz/Awesome-LLM-Strawberry
 
@@ -210,10 +229,12 @@ https://github.com/hijkzzz/Awesome-LLM-Strawberry
 
 **Gaussian Processes**
 
-# 2. Optimizers
+# 2. Optimization
 
 **SGD**
 The general definition of the derivative...important for understanding different optimizers that use momentum and preconditioning techniques. They're just using gradients with different notions of distance (inner product). Speedrun gpt2 training runs.
 
 **Momentum: Adam**
 **Preconditioining: Shampoo**
+
+# 3. Generalization
