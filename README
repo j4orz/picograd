@@ -1,7 +1,7 @@
 picograd: torch.Tensor->{PTX, Triton} compiler
-disclaimer: this is a one man effort to compile llama2. beware of dragons.
+disclaimer: this is a one man effort to compile gpt2. beware of dragons.
 versions:
-- 0.1.1: hackable. llama2able.
+- 0.1.1: hackable. gpt2able.
 - 0.1.2: multi-node. multi-gpu.
 - 0.1.3: multi-datacenter.
 references:
