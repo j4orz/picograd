@@ -1,1 +1,63 @@
-picograd: for something between micrograd and tinygrad
+# Picograd
+
+*for something between micrograd and tinygrad*
+micrograd -> **picograd** -> tinygrad -> pytorch
+
+An **educational** tensor library and compiler aiming to translate PyTorch-like operations into GPU kernels. The goal is to provide an educational, modular, extensible, and fast deep learning framework.
+
+## Features
+Currently picograd implements basic tensor operations and neural network primitives for the CPU.
+
+- [x] Basic CPU tensor operations (add, mul, matmul, etc.)
+- [x] Basic Neural Network primitives
+- [ ] Computation graph interpreter and compiler
+- [ ] CUDA/Triton support
+- [ ] Autograd (automatic differentiation)
+- [ ] Optimizers (SGD, Adam, etc.)
+
+## Getting Started / Building
+## Building
+
+This project uses [Cargo](https://doc.rust-lang.org/cargo/) (Rust’s package manager). To build:
+
+To build:
+```sh
+cargo build --release
+./target/release/picograd
+```
+
+To run:
+```sh
+cargo run
+```
+
+To run tests:
+
+```sh
+cargo test
+```
+
+## Usage
+We'd like to keep a Pytorch-like API, see `main.rs`for example usage of what is currently implemented.
+
+## Project Structure
+```
+picograd/
+├── src/
+│   ├── main.rs           # Entry point for running the project
+│   ├── lib.rs            # Library entry point, exposes core APIs
+│   ├── nn.rs             # Neural network layers and primitives
+│   ├── tpy.rs            # Tensor types and core tensor operations
+│   ├── storage.rs        # Tensor storage and backend logic
+│   ├── compiler/
+│       └── mod.rs        # Compiler module entry point
+│   └── ops/
+│       └── cpu_ops.rs    # CPU operation implementations
+├── tests/                # Python integration tests and usage examples
+├── Cargo.toml            # Rust project manifest
+├── pyproject.toml        # Python build configuration
+└── README                # Project overview and instructions
+```
+
+## Contributing
+This project is still early infancy and WIP (work in progress). Until the core team crystallizes, coordination will remain grassroots and async. Anyone can come contribute, the project is open to everyone!
