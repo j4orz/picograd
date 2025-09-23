@@ -1,3 +1,17 @@
-[workspace]
-resolver = "3"
-members = ["picograd", "picohip", "stdnot"]
+[package]
+name = "picograd"
+version = "0.1.0"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "picograd"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+numpy = "0.23.0"
+stdnot = { path = "../stdnot" }
+pyo3 = { version = "0.23.3", features = ["multiple-pymethods"] }
+rand = "0.9.0"
+thiserror = "2.0.11"

@@ -2,6 +2,7 @@
 
 pub mod tensor;
 pub mod autograd;
+pub mod compile;
 pub mod kernels;
 
 use pyo3::{FromPyObject, IntoPyObject, pyclass};
