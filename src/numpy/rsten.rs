@@ -26,19 +26,77 @@ impl Div for &Tensor { type Output = Result<Tensor, OpForwardError>; fn div(self
 impl Div<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn div(self, rhs: f32) -> Self::Output { self.forward(&UOp::Div(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
 
 impl Tensor {
-    // linear
+    // matmul and flashattention is all you need ;)
     pub fn matmul(&self, other: &Tensor) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Matmul(self.clone(), other.clone())) }
+    pub fn fa() -> () { unimplemented!( )}
 
-    // non-linear
+    // unary
+    pub fn neg() -> Self { unimplemented!()}
+    pub fn contiguous() -> Self { unimplemented!()}
+    pub fn log() -> Self { unimplemented!()}
+    pub fn log2() -> Self { unimplemented!()}
+    pub fn exp() -> Self { unimplemented!()}
+    pub fn exp2() -> Self { unimplemented!()}
+    pub fn sigmoid() -> Self { unimplemented!()}
+    pub fn logsigmoid() -> Self { unimplemented!()}
+    pub fn hardsigmoid() -> Self { unimplemented!()}
+    pub fn sqrt() -> Self { unimplemented!()}
+    pub fn rsqrt() -> Self { unimplemented!()}
+    pub fn sin() -> Self { unimplemented!()}
+    pub fn cos() -> Self { unimplemented!()}
+    pub fn tan() -> Self { unimplemented!()}
+    pub fn asin() -> Self { unimplemented!()}
+    pub fn acos() -> Self { unimplemented!()}
+    pub fn atan() -> Self { unimplemented!()}
+
+    // binary
+    pub fn sub() -> Self { unimplemented!()}
+    pub fn div() -> Self { unimplemented!()}
+    pub fn modd() -> Self { unimplemented!()}
+    pub fn lshift() -> Self { unimplemented!()}
+    pub fn rshift() -> Self { unimplemented!()}
+    pub fn pow() -> Self { unimplemented!()}
+    pub fn max() -> Self { unimplemented!()}
+    pub fn min() -> Self { unimplemented!()}
+
+    // math
+    pub fn trunc() -> Self { unimplemented!()}
+    pub fn ceil() -> Self { unimplemented!()}
+    pub fn floor() -> Self { unimplemented!()}
+    pub fn round() -> Self { unimplemented!()}
+    pub fn isinf() -> Self { unimplemented!()}
+    pub fn isnan() -> Self { unimplemented!()}
+    pub fn isfinite() -> Self { unimplemented!()}
+    pub fn lerp() -> Self { unimplemented!()}
+    pub fn square() -> Self { unimplemented!()}
+    pub fn clamp() -> Self { unimplemented!()}
+    pub fn clip() -> Self { unimplemented!()}
+    pub fn sign() -> Self { unimplemented!()}
+    pub fn abs() -> Self { unimplemented!()}
+    pub fn recip() -> Self { unimplemented!()}
+
+    // activations
+    pub fn elu() -> Self { unimplemented!() }
+    pub fn celu() -> Self { unimplemented!() }
+    pub fn gelu() -> Self { unimplemented!() }
+    pub fn relu() -> Self { unimplemented!() }
+    pub fn selu() -> Self { unimplemented!() }
+    pub fn silu() -> Self { unimplemented!() }
+    pub fn swish() -> Self { unimplemented!() }
     pub fn sinh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Sinh(self.clone())) }
     pub fn cosh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Cosh(self.clone())) }
     pub fn tanh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Tanh(self.clone())) }
-    pub fn exp(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Exp(self.clone())) }
-    pub fn log(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Log(self.clone())) }
-    
+    pub fn asinh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Sinh(self.clone())) }
+    pub fn acosh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Cosh(self.clone())) }
+    pub fn atanh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Tanh(self.clone())) }
+
+    // tensor
+    pub fn ndim() -> () { todo!() }
+    // pub fn numel() -> () { todo!() }
+
     // reductions
-    pub fn _sum(&self, rdi: Option<ReduceDimInput>) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Sum(self.clone(), rdi)) }
-    pub fn max(&self, dim: usize, keepdim: bool) -> Result<Tensor, OpForwardError> { let rdi = ReduceDimInput { dim, keepdim }; self.forward(&Op::Max(self.clone(), Some(rdi))) }
+    // pub fn _sum(&self, rdi: Option<ReduceDimInput>) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Sum(self.clone(), rdi)) }
+    // pub fn max(&self, dim: usize, keepdim: bool) -> Result<Tensor, OpForwardError> { let rdi = ReduceDimInput { dim, keepdim }; self.forward(&Op::Max(self.clone(), Some(rdi))) }
 }
 
 // Tensor
