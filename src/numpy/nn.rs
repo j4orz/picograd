@@ -15,3 +15,9 @@ pub fn _softmax(x: Tensor, dim: usize) -> PyResult<Tensor> {
     let softmax = exp.div(&expsum)?;
     Ok(softmax)
 }
+
+struct Linear {}
+struct BatchNorm {}
+struct LayerNorm {}
+struct RMSNorm {}
+struct Embedding {}

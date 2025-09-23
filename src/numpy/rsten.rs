@@ -1,52 +1,45 @@
-use crate::{eagker::cpu::{forward_cpu, OpForwardError, ReduceDimInput}, numpy::pyten, Device, Dtype, DtypeVal, Layout};
+use crate::{eagker::cpu::{forward_cpu, OpForwardError, ReduceDimInput}, numpy::pyten, uop::UOp, Device, Dtype, DtypeVal, Layout};
 use std::{ cell::RefCell, cmp::{Ordering, max}, collections::HashSet, fmt::{self, Display}, hash, iter, rc::Rc, ops::{Add, Div, Mul, Neg, Sub} };
 use pyo3::prelude::*;
 use rand::{Rng, distr::Uniform};
 use thiserror::Error;
 
+#[derive(Clone)] pub struct Storage<DtypeVal> {
+    pub data: Vec<DtypeVal>, pub grad: Option<Tensor>,
+}
+
 #[pyclass(unsendable)]
 pub struct Tensor {
     pub ndim: usize, pub shape: Vec<usize>, pub stride: Vec<usize>,
-    pub input_op: Option<Box<Op>>, pub requires_grad: bool,
+    pub input_op: Option<Box<UOp>>, pub requires_grad: bool,
     pub storage: Rc<RefCell<Storage<DtypeVal>>>, pub device: Device, pub layout: Layout, pub dtype: Dtype,
 }
 
-#[derive(Clone)]
-pub enum Op {
-    Add(Tensor, Tensor), Sub(Tensor, Tensor), Mul(Tensor, Tensor), Div(Tensor, Tensor), Matmul(Tensor, Tensor), // binops (zip)
-    Neg(Tensor), Exp(Tensor), Log(Tensor), Sinh(Tensor), Cosh(Tensor), Tanh(Tensor), // uops (map)
-    Sum(Tensor, Option<ReduceDimInput>), Max(Tensor, Option<ReduceDimInput>) // reduce
-}
-
-#[derive(Clone)]
-pub struct Storage<DtypeVal> {
-    pub data: Vec<DtypeVal>,
-    pub grad: Option<Tensor>,
-}
+impl Neg for &Tensor { type Output = Result<Tensor, OpForwardError>; fn neg(self) -> Self::Output { self.forward(&UOp::Neg(self.clone())) } }
+impl Add for &Tensor { type Output = Result<Tensor, OpForwardError>; fn add(self, rhs: &Tensor) -> Self::Output { self.forward(&UOp::Add(self.clone(), rhs.clone())) } }
+impl Add<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn add(self, rhs: f32) -> Self::Output { self.forward(&UOp::Add(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
+impl Sub for &Tensor { type Output = Result<Tensor, OpForwardError>; fn sub(self, rhs: &Tensor) -> Self::Output { self.forward(&UOp::Sub(self.clone(), rhs.clone())) } }
+impl Sub<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn sub(self, rhs: f32) -> Self::Output { self.forward(&UOp::Sub(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
+impl Mul<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn mul(self, rhs: f32) -> Self::Output { self.forward(&UOp::Mul(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
+impl Mul<&Tensor> for f32 { type Output = Result<Tensor, OpForwardError>; fn mul(self, rhs: &Tensor) -> Self::Output { rhs.forward(&UOp::Mul(pyten::new(vec![DtypeVal::Float32(self)]), rhs.clone())) } }
+impl Div for &Tensor { type Output = Result<Tensor, OpForwardError>; fn div(self, rhs: &Tensor) -> Self::Output { self.forward(&UOp::Div(self.clone(), rhs.clone())) } }
+impl Div<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn div(self, rhs: f32) -> Self::Output { self.forward(&UOp::Div(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
 
 impl Tensor {
-    // ***transcendental***
-    pub fn exp(&self) -> Result<Tensor, OpForwardError> { self.forward(&Op::Exp(self.clone())) }
-    pub fn log(&self) -> Result<Tensor, OpForwardError> { self.forward(&Op::Log(self.clone())) }
-    // ***linear/non-linear***
-    pub fn matmul(&self, other: &Tensor) -> Result<Tensor, OpForwardError> { self.forward(&Op::Matmul(self.clone(), other.clone())) }
-    pub fn sinh(&self) -> Result<Tensor, OpForwardError> { self.forward(&Op::Sinh(self.clone())) }
-    pub fn cosh(&self) -> Result<Tensor, OpForwardError> { self.forward(&Op::Cosh(self.clone())) }
-    pub fn tanh(&self) -> Result<Tensor, OpForwardError> { self.forward(&Op::Tanh(self.clone())) }
-    // ***reductions***
-    pub fn _sum(&self, rdi: Option<ReduceDimInput>) -> Result<Tensor, OpForwardError> { self.forward(&Op::Sum(self.clone(), rdi)) }
+    // linear
+    pub fn matmul(&self, other: &Tensor) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Matmul(self.clone(), other.clone())) }
+
+    // non-linear
+    pub fn sinh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Sinh(self.clone())) }
+    pub fn cosh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Cosh(self.clone())) }
+    pub fn tanh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Tanh(self.clone())) }
+    pub fn exp(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Exp(self.clone())) }
+    pub fn log(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Log(self.clone())) }
+    
+    // reductions
+    pub fn _sum(&self, rdi: Option<ReduceDimInput>) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Sum(self.clone(), rdi)) }
     pub fn max(&self, dim: usize, keepdim: bool) -> Result<Tensor, OpForwardError> { let rdi = ReduceDimInput { dim, keepdim }; self.forward(&Op::Max(self.clone(), Some(rdi))) }
 }
-
-impl Neg for &Tensor { type Output = Result<Tensor, OpForwardError>; fn neg(self) -> Self::Output { self.forward(&Op::Neg(self.clone())) } }
-impl Add for &Tensor { type Output = Result<Tensor, OpForwardError>; fn add(self, rhs: &Tensor) -> Self::Output { self.forward(&Op::Add(self.clone(), rhs.clone())) } }
-impl Add<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn add(self, rhs: f32) -> Self::Output { self.forward(&Op::Add(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
-impl Sub for &Tensor { type Output = Result<Tensor, OpForwardError>; fn sub(self, rhs: &Tensor) -> Self::Output { self.forward(&Op::Sub(self.clone(), rhs.clone())) } }
-impl Sub<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn sub(self, rhs: f32) -> Self::Output { self.forward(&Op::Sub(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
-impl Mul<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn mul(self, rhs: f32) -> Self::Output { self.forward(&Op::Mul(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
-impl Mul<&Tensor> for f32 { type Output = Result<Tensor, OpForwardError>; fn mul(self, rhs: &Tensor) -> Self::Output { rhs.forward(&Op::Mul(pyten::new(vec![DtypeVal::Float32(self)]), rhs.clone())) } }
-impl Div for &Tensor { type Output = Result<Tensor, OpForwardError>; fn div(self, rhs: &Tensor) -> Self::Output { self.forward(&Op::Div(self.clone(), rhs.clone())) } }
-impl Div<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn div(self, rhs: f32) -> Self::Output { self.forward(&Op::Div(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
 
 // Tensor
 // ------
@@ -62,8 +55,7 @@ impl Div<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn div
 // - AUTODIFF: toposort, backward
 
 // NB:
-// - unsendable: does pytorch user code multithread tensors?
-// - dtype not typed with storage
+// - dtype not typed with storagek
 
 impl Tensor {
     pub fn to(&self, d: &Device) -> Self {
