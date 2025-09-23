@@ -5,6 +5,7 @@ pub mod uop;
 pub mod engine;
 pub mod eagker;
 pub mod graph;
+pub mod runtime;
 
 use pyo3::{FromPyObject, IntoPyObject, pyclass};
 
