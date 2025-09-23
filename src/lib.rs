@@ -1,5 +1,8 @@
 #![allow(non_snake_case)]
 
+pub mod linalg;
+pub mod nn;
+pub mod optim;
 pub mod numpy;
 pub mod uop;
 pub mod engine;
@@ -12,7 +15,6 @@ use pyo3::{FromPyObject, IntoPyObject, pyclass};
 #[pyclass(eq)] #[derive(Clone, Debug, PartialEq)] pub enum Device { Cpu, Gpu, Amd, }
 #[pyclass(eq)] #[derive(Clone, Debug, PartialEq)] pub enum Layout { Strided  } // Sparse, // MklDnn
 #[pyclass(eq)] #[derive(Clone, Debug, PartialEq)] pub enum Dtype { Bool, Float32, Float64, Int32, Int64}
-
 #[derive(FromPyObject)] #[derive(IntoPyObject)] #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub enum DtypeVal { Bool(bool), Float32(f32), Float64(f64), Int16(i16), Int32(i32), Int64(i64) } // f16 is unstable
 
