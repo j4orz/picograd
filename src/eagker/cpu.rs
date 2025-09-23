@@ -1,4 +1,4 @@
-use crate::{ tensor::pyten::{self}, tensor::rsten::{self, Op, Storage, Tensor, ViewOpError}, Dtype, DtypeVal };
+use crate::{ numpy::pyten::{self}, numpy::rsten::{self, Op, Storage, Tensor, ViewOpError}, Dtype, DtypeVal };
 use std::{ cell::RefCell, cmp, ops::{Add, AddAssign, Div, Mul, Neg, Sub}, rc::Rc };
 use thiserror::Error;
 

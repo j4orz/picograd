@@ -1,9 +1,10 @@
 #![allow(non_snake_case)]
 
-pub mod tensor;
-pub mod autograd;
-pub mod compile;
-pub mod kernels;
+pub mod numpy;
+pub mod uop;
+pub mod engine;
+pub mod eagker;
+pub mod graph;
 
 use pyo3::{FromPyObject, IntoPyObject, pyclass};
 

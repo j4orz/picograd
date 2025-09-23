@@ -1,7 +1,7 @@
 use crate::{
-    Device, Dtype, DtypeVal, Layout, tensor::nn,
-    kernels::cpu::{OpForwardError, ReduceDimInput},
-    tensor::rsten::{self, Tensor, ViewOpError},
+    Device, Dtype, DtypeVal, Layout, numpy::nn,
+    eagker::cpu::{OpForwardError, ReduceDimInput},
+    numpy::rsten::{self, Tensor, ViewOpError},
 };
 use numpy::{IntoPyArray, PyArrayMethods, PyUntypedArrayMethods};
 use pyo3::types::PyInt;

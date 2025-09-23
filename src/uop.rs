@@ -1,9 +1,5 @@
-use std::collections::HashSet;
-
-use crate::{kernels::cpu::{forward_cpu, OpForwardError}, tensor::pyten, tensor::rsten::{Op, Tensor}, Device};
-
 // The variant order preserves the intended toposort priority.
-pub enum TinyOp {
+pub enum UOp {
     NoOp, Sink, Unique, Device, Kernel, Precast, RewriteError, // uops that aren't rendered
     Child, Children, // track children
     Copy, Buffer, BufferView, MSelect, MStack, // buffer ops 
@@ -30,6 +26,10 @@ pub enum TinyOp {
     VConst, Const, // consts. VCONST is a vectorized const
     Custom, CustomI, // CUSTOM/CUSTOMI are used to output strings into codegen. the I makes the string inline
 }
+
+use std::collections::HashSet;
+
+use crate::{eagker::cpu::{forward_cpu, OpForwardError}, numpy::pyten, numpy::rsten::{Op, Tensor}, Device};
 
 impl Op {
     pub fn inputs(&self) -> Vec<&Tensor> {
