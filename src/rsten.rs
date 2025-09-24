@@ -1,24 +1,18 @@
-use crate::{eagker::cpu::{forward_cpu, OpForwardError, ReduceDimInput}, engine, tensor::pyten, uop::UOp, Device, Dtype, DtypeVal, Layout};
+use crate::{Device, Dtype, DtypeVal, Layout};
+use crate::engine::{self, Execution, Storage};
+use crate::eagker::cpu::{forward_cpu, OpForwardError, ReduceDimInput};
 use std::{ cell::RefCell, cmp::{Ordering, max}, collections::HashSet, fmt::{self, Display}, hash, iter, rc::Rc, ops::{Add, Div, Mul, Neg, Sub} };
-use pyo3::prelude::*;
 use rand::{Rng, distr::Uniform};
 use thiserror::Error;
 
-#[derive(Clone)] pub struct Storage<DtypeVal> {
-    pub data: Vec<DtypeVal>, pub grad: Option<Tensor>,
-}
-
-#[pyclass(unsendable)]
 pub struct Tensor {
-    pub ndim: usize,
-    pub shape: Vec<usize>,
-    pub stride: Vec<usize>,
-    pub input_op: Option<Box<UOp>>,
+    pub ndim: usize, pub shape: Vec<usize>, pub stride: Vec<usize>,
+    pub device: Device, pub dtype: Dtype, pub layout: Layout, 
+    pub repr: Execution,
+
+    // pub input_op: Option<Box<UOp>>,
     pub requires_grad: bool,
     pub storage: Rc<RefCell<Storage<DtypeVal>>>,
-    pub device: Device,
-    pub layout: Layout,
-    pub dtype: Dtype,
 }
 
 impl Neg for &Tensor { type Output = Result<Tensor, OpForwardError>; fn neg(self) -> Self::Output { unimplemented!() }}

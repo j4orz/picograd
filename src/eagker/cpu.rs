@@ -38,7 +38,7 @@ pub fn forward_cpu(op: &UOp) -> Result<Tensor, OpForwardError> {
     // }
 }
 
-fn map_cpu<F>(op: &Op, f: F, x: &Tensor) -> Result<Tensor, OpForwardError>
+fn map_cpu<F>(op: &UOp, f: F, x: &Tensor) -> Result<Tensor, OpForwardError>
 where
     F: Fn(DtypeVal) -> DtypeVal,
 {

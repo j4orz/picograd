@@ -1,10 +1,10 @@
 #![allow(non_snake_case)]
 
-pub mod linalg;
 pub mod nn;
 pub mod optim;
-pub mod tensor;
-pub mod uop;
+pub mod linalg;
+pub mod pyten;
+pub mod rsten;
 pub mod engine;
 pub mod eagker;
 pub mod graph;
