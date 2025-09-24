@@ -1,4 +1,4 @@
-use crate::{eagker::cpu::{forward_cpu, OpForwardError, ReduceDimInput}, numpy::pyten, uop::UOp, Device, Dtype, DtypeVal, Layout};
+use crate::{eagker::cpu::{forward_cpu, OpForwardError, ReduceDimInput}, engine, tensor::pyten, uop::UOp, Device, Dtype, DtypeVal, Layout};
 use std::{ cell::RefCell, cmp::{Ordering, max}, collections::HashSet, fmt::{self, Display}, hash, iter, rc::Rc, ops::{Add, Div, Mul, Neg, Sub} };
 use pyo3::prelude::*;
 use rand::{Rng, distr::Uniform};
@@ -10,24 +10,30 @@ use thiserror::Error;
 
 #[pyclass(unsendable)]
 pub struct Tensor {
-    pub ndim: usize, pub shape: Vec<usize>, pub stride: Vec<usize>,
-    pub input_op: Option<Box<UOp>>, pub requires_grad: bool,
-    pub storage: Rc<RefCell<Storage<DtypeVal>>>, pub device: Device, pub layout: Layout, pub dtype: Dtype,
+    pub ndim: usize,
+    pub shape: Vec<usize>,
+    pub stride: Vec<usize>,
+    pub input_op: Option<Box<UOp>>,
+    pub requires_grad: bool,
+    pub storage: Rc<RefCell<Storage<DtypeVal>>>,
+    pub device: Device,
+    pub layout: Layout,
+    pub dtype: Dtype,
 }
 
-impl Neg for &Tensor { type Output = Result<Tensor, OpForwardError>; fn neg(self) -> Self::Output { self.forward(&UOp::Neg(self.clone())) } }
-impl Add for &Tensor { type Output = Result<Tensor, OpForwardError>; fn add(self, rhs: &Tensor) -> Self::Output { self.forward(&UOp::Add(self.clone(), rhs.clone())) } }
-impl Add<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn add(self, rhs: f32) -> Self::Output { self.forward(&UOp::Add(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
-impl Sub for &Tensor { type Output = Result<Tensor, OpForwardError>; fn sub(self, rhs: &Tensor) -> Self::Output { self.forward(&UOp::Sub(self.clone(), rhs.clone())) } }
-impl Sub<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn sub(self, rhs: f32) -> Self::Output { self.forward(&UOp::Sub(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
-impl Mul<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn mul(self, rhs: f32) -> Self::Output { self.forward(&UOp::Mul(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
-impl Mul<&Tensor> for f32 { type Output = Result<Tensor, OpForwardError>; fn mul(self, rhs: &Tensor) -> Self::Output { rhs.forward(&UOp::Mul(pyten::new(vec![DtypeVal::Float32(self)]), rhs.clone())) } }
-impl Div for &Tensor { type Output = Result<Tensor, OpForwardError>; fn div(self, rhs: &Tensor) -> Self::Output { self.forward(&UOp::Div(self.clone(), rhs.clone())) } }
-impl Div<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn div(self, rhs: f32) -> Self::Output { self.forward(&UOp::Div(self.clone(), pyten::new(vec![DtypeVal::Float32(rhs)]))) } }
+impl Neg for &Tensor { type Output = Result<Tensor, OpForwardError>; fn neg(self) -> Self::Output { unimplemented!() }}
+impl Add for &Tensor { type Output = Result<Tensor, OpForwardError>; fn add(self, rhs: &Tensor) -> Self::Output { unimplemented!() }}
+impl Add<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn add(self, rhs: f32) -> Self::Output { unimplemented!() }}
+impl Sub for &Tensor { type Output = Result<Tensor, OpForwardError>; fn sub(self, rhs: &Tensor) -> Self::Output { unimplemented!() }}
+impl Sub<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn sub(self, rhs: f32) -> Self::Output { unimplemented!() }}
+impl Mul<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn mul(self, rhs: f32) -> Self::Output { unimplemented!() }}
+impl Mul<&Tensor> for f32 { type Output = Result<Tensor, OpForwardError>; fn mul(self, rhs: &Tensor) -> Self::Output { unimplemented!()} }
+impl Div for &Tensor { type Output = Result<Tensor, OpForwardError>; fn div(self, rhs: &Tensor) -> Self::Output { unimplemented!() }}
+impl Div<f32> for &Tensor { type Output = Result<Tensor, OpForwardError>; fn div(self, rhs: f32) -> Self::Output { unimplemented!() }}
 
 impl Tensor {
     // matmul and flashattention is all you need ;)
-    pub fn matmul(&self, other: &Tensor) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Matmul(self.clone(), other.clone())) }
+    pub fn matmul(&self, other: &Tensor) -> Result<Tensor, OpForwardError> { unimplemented!() }
     pub fn fa() -> () { unimplemented!( )}
 
     // unary
@@ -83,12 +89,12 @@ impl Tensor {
     pub fn selu() -> Self { unimplemented!() }
     pub fn silu() -> Self { unimplemented!() }
     pub fn swish() -> Self { unimplemented!() }
-    pub fn sinh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Sinh(self.clone())) }
-    pub fn cosh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Cosh(self.clone())) }
-    pub fn tanh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Tanh(self.clone())) }
-    pub fn asinh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Sinh(self.clone())) }
-    pub fn acosh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Cosh(self.clone())) }
-    pub fn atanh(&self) -> Result<Tensor, OpForwardError> { self.forward(&UOp::Tanh(self.clone())) }
+    pub fn sinh(&self) -> Result<Tensor, OpForwardError> { unimplemented!() }
+    pub fn cosh(&self) -> Result<Tensor, OpForwardError> { unimplemented!() }
+    pub fn tanh(&self) -> Result<Tensor, OpForwardError> { unimplemented!() }
+    pub fn asinh(&self) -> Result<Tensor, OpForwardError> { unimplemented!() }
+    pub fn acosh(&self) -> Result<Tensor, OpForwardError> { unimplemented!() }
+    pub fn atanh(&self) -> Result<Tensor, OpForwardError> { unimplemented!() }
 
     // tensor
     pub fn ndim() -> () { todo!() }
@@ -99,23 +105,22 @@ impl Tensor {
     // pub fn max(&self, dim: usize, keepdim: bool) -> Result<Tensor, OpForwardError> { let rdi = ReduceDimInput { dim, keepdim }; self.forward(&Op::Max(self.clone(), Some(rdi))) }
 }
 
-// Tensor
-// ------
-// storage: two design decisions
-//      1. lifetimes Box<_> vs Rc<_>
-//      2. mutation: RefCell<_>(safe) vs UnsafeCell<_>(speed)j
-// impl Tensor:
-// - CONSTRUCTORS (alloc): alloc
-// - VIEWS (no alloc): continuous_view, noncontinuous_view, reshape, permute, getitem, squeeze, unsqueeze
-// - INDEXING (internal): shape_to_stride, encode, decode
-// - BROADCASTING: broadcast_shape, clamp_stride, broadcast_logidx
-// - SAMPLING: randn
-// - AUTODIFF: toposort, backward
+impl Tensor {
+    // Tensor
+    // ------
+    // storage: two design decisions
+    //      1. lifetimes Box<_> vs Rc<_>
+    //      2. mutation: RefCell<_>(safe) vs UnsafeCell<_>(speed)j
+    // impl Tensor:
+    // - CONSTRUCTORS (alloc): alloc
+    // - VIEWS (no alloc): continuous_view, noncontinuous_view, reshape, permute, getitem, squeeze, unsqueeze
+    // - INDEXING (internal): shape_to_stride, encode, decode
+    // - BROADCASTING: broadcast_shape, clamp_stride, broadcast_logidx
+    // - SAMPLING: randn
+    // - AUTODIFF: toposort, backward
 
 // NB:
 // - dtype not typed with storagek
-
-impl Tensor {
     pub fn to(&self, d: &Device) -> Self {
         let foo = match d {
             Device::Cpu => todo!(),
@@ -524,40 +529,6 @@ impl Tensor {
         alloc(&vec![samples], output)
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 // NB: clones are not expensive because they implement view semantics. the

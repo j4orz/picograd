@@ -1,4 +1,4 @@
-use picograd::{numpy::pyten, Device};
+use picograd::{tensor::pyten, Device};
 
 #[allow(non_snake_case)]
 fn main() {

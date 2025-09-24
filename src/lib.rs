@@ -3,7 +3,7 @@
 pub mod linalg;
 pub mod nn;
 pub mod optim;
-pub mod numpy;
+pub mod tensor;
 pub mod uop;
 pub mod engine;
 pub mod eagker;

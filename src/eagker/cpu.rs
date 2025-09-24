@@ -1,4 +1,4 @@
-use crate::{ numpy::pyten::{self}, numpy::rsten::{self, Op, Storage, Tensor, ViewOpError}, Dtype, DtypeVal };
+use crate::{ tensor::{pyten::{self}, rsten::{self, Storage, Tensor, ViewOpError}}, uop::UOp, Dtype, DtypeVal };
 use std::{ cell::RefCell, cmp, ops::{Add, AddAssign, Div, Mul, Neg, Sub}, rc::Rc };
 use thiserror::Error;
 
@@ -8,33 +8,34 @@ pub enum OpForwardError {
     #[error("unknown operation error")] Unknown,
 }
 
-pub fn forward_cpu(op: &Op) -> Result<Tensor, OpForwardError> {
-    match op {
-        Op::Add(x, y) => zip_cpu(|xi, yi| xi + yi, x, y),
-        Op::Sub(x, y) => zip_cpu(|xi, yi| xi - yi, x, y),
-        Op::Mul(x, y) => zip_cpu(|xi, yi| xi * yi, x, y),
-        Op::Div(x, y) => zip_cpu(|xi, yi| xi / yi, x, y),
-        Op::Neg(x) => map_cpu(&op, |xi| -xi, x),
-        // TODO: generalize transcental uops to other dtypes?
-        Op::Exp(x) => map_cpu(&op, |xi| DtypeVal::Float32(f32::from(xi).exp()), x),
-        Op::Log(x) => map_cpu(&op, |xi| DtypeVal::Float32(f32::from(xi).ln()), x),
-        Op::Sinh(x) => map_cpu(&op, |xi| DtypeVal::Float32(f32::from(xi).sinh()), x),
-        Op::Cosh(x) => map_cpu(&op, |xi| DtypeVal::Float32(f32::from(xi).cosh()), x),
-        Op::Tanh(x) => map_cpu(&op, |xi| DtypeVal::Float32(f32::from(xi).tanh()), x),
-        Op::Sum(x, rdi) => reduce_cpu(|xi, yi| xi + yi, x, rdi),
-        Op::Max(x, rdi) => reduce_cpu(
-            // TODO: maybe_reduce_cpu where F: DTypeVal, DTypeVal -> Option<DTypeVal>?
-            // b/c of partialcmp.
-            |xi, yi| match xi.partial_cmp(&yi).unwrap() {
-                cmp::Ordering::Less => yi,
-                cmp::Ordering::Equal => xi,
-                cmp::Ordering::Greater => xi,
-            },
-            x,
-            rdi,
-        ),
-        Op::Matmul(X, Y) => matmul_cpu(X, Y),
-    }
+pub fn forward_cpu(op: &UOp) -> Result<Tensor, OpForwardError> {
+    todo!()
+    // match op {
+    //     UOp::Add(x, y) => zip_cpu(|xi, yi| xi + yi, x, y),
+    //     UOp::Sub(x, y) => zip_cpu(|xi, yi| xi - yi, x, y),
+    //     UOp::Mul(x, y) => zip_cpu(|xi, yi| xi * yi, x, y),
+    //     UOp::Div(x, y) => zip_cpu(|xi, yi| xi / yi, x, y),
+    //     UOp::Neg(x) => map_cpu(&op, |xi| -xi, x),
+    //     // TODO: generalize transcental uops to other dtypes?
+    //     UOp::Exp(x) => map_cpu(&op, |xi| DtypeVal::Float32(f32::from(xi).exp()), x),
+    //     UOp::Log(x) => map_cpu(&op, |xi| DtypeVal::Float32(f32::from(xi).ln()), x),
+    //     UOp::Sinh(x) => map_cpu(&op, |xi| DtypeVal::Float32(f32::from(xi).sinh()), x),
+    //     UOp::Cosh(x) => map_cpu(&op, |xi| DtypeVal::Float32(f32::from(xi).cosh()), x),
+    //     UOp::Tanh(x) => map_cpu(&op, |xi| DtypeVal::Float32(f32::from(xi).tanh()), x),
+    //     UOp::Sum(x, rdi) => reduce_cpu(|xi, yi| xi + yi, x, rdi),
+    //     UOp::Max(x, rdi) => reduce_cpu(
+    //         // TODO: maybe_reduce_cpu where F: DTypeVal, DTypeVal -> Option<DTypeVal>?
+    //         // b/c of partialcmp.
+    //         |xi, yi| match xi.partial_cmp(&yi).unwrap() {
+    //             cmp::Ordering::Less => yi,
+    //             cmp::Ordering::Equal => xi,
+    //             cmp::Ordering::Greater => xi,
+    //         },
+    //         x,
+    //         rdi,
+    //     ),
+    //     Op::Matmul(X, Y) => matmul_cpu(X, Y),
+    // }
 }
 
 fn map_cpu<F>(op: &Op, f: F, x: &Tensor) -> Result<Tensor, OpForwardError>
