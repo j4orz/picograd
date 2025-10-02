@@ -1,12 +1,12 @@
-use crate::uop::UOp;
+// use crate::uop::UOp;
 
-pub struct ScheduleItem {
-    ast: UOp,
-    // bufs
-    // metadata
-    // fixedvars
-}
+// pub struct ScheduleItem {
+//     ast: UOp,
+//     // bufs
+//     // metadata
+//     // fixedvars
+// }
 
-fn scheduler(inp: UOp) -> ScheduleItem {
-    todo!()
-}
+// fn scheduler(inp: UOp) -> ScheduleItem {
+//     todo!()
+// }

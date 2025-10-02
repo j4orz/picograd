@@ -1,24 +1,24 @@
-use crate::{eagker::cpu::ReduceDimInput, tensor::rsten::Tensor};
-use pyo3::{PyResult, pyfunction};
-use std::ops::{Div, Sub};
+// use crate::{eagker::cpu::ReduceDimInput, tensor::rsten::Tensor};
+// use pyo3::{PyResult, pyfunction};
+// use std::ops::{Div, Sub};
 
-#[pyfunction]
-pub fn cross_entropy(p: Tensor, q: Tensor) -> PyResult<Tensor> {
-    todo!()
-}
+// #[pyfunction]
+// pub fn cross_entropy(p: Tensor, q: Tensor) -> PyResult<Tensor> {
+//     todo!()
+// }
 
-#[pyfunction]
-pub fn _softmax(x: Tensor, dim: usize) -> PyResult<Tensor> {
-    // let shifted = x.sub(&x.max(dim, true)?)?;
-    // let exp = shifted.exp()?;
-    // let expsum = exp._sum(Some(ReduceDimInput { dim, keepdim: true }))?;
-    // let softmax = exp.div(&expsum)?;
-    // Ok(softmax)
-    todo!()
-}
+// #[pyfunction]
+// pub fn _softmax(x: Tensor, dim: usize) -> PyResult<Tensor> {
+//     // let shifted = x.sub(&x.max(dim, true)?)?;
+//     // let exp = shifted.exp()?;
+//     // let expsum = exp._sum(Some(ReduceDimInput { dim, keepdim: true }))?;
+//     // let softmax = exp.div(&expsum)?;
+//     // Ok(softmax)
+//     todo!()
+// }
 
-struct Linear {}
-struct BatchNorm {}
-struct LayerNorm {}
-struct RMSNorm {}
-struct Embedding {}
+// struct Linear {}
+// struct BatchNorm {}
+// struct LayerNorm {}
+// struct RMSNorm {}
+// struct Embedding {}
