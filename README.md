@@ -2,4 +2,4 @@
 
 # picograd
 
-A pedagogical machine learning framework, with a free [textbook](https://j4orz.ai/sitp).
+A pedagogical machine learning framework, companion to the [SITP textbook](https://j4orz.ai/sitp).
