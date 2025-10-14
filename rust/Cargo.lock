@@ -96,7 +96,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pgrs"
+name = "picograd"
 version = "0.1.0"
 dependencies = [
  "opencl3",

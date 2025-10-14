@@ -16,7 +16,10 @@ dependencies = [
 ]
 [tool.maturin]
 features = ["pyo3/extension-module"]
-manifest-path = "native/Cargo.toml"
+manifest-path = "rust/Cargo.toml"
+python-source = "python"
+python-packages = ["picograd"]
+module-name = "picograd._pgrs"
 
 [tool.uv.workspace]
 members = [
