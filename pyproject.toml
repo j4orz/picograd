@@ -18,3 +18,8 @@ dependencies = [
 [tool.maturin]
 features = ["pyo3/extension-module"]
 manifest-path = "native/Cargo.toml"
+
+[tool.uv.workspace]
+members = [
+    "examples",
+]
