@@ -1,8 +1,8 @@
 // ! picograd: Tensor, Engine, Runtime
 
-pub mod ten;
-pub mod eng;
-pub mod run;
+pub mod tensor;
+pub mod engine;
+pub mod runtime;
 
 use pyo3::prelude::*;
 
