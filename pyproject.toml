@@ -12,7 +12,6 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "datasets>=3.1.0",
     "maturin>=1.9.5",
 ]
 [tool.maturin]
