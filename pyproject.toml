@@ -22,3 +22,10 @@ manifest-path = "native/Cargo.toml"
 members = [
     "examples",
 ]
+
+[dependency-groups]
+dev = [
+    "numpy>=1.24.4",
+    "tinygrad>=0.9.2",
+    "torch>=2.5.1",
+]
