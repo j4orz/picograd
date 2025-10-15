@@ -11,3 +11,4 @@ crate-type = ["cdylib"] # necessary to produce a shared lib for python to import
 [dependencies]
 opencl3 = "0.12.1"
 pyo3 = "0.25.0"
+rayon = "1.11.0"
