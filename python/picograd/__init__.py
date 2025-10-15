@@ -3,5 +3,5 @@ print("initializing picograd")
 print("importing picograd._pgrs")
 _pgrs = _import_module("picograd._pgrs")
 
-from .ten import Tensor
+from .tensor import Tensor
 __all__ = ["Tensor"]

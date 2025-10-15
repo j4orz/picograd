@@ -1,9 +1,5 @@
 // ! picograd: Tensor, Engine, Runtime
 
-pub mod tensor;
-pub mod engine;
-pub mod runtime;
-
 use pyo3::prelude::*;
 
 /// Formats the sum of two numbers as string.
