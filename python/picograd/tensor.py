@@ -1,3 +1,9 @@
+"""
+Tensor is syntactic sugar for a UOp graph, which can be eagerly interpreted or lazily compiled.
+Roughly speaking, there are element ops, reduce ops, and movement ops.
+"""
+
+
 from __future__ import annotations
 from . import _pgrs
 
@@ -81,7 +87,7 @@ class Tensor():
     ```
     """
     return 0
-  
+
   def matmul(self, other: Tensor) -> Tensor:
     """
     Performs matrix multiplication between two tensors.
@@ -97,13 +103,15 @@ class Tensor():
     """
     return other.dot(self, dtype=dtype) if reverse else self.dot(other, dtype=dtype)
 
-  # math ops
-  # unary ops
+  # element ops
+  # --math ops
+  # --unary ops
+  # --broadcasted ops
+  # --activation ops
+  # --processing ops
+  # --nn ops
+
   # reduce ops
-  # broadcasted ops
-  # activation ops
-  # processing ops
-  # nn ops
 
   # movement high level
   def gather(self:Tensor, dim:int, index: Tensor) -> Tensor:
@@ -258,7 +266,6 @@ class Tensor():
     return 0
 
   # movement low level
-  # ***** movement low level ops *****
 
   def view(self, shape:tuple[sint, ...], *args) -> Tensor:
     """`.view` is an alias for `.reshape`."""
