@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "picograd"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -12,7 +12,12 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
+    "gpuctypes>=0.3.0",
+    "helion>=0.1.8",
+    "hip-python~=7.0.2",
     "maturin>=1.9.5",
+    "pyopencl>=2025.2.6",
+    "triton>=3.4.0",
 ]
 [tool.maturin]
 features = ["pyo3/extension-module"]
@@ -25,6 +30,12 @@ module-name = "picograd._pgrs"
 members = [
     "examples",
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+
+[[tool.uv.index]]
+url = "https://test.pypi.org/simple"
 
 [dependency-groups]
 dev = [
