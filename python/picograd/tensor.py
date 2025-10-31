@@ -3,7 +3,6 @@ Tensor is syntactic sugar for a UOp graph, which can be eagerly interpreted or l
 Roughly speaking, there are element ops, reduce ops, and movement ops.
 """
 
-
 from __future__ import annotations
 from . import _pgrs
 
@@ -415,21 +414,21 @@ class Tensor():
     """
     return 0
 
-  @staticmethod
-  def randint(*shape, low=0, high=10, dtype=dtypes.int32, **kwargs) -> Tensor:
-    """
-    Creates a tensor with the given shape, filled with random integer values generated uniformly from the interval `[low, high)`.
-    If `dtype` is not specified, the default type is used.
+  # @staticmethod
+  # def randint(*shape, low=0, high=10, dtype=dtypes.int32, **kwargs) -> Tensor:
+  #   """
+  #   Creates a tensor with the given shape, filled with random integer values generated uniformly from the interval `[low, high)`.
+  #   If `dtype` is not specified, the default type is used.
 
-    You can pass in the `device` keyword argument to control device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
+  #   You can pass in the `device` keyword argument to control device of the tensor.
+  #   Additionally, all other keyword arguments are passed to the constructor of the tensor.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    print(Tensor.randint(2, 3, low=5, high=10).numpy())
-    ```
-    """
-    return 0
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   Tensor.manual_seed(42)
+  #   print(Tensor.randint(2, 3, low=5, high=10).numpy())
+  #   ```
+  #   """
+  #   return 0
 
   @staticmethod
   def normal(*shape, mean=0.0, std=1.0, requires_grad:bool|None=None, **kwargs) -> Tensor:
@@ -525,17 +524,17 @@ class Tensor():
     """
     return 0
 
-  @staticmethod
-  def randperm(n:int, device=None, dtype=dtypes.int32, **kwargs) -> Tensor:
-    """
-    Returns a tensor with a random permutation of integers from `0` to `n-1`.
+  # @staticmethod
+  # def randperm(n:int, device=None, dtype=dtypes.int32, **kwargs) -> Tensor:
+  #   """
+  #   Returns a tensor with a random permutation of integers from `0` to `n-1`.
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    print(Tensor.randperm(6).numpy())
-    ```
-    """
-    return 0
+  #   ```python exec="true" source="above" session="tensor" result="python"
+  #   Tensor.manual_seed(42)
+  #   print(Tensor.randperm(6).numpy())
+  #   ```
+  #   """
+  #   return 0
 
   def multinomial(self:Tensor, num_samples:int = 1, replacement:bool = False) -> Tensor:
     return 0
@@ -586,9 +585,9 @@ class Tensor():
     """
     return 0
 
-  _seed: int = int(time.time())
-  _device_seeds: dict[str, Tensor] = {}
-  _device_rng_counters: dict[str, Tensor] = {}
+  # _seed: int = int(time.time())
+  # _device_seeds: dict[str, Tensor] = {}
+  # _device_rng_counters: dict[str, Tensor] = {}
   @staticmethod
   def manual_seed(seed=0) -> None:
     """
