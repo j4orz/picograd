@@ -1,119 +1,83 @@
-"""
-Tensor is syntactic sugar for a UOp graph, which can be eagerly interpreted or lazily compiled.
-Roughly speaking, there are element ops, reduce ops, and movement ops.
-"""
-
 from __future__ import annotations
 from . import _pgrs
 
-class Tensor():
-  def __init__(self, x: int, y: int) -> None:
-    self.x = x
-    self.y = y
+class StridedTensor():
+  """
+  picograd follows the classical architecture of numerical array programming
+  see: (Dodson, Lewis 1985) https://dl.acm.org/doi/pdf/10.1145/1057935.1057937
 
-  def foo(self) -> str:
-    return _pgrs.sum_as_string(self.x, self.y)
-  
-  # ***** Tensor Properties *****
-  
-  @property
-  def ndim(self) -> int:
+  - Level  2:  (BCKWD: compile, ad/gd)provides the high level mathematical primitives of
+                                      compilation, automatic differentiation, gradient descent
+  - Level  0/1:(FWD: cuBLAS/cuDNN)    provides performance primitives that require the knowledge of
+                                      microarchitecture to obtain peak theoretical throughput (FLOP/S)
+  - Level -1:  (DATA: ndarray/tensor) provides the foundational multi-dimensional array data structure
+  """
+  # ***** Tensor Compile, AD, GD (Level 2) *****
+  def gradient(self, *targets:StridedTensor, gradient:StridedTensor|None=None, materialize_grads=False) -> list[StridedTensor]:
     """
-    Returns the number of dimensions in the tensor.
+    Computes the gradient of the targets with respect to self.
 
     ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor([[1, 2], [3, 4]])
-    print(t.ndim)
+    x = Tensor.eye(3)
+    y = Tensor([[2.0,0,-2.0]])
+    z = y.matmul(x).sum()
+    dx, dy = z.gradient(x, y)
+
+    print(dx.tolist())  # dz/dx
+    print(dy.tolist())  # dz/dy
     ```
     """
-    return 0
+    assert gradient is not None or self.shape == tuple(), "when no gradient is provided, backward must be called on a scalar tensor"
+    if not (self.is_floating_point() and all(t.is_floating_point() for t in targets)): raise RuntimeError("only float Tensors have gradient")
+    if gradient is None: gradient = StridedTensor(1.0, dtype=self.dtype, device=self.device, requires_grad=False)
+    target_uops = [x.uop for x in targets]
+    grads = compute_gradient(self.uop, gradient.uop, set(target_uops))
+    ret = []
+    for x in target_uops:
+      if (y:=grads.get(x)) is None:
+        if materialize_grads: y = x.const_like(0)
+        else: raise RuntimeError(f"{x}\n\nnot found in\n\n{self.uop}")
+      ret.append(y)
+    # create returned Tensors
+    return [StridedTensor(u, device=t.device) for t,u in zip(targets, ret)]
 
-  def numel(self) -> sint:
+  def backward(self, gradient:StridedTensor|None=None) -> StridedTensor:
     """
-    Returns the total number of elements in the tensor.
-
+    Propagates the gradient of a tensor backwards through the computation graph.
+    If the 'gradient' argument is not provided, the tensor must be a scalar, and the gradient is implicitly set to 1.0.
     ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
-    print(t.numel())
+    t = Tensor([1.0, 2.0, 3.0, 4.0], requires_grad=True)
+    t.sum().backward()
+    print(t.grad.numpy())
     ```
     """
-    return 0
+    all_uops = self.uop.toposort()
+    tensors_need_grad: list[StridedTensor] = [t for tref in all_tensors if (t:=tref()) is not None and \
+                                       t.uop in all_uops and t.requires_grad]
+    # clear contexts
+    for t,g in zip(tensors_need_grad, self.gradient(*tensors_need_grad, gradient=gradient, materialize_grads=True)):
+      assert g.shape == t.shape, f"grad shape must match tensor shape, {g.shape!r} != {t.shape!r}"
+      t.grad = g if t.grad is None else (t.grad + g)
+    return self
 
-  def element_size(self) -> int:
-    """
-    Returns the size in bytes of an individual element in the tensor.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor([5], dtype=dtypes.int16)
-    print(t.element_size())
-    ```
-    """
-    return 0
-
-  def nbytes(self) -> int:
-    """
-    Returns the total number of bytes of all elements in the tensor.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor([8, 9], dtype=dtypes.float)
-    print(t.nbytes())
-    ```
-    """
-    return 0
-
-  def is_floating_point(self) -> bool:
-    """
-    Returns `True` if the tensor contains floating point types, i.e. is one of `dtypes.float64`, `dtypes.float32`,
-    `dtypes.float16`, `dtypes.bfloat16`.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor([8, 9], dtype=dtypes.float32)
-    print(t.is_floating_point())
-    ```
-    """
-    return 0
-
-  def size(self, dim:int|None=None) -> sint|tuple[sint, ...]:
-    """
-    Returns the size of the tensor. If `dim` is specified, return the length along dimension `dim`. Otherwise return the shape of the tensor.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor([[4, 5, 6], [7, 8, 9]])
-    print(t.size())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.size(dim=1))
-    ```
-    """
-    return 0
-
-  def matmul(self, other: Tensor) -> Tensor:
-    """
-    Performs matrix multiplication between two tensors.
-
-    You can pass in the `reverse` keyword argument to control the order of the matrix multiplication.
-    You can pass in the optional `dtype` keyword argument to control the data type of the accumulation.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    a = Tensor([[1, 2], [3, 4]])
-    b = Tensor([[5, 6], [7, 8]])
-    print(a.matmul(b).numpy())
-    ```
-    """
-    return other.dot(self, dtype=dtype) if reverse else self.dot(other, dtype=dtype)
+  # ***** Tensor DNN, BLAS Operations (Level 1/0) *****
+  # fa/mm
 
   # element ops
-  # --math ops
-  # --unary ops
-  # --broadcasted ops
-  # --activation ops
-  # --processing ops
-  # --nn ops
+  # --math
+  # --unary
+  def exp2(self) -> StridedTensor: return self.cast(least_upper_float(self.dtype))._apply_uop(UOp.exp2)
+  def sigmoid(self) -> StridedTensor: return (1 + (self * (-1/math.log(2))).exp2()).reciprocal()
+  # --activation
+  def tanh(self) -> StridedTensor: return 2.0 * ((2.0 * self).sigmoid()) - 1.0
+  # --broacsted
+  # --processing
 
   # reduce ops
 
-  # movement high level
-  def gather(self:Tensor, dim:int, index: Tensor) -> Tensor:
+  # movement ops
+  # --high level
+  def gather(self:StridedTensor, dim:int, index: StridedTensor) -> StridedTensor:
     """
     Gathers values along an axis specified by `dim`.
 
@@ -125,9 +89,9 @@ class Tensor():
     print(t.gather(1, Tensor([[0, 0], [1, 0]])).numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def cat(self:Tensor, *args:Tensor, dim:int=0) -> Tensor:
+  def cat(self:StridedTensor, *args:StridedTensor, dim:int=0) -> StridedTensor:
     """
     Concatenates self with other `Tensor` in `args` along an axis specified by `dim`.
     All tensors must have the same shape except in the concatenating dimension.
@@ -140,9 +104,9 @@ class Tensor():
     print(t0.cat(t1, t2, dim=1).numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def stack(self:Tensor, *args:Tensor, dim:int=0) -> Tensor:
+  def stack(self:StridedTensor, *args:StridedTensor, dim:int=0) -> StridedTensor:
     """
     Concatenates self with other `Tensor` in `args` along a new dimension specified by `dim`.
 
@@ -154,9 +118,9 @@ class Tensor():
     print(t0.stack(t1, t2, dim=1).numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def repeat(self, repeats, *args) -> Tensor:
+  def repeat(self, repeats, *args) -> StridedTensor:
     """
     Repeats tensor number of times along each dimension specified by `repeats`.
     `repeats` can be passed as a tuple or as separate arguments.
@@ -169,9 +133,9 @@ class Tensor():
     print(t.repeat(4, 2, 1).shape)
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def split(self, sizes:int|Sequence[int], dim:int=0) -> tuple[Tensor, ...]:
+  def split(self, sizes:int|Sequence[int], dim:int=0) -> tuple[StridedTensor, ...]:
     """
     Splits the tensor into chunks along the dimension specified by `dim`.
     If `sizes` is an integer, it splits into equally sized chunks if possible, otherwise the last chunk will be smaller.
@@ -190,9 +154,9 @@ class Tensor():
     print("\\n".join([repr(x.numpy()) for x in split]))
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def chunk(self, chunks:int, dim:int=0) -> list[Tensor]:
+  def chunk(self, chunks:int, dim:int=0) -> list[StridedTensor]:
     """
     Splits the tensor into `chunks` number of chunks along the dimension `dim`.
     If the tensor size along `dim` is not divisible by `chunks`, all returned chunks will be the same size except the last one.
@@ -211,9 +175,9 @@ class Tensor():
     print("\\n".join([repr(x.numpy()) for x in chunked]))
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def unfold(self, dim:int, size:sint, step:int) -> Tensor:
+  def unfold(self, dim:int, size:sint, step:int) -> StridedTensor:
     """
     Unfolds the tensor along dimension `dim` into overlapping windows.
 
@@ -230,9 +194,9 @@ class Tensor():
     print("\\n".join([repr(x.numpy()) for x in unfolded]))
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def squeeze(self, dim:int|None=None) -> Tensor:
+  def squeeze(self, dim:int|None=None) -> StridedTensor:
     """
     Returns a tensor with specified dimensions of input of size 1 removed.
     If `dim` is not specified, all dimensions with size 1 are removed.
@@ -248,9 +212,9 @@ class Tensor():
     print(t.squeeze(1).shape)
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def unsqueeze(self, dim:int) -> Tensor:
+  def unsqueeze(self, dim:int) -> StridedTensor:
     """
     Returns a tensor with a new dimension of size 1 inserted at the specified `dim`.
 
@@ -262,15 +226,14 @@ class Tensor():
     print(t.unsqueeze(1).numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  # movement low level
-
-  def view(self, shape:tuple[sint, ...], *args) -> Tensor:
+  # --low level
+  def view(self, shape:tuple[sint, ...], *args) -> StridedTensor:
     """`.view` is an alias for `.reshape`."""
-    return 0
+    raise NotImplementedError("TODO")
 
-  def reshape(self, shape, *args) -> Tensor:
+  def reshape(self, shape, *args) -> StridedTensor:
     """
     Returns a tensor with the same data as the original tensor but with a different shape.
     `shape` can be passed as a tuple or as separate arguments.
@@ -280,268 +243,16 @@ class Tensor():
     print(t.reshape(2, 3).numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def expand(self, shape, *args) -> Tensor:
-    """
-    Returns a tensor that is expanded to the shape that is specified.
-    Expand can also increase the number of dimensions that a tensor has.
+  # .expand() .permute() .flip() .shrink() .pad()
 
-    Passing a `-1` or `None` to a dimension means that its size will not be changed.
+  # ***** Tensor Constructors (Level -1) *****
+  # --high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
 
-    ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor([1, 2, 3])
-    print(t.expand(4, -1).numpy())
-    ```
-    """
-    return 0
-
-  def permute(self, order, *args) -> Tensor:
-    """
-    Returns a tensor that is a permutation of the original tensor.
-    The new tensor has the same data as the original tensor but with the dimensions permuted according to the order specified.
-    `order` can be passed as a tuple or as separate arguments.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor.empty(2, 3, 5)
-    print(t.shape)
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.permute(2, 0, 1).shape)
-    ```
-    """
-    return 0
-
-  def flip(self, axis, *args) -> Tensor:
-    """
-    Returns a tensor that reverses the order of the original tensor along given `axis`.
-    `axis` can be passed as a tuple or as separate arguments.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor.arange(6).reshape(2, 3)
-    print(t.numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.flip(0).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.flip((0, 1)).numpy())
-    ```
-    """
-    return 0
-
-  def shrink(self, arg:tuple[tuple[sint, sint]|None, ...]) -> Tensor:
-    """
-    Returns a tensor that shrinks the each axis based on input arg.
-    `arg` must have the same length as `self.ndim`.
-    For each axis, it can be `None`, which means no shrink, or a tuple `(start, end)` that works the same as Python slice.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor.arange(9).reshape(3, 3)
-    print(t.numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.shrink(((None, (1, 3)))).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.shrink((((0, 2), (0, 2)))).numpy())
-    ```
-    """
-    return 0
-
-  def pad(self, padding:Sequence[sint]|Sequence[tuple[sint, sint]|None], mode:str="constant", value:float=0.0) -> Tensor:
-    """
-    Returns a tensor with padding applied based on the input `padding`.
-
-    `padding` supports two padding structures:
-
-    1. Flat padding: `(padding_left, padding_right, padding_top, padding_bottom, ...)`
-        - This structure matches PyTorch's pad.
-        - `padding` length must be even.
-
-    2. Group padding: `(..., (padding_top, padding_bottom), (padding_left, padding_right))`
-        - This structure matches pad for JAX, NumPy, TensorFlow, and others.
-        - For each axis, padding can be `None`, meaning no padding, or a tuple `(start, end)`.
-        - `padding` must have the same length as `self.ndim`.
-
-    Padding values can be negative, resulting in dimension shrinks that work similarly to Python negative slices.
-    Padding modes is selected with `mode` which supports `constant`, `reflect` and `replicate`.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor.arange(9).reshape(1, 1, 3, 3)
-    print(t.numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.pad((1, 2, 0, -1)).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.pad(((None, None, (0, -1), (1, 2)))).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    print(t.pad((1, 2, 0, -1), value=-float('inf')).numpy())
-    ```
-    """
-    return 0
-
-  # rng high level
-  def randn_like(self, dtype:DTypeLike|None=None, requires_grad:bool|None=None, **kwargs) -> Tensor:
-    """
-    Creates a tensor with the same shape and sharding as `self`, filled with random values from a normal distribution with mean 0 and variance 1.
-
-    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor.ones(2, 3)
-    print(Tensor.randn_like(t).numpy())
-    ```
-    """
-    return 0
-
+  # --low level:
   @staticmethod
-  def randn(*shape, dtype:DTypeLike|None=None, requires_grad:bool|None=None, **kwargs) -> Tensor:
-    """
-    Creates a tensor with the given shape, filled with random values from a normal distribution with mean `0` and standard deviation `1`.
-    If `dtype` is not specified, the default type is used.
-
-    You can pass in the `device` keyword argument to control device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    print(Tensor.randn(2, 3).numpy())
-    ```
-    """
-    return 0
-
-  # @staticmethod
-  # def randint(*shape, low=0, high=10, dtype=dtypes.int32, **kwargs) -> Tensor:
-  #   """
-  #   Creates a tensor with the given shape, filled with random integer values generated uniformly from the interval `[low, high)`.
-  #   If `dtype` is not specified, the default type is used.
-
-  #   You can pass in the `device` keyword argument to control device of the tensor.
-  #   Additionally, all other keyword arguments are passed to the constructor of the tensor.
-
-  #   ```python exec="true" source="above" session="tensor" result="python"
-  #   Tensor.manual_seed(42)
-  #   print(Tensor.randint(2, 3, low=5, high=10).numpy())
-  #   ```
-  #   """
-  #   return 0
-
-  @staticmethod
-  def normal(*shape, mean=0.0, std=1.0, requires_grad:bool|None=None, **kwargs) -> Tensor:
-    """
-    Creates a tensor with the given shape, filled with random values from a normal distribution with the given `mean` and standard deviation `std`.
-
-    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    print(Tensor.normal(2, 3, mean=10, std=2).numpy())
-    ```
-    """
-    return 0
-
-  @staticmethod
-  def uniform(*shape, low=0.0, high=1.0, dtype:DTypeLike|None=None, requires_grad:bool|None=None, **kwargs) -> Tensor:
-    """
-    Creates a tensor with the given shape, filled with random values from a uniform distribution over the interval `[low, high)`.
-
-    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    print(Tensor.uniform(2, 3, low=2, high=10).numpy())
-    ```
-    """
-    return 0
-
-  @staticmethod
-  def scaled_uniform(*shape, **kwargs) -> Tensor:
-    """
-    Creates a tensor with the given shape, filled with random values from a uniform distribution
-    over the interval `[-prod(shape)**-0.5, prod(shape)**-0.5)`.
-
-    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    print(Tensor.scaled_uniform(2, 3).numpy())
-    ```
-    """
-    return 0
-
-  # https://www.tensorflow.org/api_docs/python/tf/keras/initializers/GlorotUniform
-  @staticmethod
-  def glorot_uniform(*shape, **kwargs) -> Tensor:
-    """
-    <https://www.tensorflow.org/api_docs/python/tf/keras/initializers/GlorotUniform>
-
-    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    print(Tensor.glorot_uniform(2, 3).numpy())
-    ```
-    """
-    return 0
-
-  # https://pytorch.org/docs/stable/_modules/torch/nn/init.html#kaiming_uniform_
-  @staticmethod
-  def kaiming_uniform(*shape, a:float = 0.01, **kwargs) -> Tensor:
-    """
-    <https://pytorch.org/docs/stable/_modules/torch/nn/init.html#kaiming_uniform_>
-
-    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    print(Tensor.kaiming_uniform(2, 3).numpy())
-    ```
-    """
-    return 0
-
-  # https://pytorch.org/docs/stable/_modules/torch/nn/init.html#kaiming_normal_
-  @staticmethod
-  def kaiming_normal(*shape, a:float = 0.01, **kwargs) -> Tensor:
-    """
-    <https://pytorch.org/docs/stable/_modules/torch/nn/init.html#kaiming_normal_>
-
-    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    print(Tensor.kaiming_normal(2, 3).numpy())
-    ```
-    """
-    return 0
-
-  # @staticmethod
-  # def randperm(n:int, device=None, dtype=dtypes.int32, **kwargs) -> Tensor:
-  #   """
-  #   Returns a tensor with a random permutation of integers from `0` to `n-1`.
-
-  #   ```python exec="true" source="above" session="tensor" result="python"
-  #   Tensor.manual_seed(42)
-  #   print(Tensor.randperm(6).numpy())
-  #   ```
-  #   """
-  #   return 0
-
-  def multinomial(self:Tensor, num_samples:int = 1, replacement:bool = False) -> Tensor:
-    return 0
-
-  # constructors
-  @staticmethod
-  def empty(*shape, device:str|tuple[str, ...]|None=None, dtype:DTypeLike|None=None, **kwargs) -> Tensor:
+  def empty(*shape, device:str|tuple[str, ...]|None=None, dtype:DTypeLike|None=None, **kwargs) -> StridedTensor:
     """
     Creates an empty tensor with the given shape.
 
@@ -553,65 +264,16 @@ class Tensor():
     print(t.shape)
     ```
     """
-    return 0
-  def empty_like(self, **kwargs) -> Tensor:
+    raise NotImplementedError("TODO")
+  def empty_like(self, **kwargs) -> StridedTensor:
     """
     Creates an empty tensor with the same shape as `self`.
     If `dtype` is not specified, the dtype of `self` is used.
     """
-    return Tensor.empty(self.shape, dtype=kwargs.pop("dtype", self.dtype), device=kwargs.pop("device", self.device), **kwargs)
+    return StridedTensor.empty(self.shape, dtype=kwargs.pop("dtype", self.dtype), device=kwargs.pop("device", self.device), **kwargs)
 
   @staticmethod
-  def from_blob(ptr:int, shape:tuple[int, ...], **kwargs) -> Tensor:
-    """
-    Exposes the pointer as a Tensor without taking ownership of the original data.
-    The pointer must remain valid for the entire lifetime of the created Tensor.
-
-    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
-    """
-    return 0
-
-  @staticmethod
-  def from_url(url:str, gunzip:bool=False, **kwargs) -> Tensor:
-    """
-    Creates a Tensor from a URL.
-
-    This is the preferred way to access Internet resources.
-    It currently returns a DISK Tensor, but in the future it may return an HTTP Tensor.
-    This also will soon become lazy (when possible) and not print progress without DEBUG.
-
-    The `gunzip` flag will gzip extract the resource and return an extracted Tensor.
-    """
-    return 0
-
-  # _seed: int = int(time.time())
-  # _device_seeds: dict[str, Tensor] = {}
-  # _device_rng_counters: dict[str, Tensor] = {}
-  @staticmethod
-  def manual_seed(seed=0) -> None:
-    """
-    Sets the seed for random operations.
-
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)
-    print(Tensor.rand(5).numpy())
-    print(Tensor.rand(5).numpy())
-    ```
-    ```python exec="true" source="above" session="tensor" result="python"
-    Tensor.manual_seed(42)  # reset to the same seed
-    print(Tensor.rand(5).numpy())
-    print(Tensor.rand(5).numpy())
-    ```
-    """
-    return 0
-
-  @staticmethod
-  def _threefry_random_bits(key:Tensor, counts0:Tensor, counts1:Tensor) -> Tensor:
-    return 0
-
-  @staticmethod
-  def rand(*shape, device:str|None=None, dtype:DTypeLike|None=None, contiguous:bool=True, **kwargs) -> Tensor:
+  def rand(*shape, device:str|None=None, dtype:DTypeLike|None=None, contiguous:bool=True, **kwargs) -> StridedTensor:
     """
     Creates a tensor with the given shape, filled with random values from a uniform distribution over the interval `[0, 1)`.
 
@@ -624,10 +286,10 @@ class Tensor():
     print(t.numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
   @staticmethod
-  def full(shape:tuple[sint, ...], fill_value:ConstType, **kwargs) -> Tensor:
+  def full(shape:tuple[sint, ...], fill_value:ConstType, **kwargs) -> StridedTensor:
     """
     Creates a tensor with the given shape, filled with the given value.
 
@@ -641,10 +303,10 @@ class Tensor():
     print(Tensor.full((2, 3), False).numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
   @staticmethod
-  def zeros(*shape, **kwargs) -> Tensor:
+  def zeros(*shape, **kwargs) -> StridedTensor:
     """
     Creates a tensor with the given shape, filled with zeros.
 
@@ -658,10 +320,10 @@ class Tensor():
     print(Tensor.zeros(2, 3, dtype=dtypes.int32).numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
   @staticmethod
-  def ones(*shape, **kwargs) -> Tensor:
+  def ones(*shape, **kwargs) -> StridedTensor:
     """
     Creates a tensor with the given shape, filled with ones.
 
@@ -675,10 +337,10 @@ class Tensor():
     print(Tensor.ones(2, 3, dtype=dtypes.int32).numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
   @staticmethod
-  def arange(start, stop=None, step=1, **kwargs) -> Tensor:
+  def arange(start, stop=None, step=1, **kwargs) -> StridedTensor:
     """
     Returns a 1-D tensor of size `ceil((stop - start) / step)` with values from `[start, stop)`, with spacing between values given by `step`.
 
@@ -702,10 +364,10 @@ class Tensor():
     print(Tensor.arange(5.5, 10, 2).numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
   @staticmethod
-  def linspace(start:int|float, stop:int|float, steps:int, **kwargs) -> Tensor:
+  def linspace(start:int|float, stop:int|float, steps:int, **kwargs) -> StridedTensor:
     """
     Returns a 1-D tensor of `steps` evenly spaced values from `start` to `stop`, inclusive.
 
@@ -719,10 +381,10 @@ class Tensor():
     print(Tensor.linspace(-1, 1, 5).numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
   @staticmethod
-  def eye(n:int, m:int|None=None, **kwargs) -> Tensor:
+  def eye(n:int, m:int|None=None, **kwargs) -> StridedTensor:
     """
     Returns a 2-D tensor with `n` rows and `m` columns, with ones on the diagonal and zeros elsewhere.
 
@@ -737,63 +399,90 @@ class Tensor():
     print(Tensor.eye(2, 4).numpy())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def full_like(self, fill_value:ConstType, **kwargs) -> Tensor:
+  # ***** Tensor Data (Level -1) *****  
+  @property
+  def ndim(self) -> int:
     """
-    Creates a tensor with the same shape as `self`, filled with the given value.
-    If `dtype` is not specified, the dtype of `self` is used.
-
-    You can pass in the `device` keyword argument to control device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
+    Returns the number of dimensions in the tensor.
 
     ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor.ones(2, 3)
-    print(Tensor.full_like(t, 42).numpy())
+    t = Tensor([[1, 2], [3, 4]])
+    print(t.ndim)
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def zeros_like(self, **kwargs) -> Tensor:
+  def numel(self) -> sint:
     """
-    Creates a tensor with the same shape as `self`, filled with zeros.
-
-    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
+    Returns the total number of elements in the tensor.
 
     ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor.ones(2, 3)
-    print(Tensor.zeros_like(t).numpy())
+    t = Tensor([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+    print(t.numel())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def ones_like(self, **kwargs) -> Tensor:
+  def element_size(self) -> int:
     """
-    Creates a tensor with the same shape as `self`, filled with ones.
-
-    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
+    Returns the size in bytes of an individual element in the tensor.
 
     ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor.zeros(2, 3)
-    print(Tensor.ones_like(t).numpy())
+    t = Tensor([5], dtype=dtypes.int16)
+    print(t.element_size())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-  def rand_like(self, **kwargs) -> Tensor:
+  def nbytes(self) -> int:
     """
-    Creates a tensor with the same shape and sharding as `self`, filled with random values from a uniform distribution over the interval `[0, 1)`.
-
-    You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-    Additionally, all other keyword arguments are passed to the constructor of the tensor.
+    Returns the total number of bytes of all elements in the tensor.
 
     ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor.ones(2, 3)
-    print(Tensor.rand_like(t).numpy())
+    t = Tensor([8, 9], dtype=dtypes.float)
+    print(t.nbytes())
     ```
     """
-    return 0
+    raise NotImplementedError("TODO")
 
-__all__ = ["Tensor"]
+  def is_floating_point(self) -> bool:
+    """
+    Returns `True` if the tensor contains floating point types, i.e. is one of `dtypes.float64`, `dtypes.float32`,
+    `dtypes.float16`, `dtypes.bfloat16`.
+
+    ```python exec="true" source="above" session="tensor" result="python"
+    t = Tensor([8, 9], dtype=dtypes.float32)
+    print(t.is_floating_point())
+    ```
+    """
+    raise NotImplementedError("TODO")
+
+  def size(self, dim:int|None=None) -> sint|tuple[sint, ...]:
+    """
+    Returns the size of the tensor. If `dim` is specified, return the length along dimension `dim`. Otherwise return the shape of the tensor.
+
+    ```python exec="true" source="above" session="tensor" result="python"
+    t = Tensor([[4, 5, 6], [7, 8, 9]])
+    print(t.size())
+    ```
+    ```python exec="true" source="above" session="tensor" result="python"
+    print(t.size(dim=1))
+    ```
+    """
+    raise NotImplementedError("TODO")
+
+  def __init__(self):
+    self.shape, self.stride = [], []
+
+class ScheduledTensor():
+  # Pipeline: Tensor -> LazyData -> ScheduleItem -> ExecItem -> Codegen -> Source -> Binary -> Runtime  
+  # Middleend (Optimization)
+  # -kernelize: graph rewrites
+  # -schedule_with_vars: feeds graph to scheduler and memory planner
+  # -realize: hands schedule to run_schedule
+  def __init__(self):
+    self.todo = True
+
+__all__ = ["StridedTensor", "ScheduledTensor"]
