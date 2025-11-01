@@ -2,6 +2,30 @@ import picograd as pg
 from picograd import StridedTensor, nn
 # import matplotlib.pyplot as plt
 
+# ------------------------------------------------------------------------------
+
+def ad():
+    print("automatic differentiation")
+
+def sgd():
+    print("stochastic gradient descent")
+
+def adam():
+    print("adam")
+
+def muon():
+    print("muon")
+
+def main():
+    print("sitp ch3: anatomy of the autograd")
+    ad()
+    sgd()
+    adam()
+    muon()
+
+# ------------------------------------------------------------------------------
+
+
 def build_dataset(t):
   import random
 

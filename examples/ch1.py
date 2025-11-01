@@ -1,5 +1,5 @@
 # import numpy as np
-import picograd
+import picograd as pg
 # import matplotlib.pyplot as plt
 # import pandas as pd
 
