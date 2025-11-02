@@ -13,10 +13,7 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
     "gpuctypes>=0.3.0",
-    "helion>=0.1.8",
-    "hip-python~=7.0.2",
     "maturin>=1.9.5",
-    "pyopencl>=2025.2.6",
     "triton>=3.4.0",
 ]
 [tool.maturin]
@@ -32,10 +29,17 @@ members = [
 ]
 
 [[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+
+[[tool.uv.index]]
 url = "https://pypi.org/simple"
 
 [[tool.uv.index]]
 url = "https://test.pypi.org/simple"
+
+[tool.uv.sources]
+triton = { index = "pytorch-cu128" }
 
 [dependency-groups]
 dev = [
