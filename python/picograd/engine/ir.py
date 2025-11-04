@@ -1,4 +1,29 @@
+from dataclasses import dataclass
 from enum import auto, IntEnum, Enum
+from picograd.mixins import ComputeMixin
+
+@dataclass(eq=False, slots=True)
+class UOp(ComputeMixin, MovementMixin, metaclass=UOpMetaClass):
+  src:tuple[UOp, ...] = tuple(); op:Ops; dtype:DType = dtypes.void
+  arg:Any = None; tag:Any = None
+
+  @property
+  def device(self) -> str|tuple[str, ...]: raise NotImplementedError("todo")
+  @property
+  def shape(self) -> tuple[sint, ...]: raise NotImplementedError("todo")
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses
 class FastEnum(IntEnum):
@@ -7,7 +32,10 @@ class FastEnum(IntEnum):
   def _generate_next_value_(_, __, ___, last_values): return 1 + max([0, *last_values, *[max(c) for c in FastEnum.__subclasses__()]])
 
 # the order of these Ops controls the order of the toposort
-class Ops(FastEnum):
+class OpCode(FastEnum):
+
+  # high level ops <-- order???
+  FA = auto(); MM = auto()
 
   # movement ops! these only exist in the tensor graph
   RESHAPE = auto(); PERMUTE = auto(); EXPAND = auto(); PAD = auto(); SHRINK = auto(); FLIP = auto() # noqa: E702
