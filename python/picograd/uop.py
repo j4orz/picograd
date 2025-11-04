@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from enum import auto, IntEnum, Enum
 from picograd.mixins import ComputeMixin
