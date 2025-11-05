@@ -1,92 +1,88 @@
 from __future__ import annotations
 import math, os
 from typing import Callable
+from picograd.engine import evaluator
 from picograd.uop import UOp
 from picograd.mixins import ComputeMixin
 # from . import _pgrs
 
 class Tensor(ComputeMixin): # , MovementMixin):
   """
-  picograd's tensor frontend follows the architecture of classic numerical computing like numpy
-  for more details, see: (Dodson, Lewis 1985) https://dl.acm.org/doi/pdf/10.1145/1057935.1057937
-  - Level  2:     (BCKWD)   provides the high level mathematical primitives of compilation, automatic differentiation, gradient descent
-  - Level  0/1:   (FWD)     provides performance primitives that require the knowledge of microarchitecture to obtain peak theoretical throughput (FLOP/S)
-  - Level -1:     (DATA)    provides the foundational multi-dimensional array data structure
+  picograd follows (tf.1/pt1) which takes the numpy ndarray and adds
+    - gpu acceleration to forward kernels .forward()
+    - and automatic differentiation with backward kernels with .backward()
+  like pytorch1, picograd's forward passes decompose (desugar) tensor methods into a more primitive set of UOps (from tinygrad)
+                    and the backward pass is implemented with a dynamic tape (as opposed to a source to source transform like jax)
+  
+  picograd's forward passes follow the architecture of classic numerical computing
+  which separate concerns into levels 1,2,3 like LAPACK/BLAS
+    2. (DNN)   provides high level mathematical primitives (mathematician)
+  0/1. (BLAS)  provides performance primitives (perf engineer)
+   -1: (DATA)  provides the foundational multi-dimensional array data structure (compiler engineer)
+      the semantics of k in level k has *three* meanings in of itself
+        1. publish order of BLAS
+        2. algorithmic complexity in naive implementation (n -> n^k)
+        3. ptoential of data reuse, loop fusion, parallelism
+        for more details refer to (Dodson, Lewis 1985) https://dl.acm.org/doi/pdf/10.1145/1057935.1057937
+                         and https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms#Functionality
 
-  picograd has support for both interpretation and compilation, what is coloquially known as "eager" and "graph" mode.
-  with EAGER=1, all methods use the picograd runtime directly and interpret Uop's eagerly
-  with GRAPH=1, all methods lazily build up a global view of the neural network with a graph of uops, compiling on .realize()
+  picograd also follows (pt2/jax/tinygrad) which modify the tensor language implementation strategy
+  from eager interpretation to just-in-time/lazy compilation. this is coloquially known as "GRAPH" mode.
   """
 
-  # ***** Tensor Compile, AD, GD (Level 2) *****
-  def gradient(self, *targets:Tensor, gradient:Tensor|None=None, materialize_grads=False) -> list[Tensor]:
-    raise NotImplementedError("todo")
-
-  def backward(self, gradient:Tensor|None=None) -> Tensor:
-    """
-    Propagates the gradient of a tensor backwards through the computation graph.
-    If the 'gradient' argument is not provided, the tensor must be a scalar, and the gradient is implicitly set to 1.0.
-    ```python exec="true" source="above" session="tensor" result="python"
-    t = Tensor([1.0, 2.0, 3.0, 4.0], requires_grad=True)
-    t.sum().backward()
-    print(t.grad.numpy())
-    ```
-    """
-    all_uops = self.uop.toposort()
-    tensors_need_grad: list[Tensor] = [t for tref in all_tensors if (t:=tref()) is not None and \
-                                       t.uop in all_uops and t.requires_grad]
-    # clear contexts
-    for t,g in zip(tensors_need_grad, self.gradient(*tensors_need_grad, gradient=gradient, materialize_grads=True)):
-      assert g.shape == t.shape, f"grad shape must match tensor shape, {g.shape!r} != {t.shape!r}"
-      t.grad = g if t.grad is None else (t.grad + g)
-    return self
-
-  # ***** Tensor DNN, BLAS Operations (Level 1/0) *****
-  def _apply_uop(self, f:Callable, *other:Tensor, extra_args=(), **kwargs) -> Tensor:
-    out_uop: UOp = f(*[input.uop for input in (self,)+other], *extra_args, **kwargs)
-    # if (metadata:=_METADATA.get()) is not None: all_metadata[new_uop] = (metadata,)
-    needs_input_grad = [t.requires_grad for t in (self,)+other]
-    requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
-    out_tensor = Tensor(out_uop, device=out_uop.device, requires_grad=requires_grad)
-
-    if os.getenv("EAGER", 0) == 1: # eager interpretation: materialize tensor
-       # 1. allocate input and output bufs on device
-      in_bufs = [input._buffer for input in (self,)+other]
-      shp, dtype = out_tensor.shape, out_tensor.dtype.base
-      out_uop = UOp.new_buffer(dev, prod(shp), dtype).reshape(shp)
-      out_buf = cast(Buffer, out_uop.base.buffer).allocate()
-      eval() # 2. dispatch op to eager interpreter
+  def backward(self, gradient:Tensor|None=None) -> Tensor: raise NotImplementedError("todo")
+  def _forward(self, f:Callable, *other:Tensor) -> Tensor: #extra_args=(), **kwargs)
+    if os.getenv("EAGER") == 1:
+      out_tensor = evaluator.eval_uop([self, other], out_uop)
       return out_tensor
-    elif os.getenv("GRAPH", 0) == 1: # lazy compilation: build the graph for .realize()
+    elif os.getenv("GRAPH") == 1: # lazy compilation: build the graph for .realize()
+      # if (metadata:=_METADATA.get()) is not None: all_metadata[new_uop] = (metadata,)
+      # needs_input_grad = [t.requires_grad for t in (self,)+other]
+      # requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
+      out_uop: UOp = f(*[input.uop for input in (self,)+other]) # *extra_args, **kwargs)
+      out_tensor = Tensor(out_uop, device=out_uop.device) #, requires_grad=requires_grad)
+      raise NotImplementedError("todo")
       # -kernelize: graph rewrites
       # -schedule_with_vars: feeds graph to scheduler and memory planner
       # -realize: hands schedule to run_schedule
-      return out_tensor
+      # return out_tensor
 
-  def _apply_broadcasted_uop(self, f:Callable, other:Tensor|ConstType, reverse=False) -> Tensor:
-    raise NotImplementedError("todo")
-  
+  def _apply_broadcasted_uop(self, f:Callable, other:Tensor|ConstType, reverse=False) -> Tensor: raise NotImplementedError("todo")  
   def _binop(self, op, other, reverse): return self._apply_broadcasted_uop(lambda *u: UOp.alu(u[0], op, *u[1:]), other, reverse) # _binop is used by MathTrait
 
-  # fa/mm
+
+  # ***** Tensor DNN (Level 2) *****
+  def backward_numerical(self) -> Tensor: raise NotImplementedError("")
+  def backward_symbolic(self) -> Tensor: raise NotImplementedError("")
+  def backward_automatic(self) -> Tensor: raise NotImplementedError("")
   def fa() -> Tensor:
     raise NotImplementedError("todo")
+
   
+
+
+
+
+  # ***** Tensor BLAS Operations (Level 1/0) *****
   def mm() -> Tensor:
     raise NotImplementedError("todo")
 
-  # element ops
   # --activation
   def tanh(self) -> Tensor: return 2.0 * ((2.0 * self).sigmoid()) - 1.0
   def sigmoid(self) -> Tensor: return (1 + (self * (-1/math.log(2))).exp2()).reciprocal()
 
   # --unary
-  def exp2(self) -> Tensor: return self._apply_uop(UOp.exp2) # self.cast(least_upper_float(self.dtype))._apply_uop(UOp.exp2)
-  # reduce ops
+  def exp2(self) -> Tensor: return self._forward(UOp.exp2) # self.cast(least_upper_float(self.dtype))._apply_uop(UOp.exp2)
 
-  # movement ops
+  # C. reduce ops
+
+  # D. movement ops
   # --high level: gather, cat, stack, repeat, split, chunk, unfold, squeeze, unsqueeze
   # --low level: view, reshape, expand, permute, flip, shrink, pad
+
+
+
+
 
   # ***** Tensor Constructors (Level -1) *****
   # --high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
@@ -111,6 +107,10 @@ class Tensor(ComputeMixin): # , MovementMixin):
   def eye(n:int, m:int|None=None, **kwargs) -> Tensor: raise NotImplementedError("TODO")
 
   # ***** Tensor Data (Level -1) *****
+  def data(self): raise NotImplementedError("todo")
+  def item(self): raise NotImplementedError("todo")
+  def to(self, device:str|tuple[str, ...]|None) -> Tensor: raise NotImplementedError("todo")
+
   @property
   def device(self) -> str|tuple[str, ...]: return self.uop.device
   @property
