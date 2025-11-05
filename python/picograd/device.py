@@ -1,5 +1,28 @@
+from __future__ import annotations
+
+class Device:
+  """
+  picograd's device runtimes follow the tinygrad runtime architecture where a
+  VendorRuntime manages compute with a Program and memory with an Allocator
+  """
+  def __init__(self): raise NotImplementedError("todo")
+
+class VendorRuntime:
+  def __init__(self, device:str, allocator:Allocator): raise NotImplementedError("todo")
+
+# class TinyHCQRuntime:
+#   def __init__(self, device:str, allocator:Allocator): raise NotImplementedError("todo")
+
+class Buffer:
+  def __init__(): raise NotImplementedError("")
+
 class Allocator:
   def __init__(self): raise NotImplementedError("todo")
+  def alloc(self, size:int, options:BufferSpec|None=None):
+    assert size > 0, f"alloc size must be positive, getting {size}"
+    return self._alloc(size, options if options is not None else self.default_buffer_spec)
+  def free(self, opaque, size:int, options:BufferSpec|None=None):
+    self._free(opaque, options if options is not None else self.default_buffer_spec)
 
 class VendorCompiler:
   def __init__(self, cachekey:str|None=None): self.cachekey = None if DISABLE_COMPILER_CACHE else cachekey
@@ -11,19 +34,6 @@ class VendorCompiler:
       if self.cachekey is not None: diskcache_put(self.cachekey, src, lib)
     return lib
   def disassemble(self, lib:bytes): pass
-  def __init__(self): raise NotImplementedError("todo")
-
-class VendorRuntime:
-  def __init__(self, device:str, allocator:Allocator): raise NotImplementedError("todo")
-
-# class TinyHCQRuntime:
-#   def __init__(self, device:str, allocator:Allocator): raise NotImplementedError("todo")
-
-class Device:
-  """
-  picograd's device runtimes follow the tinygrad runtime architecture where a
-  VendorRuntime manages compute with a Program and memory with an Allocator
-  """
   def __init__(self): raise NotImplementedError("todo")
 
 

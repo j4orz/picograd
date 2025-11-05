@@ -3,29 +3,6 @@ from dataclasses import dataclass
 from enum import auto, IntEnum, Enum
 from picograd.mixins import ComputeMixin
 
-@dataclass(eq=False, slots=True)
-class UOp(ComputeMixin, MovementMixin, metaclass=UOpMetaClass):
-  src:tuple[UOp, ...] = tuple(); op:Ops; dtype:DType = dtypes.void
-  arg:Any = None; tag:Any = None
-
-  @property
-  def device(self) -> str|tuple[str, ...]: raise NotImplementedError("todo")
-  @property
-  def shape(self) -> tuple[sint, ...]: raise NotImplementedError("todo")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses
 class FastEnum(IntEnum):
   def __str__(self): return Enum.__str__(self)
@@ -34,8 +11,7 @@ class FastEnum(IntEnum):
 
 # the order of these Ops controls the order of the toposort
 class OpCode(FastEnum):
-
-  # high level ops <-- order???
+  # high level ops <-- TODO: order???
   FA = auto(); MM = auto()
 
   # movement ops! these only exist in the tensor graph
@@ -60,3 +36,15 @@ class OpCode(FastEnum):
   CMPLT = auto(); CMPNE = auto(); CMPEQ = auto() # noqa: E702
   XOR = auto(); OR = auto(); AND = auto() # noqa: E702
   THREEFRY = auto(); SUB = auto(); FDIV = auto(); POW = auto() # noqa: E702
+
+@dataclass(eq=False, slots=True)
+class UOp(ComputeMixin): # MovementMixin, metaclass=UOpMetaClass
+  src:tuple[UOp, ...] = tuple(); code: OpCode; dtype:DType = dtypes.void
+  # arg:Any = None; tag:Any = None
+
+  @property
+  def device(self) -> str|tuple[str, ...]: raise NotImplementedError("todo")
+  @property
+  def shape(self) -> tuple[sint, ...]: raise NotImplementedError("todo")
+
+  def toposort(self, gate:Callable|None=None) -> dict[UOp, None]: raise NotImplementedError("todo")

@@ -28,6 +28,8 @@ class Tensor(ComputeMixin): # , MovementMixin):
 
   picograd also follows (pt2/jax/tinygrad) which modify the tensor language implementation strategy
   from eager interpretation to just-in-time/lazy compilation. this is coloquially known as "GRAPH" mode.
+
+  TODO: strided layout(np/pt) vs scheduled layout(halide/tvm)
   """
 
   def backward(self, gradient:Tensor|None=None) -> Tensor: raise NotImplementedError("todo")
@@ -51,6 +53,9 @@ class Tensor(ComputeMixin): # , MovementMixin):
   def _binop(self, op, other, reverse): return self._apply_broadcasted_uop(lambda *u: UOp.alu(u[0], op, *u[1:]), other, reverse) # _binop is used by MathTrait
 
 
+
+
+
   # ***** Tensor DNN (Level 2) *****
   def backward_numerical(self) -> Tensor: raise NotImplementedError("")
   def backward_symbolic(self) -> Tensor: raise NotImplementedError("")
@@ -59,7 +64,6 @@ class Tensor(ComputeMixin): # , MovementMixin):
     raise NotImplementedError("todo")
 
   
-
 
 
 
