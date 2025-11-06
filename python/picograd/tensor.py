@@ -48,21 +48,25 @@ class Tensor(ComputeMixin): # , MovementMixin):
   like pt1, picograd's forward passes for the tensor object decompose (desugar) methods into a more primitive set of ops.
   the exact decomposition and intermediate representation is taken directly from tinygrad's RISC-y opset of element ops, reduce ops, and movement ops.
   when evaluating the model, a graph of those decomposed ops will be dynamically constructed at runtime (as opposed to just-in-time like jax),
-  which will then serves as the data structure for automatic differentiation to apply backpropagation and route gradients throughout the graph
+  which then serves as the data structure for automatic differentiation to apply backpropagation and route gradients throughout the graph
 
-  with the advent of transformers and tensor cores, many workloads become memory-bound bc they bottleneck on the data movement of non-tensor computations.
+  with the advent of transformers and tensor cores, many workloads move from compute-bound/framework-bound to memory-bound
+  bc they bottleneck on the data movement of non-tensor computations.
+  see: (Ivanov, et al): https://proceedings.mlsys.org/paper_files/paper/2021/file/bc86e95606a6392f51f95a8de106728d-Paper.pdf
   picograd follows pt2/jax/tinygrad which modify the language implementation strategy from eager interpretation to just-in-time/lazy compilation
   in order to obtain a global view of the computational graph, and to apply optimizations; the primary one being fusion.
+  to be specific, picograd follows tinygrad (and torch/xla and swift for tensorflow) with lazy graph capture,
+  and modifying the semantics of the programming model where users must explicitly materialize data with .realize(),
+  as opposed to pt2 which maintains the eager programming model surface via graph capture at the host-language level (python bytecode interception)
   
   so all tensor methods funnel through ._forward(), whose semantics depend on
   whether eager mode or graph mode is respectively set with EAGER=1 or GRAPH=1
+  with EAGER=1, ._forward() will build up the expression graph (for backprop) but perform kernel dispatch and tensor materialization immediately 
+  with GRAPH=1, ._forward() will lazily build up the graph and user's must initiate computation with a .realize() barrier (like torch_xla.sync())
 
-  MOOSE
-  with EAGER=1, ._forward() will dispatch a kernel immediately and save the graph...tape...
-  with GRAPH=1, ._forward() will lazily build up the graph...tape...for a compilation on .realize()
-  tensor with ComputeMixin and MovementMixin...
-
-  TODO: strided layout(np/pt) vs scheduled layout(halide/tvm)
+  TODO:
+  - tensor with ComputeMixin and MovementMixin...
+  - strided layout(np/pt) vs scheduled layout(halide/tvm)
   
   picograd's forward passes follow the architecture of classic numerical computing
   which separate concerns into levels 1,2,3 like LAPACK/BLAS
@@ -114,7 +118,7 @@ class Tensor(ComputeMixin): # , MovementMixin):
     
     # 2. compute the gradient with a map of tensors to partials
     if grad is None: grad = Tensor(1.0, dtype=self.dtype, device=self.device, requires_grad=False) # base case is 1.0
-    tens2grads = Tensor._differentiate(self.uop, grad.uop, set(uops_require_grad)) # skipping materializing zerod grads for now
+    tens2grads = Tensor._automatically_differentiate(self.uop, grad.uop, set(uops_require_grad)) # skipping materializing zerod grads for now
     grads = [Tensor(g, device=t.device) for t,g in zip(tens2grads.keys, tens2grads.values)] # initialize tensor grads on device
     
     # 3. update the tensors that require grad with the gradient's partials
@@ -122,6 +126,59 @@ class Tensor(ComputeMixin): # , MovementMixin):
       assert g.shape == t.shape, f"grad shape must match tensor shape, {g.shape!r} != {t.shape!r}"
       t.grad = g if t.grad is None else (t.grad + g) # accumulate if t.grad exists
     return self
+  
+  @staticmethod
+  def _automatically_differentiate(root:Op, root_grad:Op, targets:set[Op]) -> dict[Op, Op]:
+    """
+    _differentiate backpropagates partials on a topologically sorted expression graph with the chain rule
+    and produces the gradient in the form of a map of ops to their partials (which, in turn, are ops)
+    """
+    tens2grads = {root: root_grad}
+
+    # 1. topological sort
+    in_target_path: dict[Op, bool] = {}
+    for u in root.toposort(): in_target_path[u] = any(x in targets or in_target_path[x] for x in u.src)
+    dfs = list(root.toposort(lambda node: node.op not in {OpCode.DETACH, OpCode.ASSIGN} and in_target_path[node])) # don't flow through DETACH/ASSIGN or anything not in target path
+
+    # 2. backpropagation with the chain rule
+    for tensor in reversed(dfs):
+      if tensor not in tens2grads: continue
+      lgrads: tuple[Op|None, ...]|None = cast(tuple[Op, ...]|None, chain_rules.rewrite(tensor, ctx=tens2grads[tensor])) # <--- chain rule
+
+      if lgrads is None: raise RuntimeError(f"failed to compute gradient for {tensor.op}\n\nin {str(tensor)[0:1000]}...")
+      assert len(lgrads) == len(tensor.src), f"got {len(lgrads)} gradient, expected {len(tensor.src)}"
+
+      for tensors,lgrad in zip(tensor.src, lgrads):
+        if lgrad is None: continue
+        if tensors in tens2grads: tens2grads[tensors] = tens2grads[tensors] + lgrad
+        else: tens2grads[tensors] = lgrad
+
+        if len(forward_metadata:=all_metadata.get(tensor, ())):
+          backward_metadata = tuple(dataclasses.replace(x, backward=True) for x in forward_metadata)
+          # we add the backward metadata to everything new in the graph
+          for bw_uop in lgrad.toposort(lambda x: x not in (tensor, *tensor.src, tens2grads[tensor])):
+            all_metadata[bw_uop] = all_metadata.get(bw_uop, ())+backward_metadata
+    return tens2grads
+
+  def _binop(self, op, x, reverse):
+    return self._apply_broadcasted_uop(lambda *u: UOp.alu(u[0], op, *u[1:]), x, reverse) # _binop is used by MathTrait
+  def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|ConstType, reverse=False) -> Tensor:
+    lhs,rhs = self._broadcasted(x, reverse)
+    return lhs._apply_uop(fxn, rhs)
+  def _forward(self, op:Callable, *other:Tensor) -> Tensor: #extra_args=(), **kwargs)
+    if os.getenv("EAGER") == 1:
+      out_tensor = evaluator.eval_uop([self, other], out_uop)
+      return out_tensor
+    elif os.getenv("GRAPH") == 1: # lazy compilation: build the graph for .realize()
+      out_uop: Op = fxn(*[t.uop for t in (self,)+x], *extra_args, **kwargs)
+      if (metadata:=_METADATA.get()) is not None: all_metadata[out_uop] = (metadata,)
+      needs_input_grad = [t.requires_grad for t in (self,)+x]
+      return Tensor(out_uop, device=out_uop.device, requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False)
+    
+      # defer execution and build up graph of ops for compilation later on .realize()
+      # -kernelize: graph rewrites
+      # -schedule_with_vars: feeds graph to scheduler and memory planner
+      # -realize: hands schedule to run_schedule
       
 
 
