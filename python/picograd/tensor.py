@@ -7,6 +7,38 @@ from picograd.op import Op, OpCode, PatternMatcher, Pat
 from picograd.mixins import ComputeMixin
 # from . import _pgrs
 
+chain_rules = PatternMatcher([
+  # (Pat(OpCode.CAST, name="ret"), lambda ctx, ret: (ctx.cast(ret.src[0].dtype),)),
+  (Pat(OpCode.RECIPROCAL, name="input"), lambda output_grad, input: (-output_grad * input * input,)),
+  (Pat(OpCode.SIN, name="input"), lambda output_grad, input: ((math.pi/2 - input.src[0]).sin() * output_grad,)),
+  (Pat(OpCode.LOG2, name="input"), lambda output_grad, input: (output_grad / (input.src[0] * math.log(2)),)),
+  (Pat(OpCode.EXP2, name="input"), lambda output_grad, input: (input * output_grad * math.log(2),)),
+  (Pat(OpCode.SQRT, name="input"), lambda output_grad, input: (output_grad / (input*2),)),
+  # (Pat((OpCode.CMPLT, OpCode.CMPNE)), lambda: (None, None)),
+  (Pat(OpCode.ADD), lambda output_grad: (1.0*output_grad, 1.0*output_grad)),
+  # (Pat(OpCode.POW, name="input", src=(Pat.var("b"), Pat.var("e"))), lambda output_grad, input, b, e:
+  #   (output_grad * (b.eq(0)&e.eq(0)).where(e, e*b.pow(e-1)), output_grad * b.eq(0).where((e<0).where(input.const_like(-math.inf), 0), input*b.log2()*math.log(2.0)))),
+  # (Pat(OpCode.MAX, src=(Pat.var("x"), Pat.var("y"))), lambda output_grad, x, y:
+  #   ((x>y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)), (x<y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)))),
+  (Pat(OpCode.MUL, name="input"), lambda output_grad, input: (input.src[1]*output_grad, input.src[0]*output_grad)),
+  # (UPat(OpCode.WHERE, name="input"), lambda output_grad, input: (None, input.src[0].where(output_grad, output_grad.const_like(0)), input.src[0].where(output_grad.const_like(0), output_grad))),
+  # (UPat(OpCode.REDUCE_AXIS, name="input"), reduce_gradient),
+  # (UPat(OpCode.CONTIGUOUS), lambda output_grad: (output_grad,)),
+  # (UPat(OpCode.CONTIGUOUS_BACKWARD), lambda output_grad: (output_grad.contiguous(),)),
+  # (UPat(OpCode.RESHAPE, name="input"), lambda output_grad, input: (output_grad.reshape(input.src[0].shape), None)),
+  # (UPat(OpCode.EXPAND, name="input"), lambda output_grad, input: (output_grad.r(OpCode.ADD,tuple(i for i,(s,n) in enumerate(zip(input.src[0].shape, input.shape)) if s!=n)), None)),
+  # (UPat(OpCode.PAD, name="input"), lambda output_grad, input: (output_grad.shrink(tuple([(p[0], s+p[0]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
+  # (UPat(OpCode.SHRINK, name="input"), lambda output_grad, input: (output_grad.pad(tuple([(p[0], s-p[1]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
+  # (UPat(OpCode.PERMUTE, name="input"), lambda output_grad, input: (output_grad.permute(argsort(input.marg)),)),
+  # (UPat(OpCode.FLIP, name="input"), lambda output_grad, input: (output_grad.flip(input.marg),)),
+  # (UPat(OpCode.MULTI, name="input"), lambda output_grad, input: output_grad.shard(input.device, input.axis).src),
+  # # NOTE: this is only correct when the KERNEL has a single output
+  # (UPat(OpCode.AFTER), lambda output_grad: (output_grad, output_grad)),
+  # (UPat(OpCode.KERNEL, name="k"), lambda output_grad, k: k.arg.grad_fxn(output_grad, k)),
+  # # there's no gradient for bitcast
+  # (UPat(OpCode.BITCAST), lambda: (None,)),
+])
+
 class Tensor(ComputeMixin): # , MovementMixin):
   """
   picograd follows (tf.1/pt1) which takes the numpy ndarray and adds
@@ -29,13 +61,24 @@ class Tensor(ComputeMixin): # , MovementMixin):
                          and https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms#Functionality
 
   picograd also follows (pt2/jax/tinygrad) which modify the tensor language implementation strategy
-  from eager interpretation to just-in-time/lazy compilation. this is coloquially known as "GRAPH" mode.
+  from eager interpretation to just-in-time/lazy compilation; this is coloquially known as "EAGER" and "GRAPH" mode, respectively
+  all tensor methods funnel through ._forward(), whose semantics depend on whether eager mode is set with EAGER=1 or graph mode is set with GRAPH=1
+
+  MOOSE
+  with EAGER=1, ._forward() will dispatch a kernel immediately and save the graph...tape...
+  with GRAPH=1, ._forward() will lazily build up the graph...tape...for a compilation on .realize()
+  tensor with ComputeMixin and MovementMixin...
 
   TODO: strided layout(np/pt) vs scheduled layout(halide/tvm)
   """
+
   def backward(self, grad:Tensor|None=None) -> Tensor:
+    """
+    backward performs backpropagation by collecting tensors, computing gradients, and updating said tensors.
+    the heavy lifting is done with Tensor.eval_grad()
+    """
     # 1. collect all tensors that requires grad by topologically sorting the graph of uops and filter
-    all_uops = self.uop.toposort()
+    all_uops = self.uop.toposort() # < ---------------------MOOSE: assumes the graph is pointed to by self.uop
     tensors_require_grad: list[Tensor] = [t for tref in all_tensors if (t:=tref()) is not None and t.uop in all_uops and t.requires_grad]
     uops_require_grad = [t.uop for t in tensors_require_grad]
     assert grad is not None or self.shape == tuple(), "when no gradient is provided, backward must be called on a scalar tensor"
@@ -43,33 +86,14 @@ class Tensor(ComputeMixin): # , MovementMixin):
     
     # 2. compute the gradient with a map of tensors to partials
     if grad is None: grad = Tensor(1.0, dtype=self.dtype, device=self.device, requires_grad=False) # base case is 1.0
-    tens2grads = op.eval_grad(self.uop, grad.uop, set(uops_require_grad)) # skipping materializing for now
+    tens2grads = Tensor._eval_grad(self.uop, grad.uop, set(uops_require_grad)) # skipping materializing for now
     grads = [Tensor(g, device=t.device) for t,g in zip(tens2grads.keys, tens2grads.values)] # initialize tensor grads on device
     
     # 3. update the tensors that require grad with the gradient's partials
     for t,g in zip(tensors_require_grad, grads):
       assert g.shape == t.shape, f"grad shape must match tensor shape, {g.shape!r} != {t.shape!r}"
       t.grad = g if t.grad is None else (t.grad + g) # accumulate if t.grad exists
-    return self
-  
-  def _forward(self, f:Callable, *other:Tensor) -> Tensor: #extra_args=(), **kwargs)
-    if os.getenv("EAGER") == 1:
-      out_tensor = evaluator.eval_uop([self, other], out_uop)
-      return out_tensor
-    elif os.getenv("GRAPH") == 1: # lazy compilation: build the graph for .realize()
-      # if (metadata:=_METADATA.get()) is not None: all_metadata[new_uop] = (metadata,)
-      # needs_input_grad = [t.requires_grad for t in (self,)+other]
-      # requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
-      out_uop: Op = f(*[input.uop for input in (self,)+other]) # *extra_args, **kwargs)
-      out_tensor = Tensor(out_uop, device=out_uop.device) #, requires_grad=requires_grad)
-      raise NotImplementedError("todo")
-      # -kernelize: graph rewrites
-      # -schedule_with_vars: feeds graph to scheduler and memory planner
-      # -realize: hands schedule to run_schedule
-      # return out_tensor
-
-  def _apply_broadcasted_uop(self, f:Callable, other:Tensor|ConstType, reverse=False) -> Tensor: raise NotImplementedError("todo")  
-  def _binop(self, op, other, reverse): return self._apply_broadcasted_uop(lambda *u: Op.alu(u[0], op, *u[1:]), other, reverse) # _binop is used by MathTrait
+    return self      
 
 
 
