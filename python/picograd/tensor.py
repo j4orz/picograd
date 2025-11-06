@@ -1,18 +1,20 @@
 from __future__ import annotations
 import math, os
 from typing import Callable
+from picograd import op
 from picograd.engine import evaluator
-from picograd.uop import UOp
+from picograd.op import Op, OpCode, PatternMatcher, Pat
 from picograd.mixins import ComputeMixin
 # from . import _pgrs
 
 class Tensor(ComputeMixin): # , MovementMixin):
   """
   picograd follows (tf.1/pt1) which takes the numpy ndarray and adds
-    - gpu acceleration to forward kernels .forward()
+    - gpu acceleration to forward kernels with .forward()
     - and automatic differentiation with backward kernels with .backward()
   like pytorch1, picograd's forward passes decompose (desugar) tensor methods into a more primitive set of UOps (from tinygrad)
-                    and the backward pass is implemented with a dynamic tape (as opposed to a source to source transform like jax)
+                    and the backward pass is implemented with a dynamic tape
+                    (as opposed to a just-in-time source to source transform like jax)
   
   picograd's forward passes follow the architecture of classic numerical computing
   which separate concerns into levels 1,2,3 like LAPACK/BLAS
@@ -31,8 +33,25 @@ class Tensor(ComputeMixin): # , MovementMixin):
 
   TODO: strided layout(np/pt) vs scheduled layout(halide/tvm)
   """
-
-  def backward(self, gradient:Tensor|None=None) -> Tensor: raise NotImplementedError("todo")
+  def backward(self, grad:Tensor|None=None) -> Tensor:
+    # 1. collect all tensors that requires grad by topologically sorting the graph of uops and filter
+    all_uops = self.uop.toposort()
+    tensors_require_grad: list[Tensor] = [t for tref in all_tensors if (t:=tref()) is not None and t.uop in all_uops and t.requires_grad]
+    uops_require_grad = [t.uop for t in tensors_require_grad]
+    assert grad is not None or self.shape == tuple(), "when no gradient is provided, backward must be called on a scalar tensor"
+    if not (self.is_floating_point() and all(t.is_floating_point() for t in tensors_require_grad)): raise RuntimeError("only float Tensors have gradient")
+    
+    # 2. compute the gradient with a map of tensors to partials
+    if grad is None: grad = Tensor(1.0, dtype=self.dtype, device=self.device, requires_grad=False) # base case is 1.0
+    tens2grads = op.eval_grad(self.uop, grad.uop, set(uops_require_grad)) # skipping materializing for now
+    grads = [Tensor(g, device=t.device) for t,g in zip(tens2grads.keys, tens2grads.values)] # initialize tensor grads on device
+    
+    # 3. update the tensors that require grad with the gradient's partials
+    for t,g in zip(tensors_require_grad, grads):
+      assert g.shape == t.shape, f"grad shape must match tensor shape, {g.shape!r} != {t.shape!r}"
+      t.grad = g if t.grad is None else (t.grad + g) # accumulate if t.grad exists
+    return self
+  
   def _forward(self, f:Callable, *other:Tensor) -> Tensor: #extra_args=(), **kwargs)
     if os.getenv("EAGER") == 1:
       out_tensor = evaluator.eval_uop([self, other], out_uop)
@@ -41,7 +60,7 @@ class Tensor(ComputeMixin): # , MovementMixin):
       # if (metadata:=_METADATA.get()) is not None: all_metadata[new_uop] = (metadata,)
       # needs_input_grad = [t.requires_grad for t in (self,)+other]
       # requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
-      out_uop: UOp = f(*[input.uop for input in (self,)+other]) # *extra_args, **kwargs)
+      out_uop: Op = f(*[input.uop for input in (self,)+other]) # *extra_args, **kwargs)
       out_tensor = Tensor(out_uop, device=out_uop.device) #, requires_grad=requires_grad)
       raise NotImplementedError("todo")
       # -kernelize: graph rewrites
@@ -50,7 +69,7 @@ class Tensor(ComputeMixin): # , MovementMixin):
       # return out_tensor
 
   def _apply_broadcasted_uop(self, f:Callable, other:Tensor|ConstType, reverse=False) -> Tensor: raise NotImplementedError("todo")  
-  def _binop(self, op, other, reverse): return self._apply_broadcasted_uop(lambda *u: UOp.alu(u[0], op, *u[1:]), other, reverse) # _binop is used by MathTrait
+  def _binop(self, op, other, reverse): return self._apply_broadcasted_uop(lambda *u: Op.alu(u[0], op, *u[1:]), other, reverse) # _binop is used by MathTrait
 
 
 
@@ -76,7 +95,7 @@ class Tensor(ComputeMixin): # , MovementMixin):
   def sigmoid(self) -> Tensor: return (1 + (self * (-1/math.log(2))).exp2()).reciprocal()
 
   # --unary
-  def exp2(self) -> Tensor: return self._forward(UOp.exp2) # self.cast(least_upper_float(self.dtype))._apply_uop(UOp.exp2)
+  def exp2(self) -> Tensor: return self._forward(Op.exp2) # self.cast(least_upper_float(self.dtype))._apply_uop(UOp.exp2)
 
   # C. reduce ops
 
