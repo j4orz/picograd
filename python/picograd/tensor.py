@@ -41,12 +41,28 @@ chain_rules = PatternMatcher([
 
 class Tensor(ComputeMixin): # , MovementMixin):
   """
-  picograd follows (tf.1/pt1) which takes the numpy ndarray and adds
+  picograd follows chainer/autograd/pt1 which takes the numpy ndarray and adds
     - gpu acceleration to forward kernels with .forward()
     - and automatic differentiation with backward kernels with .backward()
-  like pytorch1, picograd's forward passes decompose (desugar) tensor methods into a more primitive set of UOps (from tinygrad)
-                    and the backward pass is implemented with a dynamic tape
-                    (as opposed to a just-in-time source to source transform like jax)
+
+  like pt1, picograd's forward passes for the tensor object decompose (desugar) methods into a more primitive set of ops.
+  the exact decomposition and intermediate representation is taken directly from tinygrad's RISC-y opset of element ops, reduce ops, and movement ops.
+  when evaluating the model, a graph of those decomposed ops will be dynamically constructed at runtime (as opposed to just-in-time like jax),
+  which will then serves as the data structure for automatic differentiation to apply backpropagation and route gradients throughout the graph
+
+  with the advent of transformers and tensor cores, many workloads become memory-bound bc they bottleneck on the data movement of non-tensor computations.
+  picograd follows pt2/jax/tinygrad which modify the language implementation strategy from eager interpretation to just-in-time/lazy compilation
+  in order to obtain a global view of the computational graph, and to apply optimizations; the primary one being fusion.
+  
+  so all tensor methods funnel through ._forward(), whose semantics depend on
+  whether eager mode or graph mode is respectively set with EAGER=1 or GRAPH=1
+
+  MOOSE
+  with EAGER=1, ._forward() will dispatch a kernel immediately and save the graph...tape...
+  with GRAPH=1, ._forward() will lazily build up the graph...tape...for a compilation on .realize()
+  tensor with ComputeMixin and MovementMixin...
+
+  TODO: strided layout(np/pt) vs scheduled layout(halide/tvm)
   
   picograd's forward passes follow the architecture of classic numerical computing
   which separate concerns into levels 1,2,3 like LAPACK/BLAS
@@ -59,23 +75,35 @@ class Tensor(ComputeMixin): # , MovementMixin):
         3. ptoential of data reuse, loop fusion, parallelism
         for more details refer to (Dodson, Lewis 1985) https://dl.acm.org/doi/pdf/10.1145/1057935.1057937
                          and https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms#Functionality
-
-  picograd also follows (pt2/jax/tinygrad) which modify the tensor language implementation strategy
-  from eager interpretation to just-in-time/lazy compilation; this is coloquially known as "EAGER" and "GRAPH" mode, respectively
-  all tensor methods funnel through ._forward(), whose semantics depend on whether eager mode is set with EAGER=1 or graph mode is set with GRAPH=1
-
-  MOOSE
-  with EAGER=1, ._forward() will dispatch a kernel immediately and save the graph...tape...
-  with GRAPH=1, ._forward() will lazily build up the graph...tape...for a compilation on .realize()
-  tensor with ComputeMixin and MovementMixin...
-
-  TODO: strided layout(np/pt) vs scheduled layout(halide/tvm)
   """
+
+  # ***** Tensor Data (Level -1) *****
+  def __init__(self):
+    self.shape, self.stride = [], []
+  __slots__ = "uop", "requires_grad", "grad"
+  def data(self): raise NotImplementedError("todo")
+  def item(self): raise NotImplementedError("todo")
+  def to(self, device:str|tuple[str, ...]|None) -> Tensor: raise NotImplementedError("todo")
+
+  # runtime data like device, shape, and dtype are deleted to uop, not tensor
+  @property
+  def device(self) -> str|tuple[str, ...]: return self.uop.device
+  @property
+  def shape(self) -> tuple[sint, ...]: return self.uop.shape
+  @property
+  def dtype(self) -> DType: return self.uop.dtype
+  @property
+  def ndim(self) -> int: raise NotImplementedError("TODO")
+
+  def numel(self) -> sint: raise NotImplementedError("TODO")
+  def element_size(self) -> int: raise NotImplementedError("TODO")
+  def nbytes(self) -> int: raise NotImplementedError("TODO")
+  def is_floating_point(self) -> bool: raise NotImplementedError("TODO")
+  def size(self, dim:int|None=None) -> sint|tuple[sint, ...]: raise NotImplementedError("TODO")
 
   def backward(self, grad:Tensor|None=None) -> Tensor:
     """
-    backward performs backpropagation by collecting tensors, computing gradients, and updating said tensors.
-    the heavy lifting is done with Tensor.eval_grad()
+    backward performs by collecting tensors, computing gradients with automatic differentiation, and updating said tensors.
     """
     # 1. collect all tensors that requires grad by topologically sorting the graph of uops and filter
     all_uops = self.uop.toposort() # < ---------------------MOOSE: assumes the graph is pointed to by self.uop
@@ -86,14 +114,15 @@ class Tensor(ComputeMixin): # , MovementMixin):
     
     # 2. compute the gradient with a map of tensors to partials
     if grad is None: grad = Tensor(1.0, dtype=self.dtype, device=self.device, requires_grad=False) # base case is 1.0
-    tens2grads = Tensor._eval_grad(self.uop, grad.uop, set(uops_require_grad)) # skipping materializing for now
+    tens2grads = Tensor._differentiate(self.uop, grad.uop, set(uops_require_grad)) # skipping materializing zerod grads for now
     grads = [Tensor(g, device=t.device) for t,g in zip(tens2grads.keys, tens2grads.values)] # initialize tensor grads on device
     
     # 3. update the tensors that require grad with the gradient's partials
     for t,g in zip(tensors_require_grad, grads):
       assert g.shape == t.shape, f"grad shape must match tensor shape, {g.shape!r} != {t.shape!r}"
       t.grad = g if t.grad is None else (t.grad + g) # accumulate if t.grad exists
-    return self      
+    return self
+      
 
 
 
@@ -152,28 +181,5 @@ class Tensor(ComputeMixin): # , MovementMixin):
   def linspace(start:int|float, stop:int|float, steps:int, **kwargs) -> Tensor: raise NotImplementedError("TODO")
   @staticmethod
   def eye(n:int, m:int|None=None, **kwargs) -> Tensor: raise NotImplementedError("TODO")
-
-  # ***** Tensor Data (Level -1) *****
-  def data(self): raise NotImplementedError("todo")
-  def item(self): raise NotImplementedError("todo")
-  def to(self, device:str|tuple[str, ...]|None) -> Tensor: raise NotImplementedError("todo")
-
-  @property
-  def device(self) -> str|tuple[str, ...]: return self.uop.device
-  @property
-  def shape(self) -> tuple[sint, ...]: return self.uop.shape
-  @property
-  def dtype(self) -> DType: return self.uop.dtype
-
-  @property
-  def ndim(self) -> int: raise NotImplementedError("TODO")
-  def numel(self) -> sint: raise NotImplementedError("TODO")
-  def element_size(self) -> int: raise NotImplementedError("TODO")
-  def nbytes(self) -> int: raise NotImplementedError("TODO")
-  def is_floating_point(self) -> bool: raise NotImplementedError("TODO")
-  def size(self, dim:int|None=None) -> sint|tuple[sint, ...]: raise NotImplementedError("TODO")
-  def __init__(self):
-    self.shape, self.stride = [], []
-  __slots__ = "uop", "requires_grad", "grad"  # runtime data like device, shape, and dtype are deleted to uop, not tensor
 
 __all__ = ["Tensor"]
