@@ -1,26 +1,29 @@
 from __future__ import annotations
 import math, os
-from typing import Callable
+from typing import Callable, cast
 from picograd import op
+from picograd.dtype import ConstType, DType, DTypeLike
 from picograd.engine import evaluator
-from picograd.op import Op, OpCode, PatternMatcher, Pat
+from picograd.op import Op, OpCode, PatternMatcher, Pattern
 from picograd.mixins import ComputeMixin
 # from . import _pgrs
 
+sint = int# |Op
+
 chain_rules = PatternMatcher([
   # (Pat(OpCode.CAST, name="ret"), lambda ctx, ret: (ctx.cast(ret.src[0].dtype),)),
-  (Pat(OpCode.RECIPROCAL, name="input"), lambda output_grad, input: (-output_grad * input * input,)),
-  (Pat(OpCode.SIN, name="input"), lambda output_grad, input: ((math.pi/2 - input.src[0]).sin() * output_grad,)),
-  (Pat(OpCode.LOG2, name="input"), lambda output_grad, input: (output_grad / (input.src[0] * math.log(2)),)),
-  (Pat(OpCode.EXP2, name="input"), lambda output_grad, input: (input * output_grad * math.log(2),)),
-  (Pat(OpCode.SQRT, name="input"), lambda output_grad, input: (output_grad / (input*2),)),
+  (Pattern(OpCode.RECIPROCAL, name="input"), lambda output_grad, input: (-output_grad * input * input,)),
+  (Pattern(OpCode.SIN, name="input"), lambda output_grad, input: ((math.pi/2 - input.src[0]).sin() * output_grad,)),
+  (Pattern(OpCode.LOG2, name="input"), lambda output_grad, input: (output_grad / (input.src[0] * math.log(2)),)),
+  (Pattern(OpCode.EXP2, name="input"), lambda output_grad, input: (input * output_grad * math.log(2),)),
+  (Pattern(OpCode.SQRT, name="input"), lambda output_grad, input: (output_grad / (input*2),)),
   # (Pat((OpCode.CMPLT, OpCode.CMPNE)), lambda: (None, None)),
-  (Pat(OpCode.ADD), lambda output_grad: (1.0*output_grad, 1.0*output_grad)),
+  (Pattern(OpCode.ADD), lambda output_grad: (1.0*output_grad, 1.0*output_grad)),
   # (Pat(OpCode.POW, name="input", src=(Pat.var("b"), Pat.var("e"))), lambda output_grad, input, b, e:
   #   (output_grad * (b.eq(0)&e.eq(0)).where(e, e*b.pow(e-1)), output_grad * b.eq(0).where((e<0).where(input.const_like(-math.inf), 0), input*b.log2()*math.log(2.0)))),
   # (Pat(OpCode.MAX, src=(Pat.var("x"), Pat.var("y"))), lambda output_grad, x, y:
   #   ((x>y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)), (x<y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)))),
-  (Pat(OpCode.MUL, name="input"), lambda output_grad, input: (input.src[1]*output_grad, input.src[0]*output_grad)),
+  (Pattern(OpCode.MUL, name="input"), lambda output_grad, input: (input.src[1]*output_grad, input.src[0]*output_grad)),
   # (UPat(OpCode.WHERE, name="input"), lambda output_grad, input: (None, input.src[0].where(output_grad, output_grad.const_like(0)), input.src[0].where(output_grad.const_like(0), output_grad))),
   # (UPat(OpCode.REDUCE_AXIS, name="input"), reduce_gradient),
   # (UPat(OpCode.CONTIGUOUS), lambda output_grad: (output_grad,)),
@@ -47,17 +50,18 @@ class Tensor(ComputeMixin): # , MovementMixin):
 
   like pt1, picograd's forward passes for the tensor object decompose (desugar) methods into a more primitive set of ops.
   the exact decomposition and intermediate representation is taken directly from tinygrad's RISC-y opset of element ops, reduce ops, and movement ops.
-  when evaluating the model, a graph of those decomposed ops will be dynamically constructed at runtime (as opposed to just-in-time like jax),
+  when evaluating the model, a graph of those decomposed ops will be traced dynamically at runtime (as opposed to just-in-time source to source transform like autograd/jax),
   which then serves as the data structure for automatic differentiation to apply backpropagation and route gradients throughout the graph
 
   with the advent of transformers and tensor cores, many workloads move from compute-bound/framework-bound to memory-bound
   bc they bottleneck on the data movement of non-tensor computations.
-  see: (Ivanov, et al): https://proceedings.mlsys.org/paper_files/paper/2021/file/bc86e95606a6392f51f95a8de106728d-Paper.pdf
+  see (Ivanovet et al. https://proceedings.mlsys.org/paper_files/paper/2021/file/bc86e95606a6392f51f95a8de106728d-Paper.pdf)
   picograd follows pt2/jax/tinygrad which modify the language implementation strategy from eager interpretation to just-in-time/lazy compilation
   in order to obtain a global view of the computational graph, and to apply optimizations; the primary one being fusion.
-  to be specific, picograd follows tinygrad (and torch/xla and swift for tensorflow) with lazy graph capture,
+  specifically, picograd follows tinygrad (and torch/xla and swift for tensorflow) with lazy graph capture, see (Suhan et al. https://arxiv.org/abs/2102.13267)
   and modifying the semantics of the programming model where users must explicitly materialize data with .realize(),
   as opposed to pt2 which maintains the eager programming model surface via graph capture at the host-language level (python bytecode interception)
+  see (Ansel et al. https://docs.pytorch.org/assets/pytorch2-2.pdf)
   
   so all tensor methods funnel through ._forward(), whose semantics depend on
   whether eager mode or graph mode is respectively set with EAGER=1 or GRAPH=1
@@ -66,13 +70,12 @@ class Tensor(ComputeMixin): # , MovementMixin):
 
   TODO:
   - tensor with ComputeMixin and MovementMixin...
-  - strided layout(np/pt) vs scheduled layout(halide/tvm)
   
   picograd's forward passes follow the architecture of classic numerical computing
   which separate concerns into levels 1,2,3 like LAPACK/BLAS
     2. (DNN)   provides high level mathematical primitives (mathematician)
   0/1. (BLAS)  provides performance primitives (perf engineer)
-   -1: (DATA)  provides the foundational multi-dimensional array data structure (compiler engineer)
+    1. (DATA)  provides the foundational multi-dimensional array data structure (compiler engineer)
       the semantics of k in level k has *three* meanings in of itself
         1. publish order of BLAS
         2. algorithmic complexity in naive implementation (n -> n^k)
@@ -135,29 +138,30 @@ class Tensor(ComputeMixin): # , MovementMixin):
     """
     tens2grads = {root: root_grad}
 
-    # 1. topological sort
+    # 1. topological sort ordering is NP-complete?????????? <--------------------------- MOOOOOOOOOOOOOOOOOOSEEEEEE
     in_target_path: dict[Op, bool] = {}
     for u in root.toposort(): in_target_path[u] = any(x in targets or in_target_path[x] for x in u.src)
-    dfs = list(root.toposort(lambda node: node.op not in {OpCode.DETACH, OpCode.ASSIGN} and in_target_path[node])) # don't flow through DETACH/ASSIGN or anything not in target path
+    dfs = list(root.toposort()) # lambda node: node.op not in {OpCode.DETACH, OpCode.ASSIGN} and in_target_path[node])) # don't flow through DETACH/ASSIGN or anything not in target path
 
     # 2. backpropagation with the chain rule
     for tensor in reversed(dfs):
       if tensor not in tens2grads: continue
-      lgrads: tuple[Op|None, ...]|None = cast(tuple[Op, ...]|None, chain_rules.rewrite(tensor, ctx=tens2grads[tensor])) # <--- chain rule
 
-      if lgrads is None: raise RuntimeError(f"failed to compute gradient for {tensor.op}\n\nin {str(tensor)[0:1000]}...")
-      assert len(lgrads) == len(tensor.src), f"got {len(lgrads)} gradient, expected {len(tensor.src)}"
+      local_grads: tuple[Op|None, ...]|None = cast(tuple[Op, ...]|None, chain_rules.rewrite(tensor, ctx=tens2grads[tensor]))
+      if local_grads is None: raise RuntimeError(f"failed to compute gradient for {tensor.op}\n\nin {str(tensor)[0:1000]}...")
+      assert len(local_grads) == len(tensor.src), f"got {len(local_grads)} gradient, expected {len(tensor.src)}"
 
-      for tensors,lgrad in zip(tensor.src, lgrads):
-        if lgrad is None: continue
-        if tensors in tens2grads: tens2grads[tensors] = tens2grads[tensors] + lgrad
-        else: tens2grads[tensors] = lgrad
+      for tensor,local_grad in zip(tensor.src, local_grads): # <--------------------- MOOOSE: why are we accumulating inside ad()? don't we do it in backward()??
+        if local_grad is None: continue
+        if tensor in tens2grads: tens2grads[tensor] = tens2grads[tensor] + local_grad # accumulate if tensor exists
+        else: tens2grads[tensor] = local_grad # o/w initialize
 
-        if len(forward_metadata:=all_metadata.get(tensor, ())):
-          backward_metadata = tuple(dataclasses.replace(x, backward=True) for x in forward_metadata)
-          # we add the backward metadata to everything new in the graph
-          for bw_uop in lgrad.toposort(lambda x: x not in (tensor, *tensor.src, tens2grads[tensor])):
-            all_metadata[bw_uop] = all_metadata.get(bw_uop, ())+backward_metadata
+        # if len(forward_metadata:=all_metadata.get(tensor, ())):
+        #   backward_metadata = tuple(dataclasses.replace(x, backward=True) for x in forward_metadata)
+        #   # we add the backward metadata to everything new in the graph
+        #   for bw_uop in local_grad.toposort(lambda x: x not in (tensor, *tensor.src, tens2grads[tensor])):
+        #     all_metadata[bw_uop] = all_metadata.get(bw_uop, ())+backward_metadata
+
     return tens2grads
 
   def _binop(self, op, x, reverse):
@@ -165,14 +169,14 @@ class Tensor(ComputeMixin): # , MovementMixin):
   def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|ConstType, reverse=False) -> Tensor:
     lhs,rhs = self._broadcasted(x, reverse)
     return lhs._apply_uop(fxn, rhs)
-  def _forward(self, op:Callable, *other:Tensor) -> Tensor: #extra_args=(), **kwargs)
+  def _forward(self, f:Callable, *other:Tensor) -> Tensor: #extra_args=(), **kwargs)
     if os.getenv("EAGER") == 1:
       out_tensor = evaluator.eval_uop([self, other], out_uop)
       return out_tensor
     elif os.getenv("GRAPH") == 1: # lazy compilation: build the graph for .realize()
-      out_uop: Op = fxn(*[t.uop for t in (self,)+x], *extra_args, **kwargs)
-      if (metadata:=_METADATA.get()) is not None: all_metadata[out_uop] = (metadata,)
-      needs_input_grad = [t.requires_grad for t in (self,)+x]
+      out_uop: Op = f(*[t.uop for t in (self,)+x])#, *extra_args, **kwargs)
+      # if (metadata:=_METADATA.get()) is not None: all_metadata[out_uop] = (metadata,)
+      needs_input_grad = [t.requires_grad for t in (self,)+other]
       return Tensor(out_uop, device=out_uop.device, requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False)
     
       # defer execution and build up graph of ops for compilation later on .realize()
@@ -186,15 +190,8 @@ class Tensor(ComputeMixin): # , MovementMixin):
 
 
   # ***** Tensor DNN (Level 2) *****
-  def backward_numerical(self) -> Tensor: raise NotImplementedError("")
-  def backward_symbolic(self) -> Tensor: raise NotImplementedError("")
-  def backward_automatic(self) -> Tensor: raise NotImplementedError("")
   def fa() -> Tensor:
     raise NotImplementedError("todo")
-
-  
-
-
 
   # ***** Tensor BLAS Operations (Level 1/0) *****
   def mm() -> Tensor:
@@ -207,9 +204,9 @@ class Tensor(ComputeMixin): # , MovementMixin):
   # --unary
   def exp2(self) -> Tensor: return self._forward(Op.exp2) # self.cast(least_upper_float(self.dtype))._apply_uop(UOp.exp2)
 
-  # C. reduce ops
+  # reduce ops
 
-  # D. movement ops
+  # movement ops
   # --high level: gather, cat, stack, repeat, split, chunk, unfold, squeeze, unsqueeze
   # --low level: view, reshape, expand, permute, flip, shrink, pad
 
@@ -217,9 +214,8 @@ class Tensor(ComputeMixin): # , MovementMixin):
 
 
 
-  # ***** Tensor Constructors (Level -1) *****
+  # ***** Tensor Constructors *****
   # --high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
-
   # --low level:
   @staticmethod
   def empty(*shape, device:str|tuple[str, ...]|None=None, dtype:DTypeLike|None=None, **kwargs) -> Tensor: raise NotImplementedError("TODO")
