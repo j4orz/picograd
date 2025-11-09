@@ -1,4 +1,4 @@
-from picograd import Tensor
+from picograd.tensor import Tensor
 
 class Linear:
   def __init__(self, n, m, bias=True):

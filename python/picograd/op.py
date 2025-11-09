@@ -3,7 +3,8 @@ from typing import Callable, Sequence
 import math
 from dataclasses import dataclass
 from enum import auto, IntEnum, Enum
-from picograd.mixins import ComputeMixin
+
+from picograd.dtype import DType, dtypes
 
 class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses
   def __str__(self): return Enum.__str__(self)
@@ -51,11 +52,11 @@ class OpCode(FastEnum):
   # CUSTOM = auto(); CUSTOMI = auto() # CUSTOM/CUSTOMI are used to output strings into codegen. the I makes the string inline
 
 @dataclass(eq=False, slots=True)
-class Op(ComputeMixin): # MovementMixin, metaclass=UOpMetaClass
+class Op: # (ComputeMixin): # MovementMixin, metaclass=UOpMetaClass
   """
   MOOOOOOSEEEEE
   """
-  src:tuple[Op, ...] = tuple(); code: OpCode; dtype:DType = dtypes.void
+  code: OpCode; src:tuple[Op, ...] = tuple(); dtype:DType = dtypes.void
   # arg:Any = None; tag:Any = None
   @property
   def device(self) -> str|tuple[str, ...]: raise NotImplementedError("todo")
@@ -75,4 +76,9 @@ class Op(ComputeMixin): # MovementMixin, metaclass=UOpMetaClass
           for s in reversed(node.src): stack.append((s, False)) # push srcs on the stack
       else: visited[node] = None # second time i'm seeing this node, add it to returned toposort
     return visited
-  
+
+class PatternMatcher:
+  def __init__(): raise NotImplementedError
+
+class Pattern:
+  def __init__(): raise NotImplementedError

@@ -1,11 +1,10 @@
 from __future__ import annotations
 import math, os
 from typing import Callable, cast
-from picograd import op
 from picograd.dtype import ConstType, DType, DTypeLike
 from picograd.engine import evaluator
-from picograd.op import Op, OpCode, PatternMatcher, Pattern
-from picograd.mixins import ComputeMixin
+from picograd.op import Op, OpCode, Pattern, PatternMatcher
+# from picograd.mixins import ComputeMixin
 # from . import _pgrs
 
 sint = int# |Op
@@ -42,7 +41,7 @@ chain_rules = PatternMatcher([
   # (UPat(OpCode.BITCAST), lambda: (None,)),
 ])
 
-class Tensor(ComputeMixin): # , MovementMixin):
+class Tensor(): #(ComputeMixin): # , MovementMixin):
   """
   picograd follows chainer/autograd/pt1 which takes the numpy ndarray and adds
     - gpu acceleration to forward kernels with .forward()
