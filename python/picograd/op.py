@@ -3,7 +3,7 @@ from typing import Callable, Sequence
 import math
 from dataclasses import dataclass
 from enum import auto, IntEnum, Enum
-from picograd.mixins import ComputeMixin
+# from picograd.mixins import ComputeMixin
 
 class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses
   def __str__(self): return Enum.__str__(self)
