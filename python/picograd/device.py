@@ -1,11 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Generic
+from typing import Generic, Iterator, Sequence
 
 ALL_DEVICES = ["CPU", "CL", "HIP"]
 
 class Runtime:
-  profile_events:list[ProfileEvent] = [ProfileDeviceEvent("CPU")] # NOTE: CPU is the default device.
+  # profile_events:list[ProfileEvent] = [ProfileDeviceEvent("CPU")] # NOTE: CPU is the default device.
 
   def __init__(self, device:str, allocator:Allocator, compilers:Sequence[CompilerPairT]|None,
                runtime, graph=None, group_id=None):
