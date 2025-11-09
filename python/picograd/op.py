@@ -51,7 +51,7 @@ class OpCode(FastEnum):
   # CUSTOM = auto(); CUSTOMI = auto() # CUSTOM/CUSTOMI are used to output strings into codegen. the I makes the string inline
 
 @dataclass(eq=False, slots=True)
-class Op(ComputeMixin): # MovementMixin, metaclass=UOpMetaClass
+class Op: # (ComputeMixin): # MovementMixin, metaclass=UOpMetaClass
   """
   MOOOOOOSEEEEE
   """
