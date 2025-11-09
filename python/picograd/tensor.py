@@ -3,7 +3,7 @@ import math, os
 from typing import Callable, cast
 from picograd.dtype import ConstType, DType, DTypeLike
 from picograd.engine import evaluator
-from picograd.op import Op, OpCode, PatternMatcher, Pattern
+from picograd.op import Op, OpCode, Pattern, PatternMatcher
 from picograd.mixins import ComputeMixin
 # from . import _pgrs
 

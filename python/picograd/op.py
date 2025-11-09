@@ -76,3 +76,9 @@ class Op: # (ComputeMixin): # MovementMixin, metaclass=UOpMetaClass
           for s in reversed(node.src): stack.append((s, False)) # push srcs on the stack
       else: visited[node] = None # second time i'm seeing this node, add it to returned toposort
     return visited
+
+class PatternMatcher:
+  def __init__(): raise NotImplementedError
+
+class Pattern:
+  def __init__(): raise NotImplementedError
