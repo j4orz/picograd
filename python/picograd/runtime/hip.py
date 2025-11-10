@@ -1,7 +1,12 @@
-from picograd.device import VendorRuntime
+import functools
+from picograd.device import Compiler, Device
+from picograd.runtime.cpu import LLVMCompiler
 import gpuctypes.hip as hip
 
-class HIPDevice(VendorRuntime):
+def check(status):
+  if status != 0: raise RuntimeError(f"HIP Error {status}, {ctypes.string_at(hip.hipGetErrorString(status)).decode()}")
+
+class HIPDevice(Device):
   def __init__(self, device:str=""):
     self.device_id = int(device.split(":")[1]) if ":" in device else 0
     self.arch = init_c_var(hip.hipDeviceProp_t(), lambda x: check(hip.hipGetDeviceProperties(x, self.device_id))).gcnArchName.decode()
@@ -13,7 +18,8 @@ class HIPDevice(VendorRuntime):
     check(hip.hipSetDevice(self.device_id))
     check(hip.hipDeviceSynchronize())
 
-class HIPCompiler(VendorCompiler):
+# **************** Compilers ****************
+class HIPCompiler(Compiler):
   def __init__(self, arch:str):
     self.arch = arch
     super().__init__(f"compile_hip_{self.arch}")
@@ -21,6 +27,33 @@ class HIPCompiler(VendorCompiler):
     try: return compile_hip(src, self.arch, src.split('\n', 1)[0].strip() == '.text')
     except RuntimeError as e: raise CompileError(e) from e
   def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
+
+class AMDLLVMCompiler(LLVMCompiler):
+  jit = False
+  target_arch = "AMDGPU"
+  def __init__(self, arch: str):
+    self.arch = arch
+    super().__init__(self.arch, "+cumode")
+  def __reduce__(self): return (AMDLLVMCompiler, (self.arch,))
+  def compile(self, src:str) -> bytes:
+    try: return super().compile(src)
+    except RuntimeError as e:
+      if "undefined value '@llvm.amdgcn." in str(e): raise CompileError(str(e) + "AMD with LLVM backend requires LLVM >= 18") from e
+      raise CompileError(e) from e
+  def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
+
+# **************** Host Allocator, Device Kernels ****************
+class HIPAllocator(LRUAllocator[HIPDevice]):
+  def _alloc(self, size:int, options:BufferSpec):
+    check(hip.hipSetDevice(self.dev.device_id))
+    return init_c_var(hip.hipDeviceptr_t(), lambda x: check(hip.hipMalloc(ctypes.byref(x), size)))
+  def _free(self, opaque, options:BufferSpec): check(hip.hipFree(opaque))
+  def _copyin(self, dest, src: memoryview):
+    check(hip.hipSetDevice(self.dev.device_id))
+    check(hip.hipMemcpy(dest, mv_address(src), len(src), hip.hipMemcpyHostToDevice))
+  def _copyout(self, dest:memoryview, src):
+    self.dev.synchronize()
+    check(hip.hipMemcpy(mv_address(dest), src, len(dest), hip.hipMemcpyDeviceToHost))
 
 class HIPProgram:
   def __init__(self, dev:HIPDevice, name:str, lib:bytes):
@@ -52,15 +85,3 @@ class HIPProgram:
       check(hip.hipEventSynchronize(self.dev.time_event_en))
       check(hip.hipEventElapsedTime(ctypes.byref(ret := ctypes.c_float()), self.dev.time_event_st, self.dev.time_event_en))
       return ret.value * 1e-3
-
-class HIPAllocator(LRUAllocator[HIPDevice]):
-  def _alloc(self, size:int, options:BufferSpec):
-    check(hip.hipSetDevice(self.dev.device_id))
-    return init_c_var(hip.hipDeviceptr_t(), lambda x: check(hip.hipMalloc(ctypes.byref(x), size)))
-  def _free(self, opaque, options:BufferSpec): check(hip.hipFree(opaque))
-  def _copyin(self, dest, src: memoryview):
-    check(hip.hipSetDevice(self.dev.device_id))
-    check(hip.hipMemcpy(dest, mv_address(src), len(src), hip.hipMemcpyHostToDevice))
-  def _copyout(self, dest:memoryview, src):
-    self.dev.synchronize()
-    check(hip.hipMemcpy(mv_address(dest), src, len(dest), hip.hipMemcpyDeviceToHost))
