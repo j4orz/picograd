@@ -2,9 +2,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Generic, Iterator, Sequence
 
-ALL_DEVICES = ["CPU", "CL", "HIP"]
+ALL_DEVICES = ["CPU", "CL", "HIP", "CUDA"]
 
-class Runtime:
+class Device:
   # profile_events:list[ProfileEvent] = [ProfileDeviceEvent("CPU")] # NOTE: CPU is the default device.
 
   def __init__(self, device:str, allocator:Allocator, compilers:Sequence[CompilerPairT]|None,
@@ -38,6 +38,8 @@ class Runtime:
     # def _at_profile_finalize(self): # override this in your device implementation
     # def finalize(self): # override this in your device implementation
 
+# **************** Compilers ****************
+
 class Compiler:
   def __init__(self, cachekey:str|None=None): self.cachekey = None if DISABLE_COMPILER_CACHE else cachekey
   def compile(self, src:str) -> bytes: return src.encode()   # NOTE: empty compiler is the default
@@ -50,7 +52,7 @@ class Compiler:
   def disassemble(self, lib:bytes): pass
   def __init__(self): raise NotImplementedError("todo")
 
-# **************** Allocators + Buffer ****************
+# **************** Host Allocator, Device Buffers ****************
 
 # TODO: size, dest, src are the same type. can we enforce this?
 class Allocator(Generic[DeviceType]):
@@ -70,7 +72,6 @@ class Allocator(Generic[DeviceType]):
   def _free(self, opaque, options:BufferSpec): pass  # if opaque is a Python object, you don't need a free
   def _copyin(self, dest, src:memoryview): raise NotImplementedError("need copyin")
   def _copyout(self, dest:memoryview, src): raise NotImplementedError("need copyout")
-
 
 @dataclass(frozen=True, eq=True)
 class BufferSpec:
