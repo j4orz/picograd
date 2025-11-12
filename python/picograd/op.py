@@ -3,11 +3,13 @@ from typing import Callable, Sequence
 import math
 from dataclasses import dataclass
 from enum import auto, IntEnum, Enum
-
 from picograd.dtype import DType, dtypes
 
+sint = int # |Op MOOSE
+
 class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses
-  def __str__(self): return Enum.__str__(self)
+  def __str__(self): return Enum.__str__(
+        self)
   @staticmethod
   def _generate_next_value_(_, __, ___, last_values): return 1 + max([0, *last_values, *[max(c) for c in FastEnum.__subclasses__()]])
 
@@ -41,6 +43,7 @@ class OpCode(FastEnum):
   # INDEX = auto() # INDEX is a BinaryOp similar to ADD, but it operates on pointers
 
   # binaryops
+  MM = auto(); FA = auto() # TODO: order??
   ADD = auto(); MUL = auto(); SHL = auto(); SHR = auto(); IDIV = auto(); MAX = auto(); MOD = auto()
   CMPLT = auto(); CMPNE = auto(); CMPEQ = auto()
   XOR = auto(); OR = auto(); AND = auto()
@@ -63,7 +66,7 @@ class Op: # (ComputeMixin): # MovementMixin, metaclass=UOpMetaClass
   @property
   def shape(self) -> tuple[sint, ...]: raise NotImplementedError("todo")
 
-  def toposort(self) -> dict[Op, None]: #, gate:Callable|None=None) -> dict[Op, None]:
+  def toposort(self, gate:Callable|None=None) -> dict[Op, None]:
     visited: dict[Op, None] = {}
     stack: list[tuple[Op, bool]] = [(self, False)] # each stack entry is (node, visited_flag)
 
@@ -71,7 +74,7 @@ class Op: # (ComputeMixin): # MovementMixin, metaclass=UOpMetaClass
       node, visited = stack.pop()
       if node in visited: continue
       if not visited:
-        if gate is None or gate(node):
+        if gate is None or gate(node): # MOOSE gate?
           stack.append((node, True))  # push node back on stack to process after its srcs
           for s in reversed(node.src): stack.append((s, False)) # push srcs on the stack
       else: visited[node] = None # second time i'm seeing this node, add it to returned toposort
