@@ -13,9 +13,9 @@ def eval_uop(inputs, opcode) -> Tensor:
   """
   match opcode:
     case OpCode.NEG: raise NotImplementedError("todo")
-    case OpCode.ADD: launch_add(A, B)
-    case OpCode.MUL: launch_mul(A, B)
-    case OpCode.MM: launch_mm(A, B)
+    case OpCode.ADD: launch_add(inputs[0], inputs[1])
+    case OpCode.MUL: launch_mul(inputs[0], inputs[1])
+    case OpCode.MM: launch_mm(inputs[0], inputs[1])
     case OpCode.RECIPROCAL: raise NotImplementedError("todo")
     case OpCode.EXP2: raise NotImplementedError("todo")
     case OpCode.LOG2: raise NotImplementedError("todo")

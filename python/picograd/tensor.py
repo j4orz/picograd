@@ -1,13 +1,14 @@
+# inspired by https://github.com/karpathy/micrograd/blob/master/micrograd/engine.py
 from __future__ import annotations
-import math, os
+import math, os, weakref
 from typing import Callable, cast
 from picograd.dtype import ConstType, DType, DTypeLike
 from picograd.engine import evaluator
-from picograd.op import Op, OpCode, Pattern, PatternMatcher
+from picograd.op import sint, Op, OpCode, Pattern, PatternMatcher
 # from picograd.mixins import ComputeMixin
 # from . import _pgrs
 
-sint = int# |Op
+all_tensors: dict[weakref.ref[Tensor], None] = {}
 
 chain_rules = PatternMatcher([
   # (Pat(OpCode.CAST, name="ret"), lambda ctx, ret: (ctx.cast(ret.src[0].dtype),)),
@@ -23,22 +24,22 @@ chain_rules = PatternMatcher([
   # (Pat(OpCode.MAX, src=(Pat.var("x"), Pat.var("y"))), lambda output_grad, x, y:
   #   ((x>y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)), (x<y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)))),
   (Pattern(OpCode.MUL, name="input"), lambda output_grad, input: (input.src[1]*output_grad, input.src[0]*output_grad)),
-  # (UPat(OpCode.WHERE, name="input"), lambda output_grad, input: (None, input.src[0].where(output_grad, output_grad.const_like(0)), input.src[0].where(output_grad.const_like(0), output_grad))),
-  # (UPat(OpCode.REDUCE_AXIS, name="input"), reduce_gradient),
-  # (UPat(OpCode.CONTIGUOUS), lambda output_grad: (output_grad,)),
-  # (UPat(OpCode.CONTIGUOUS_BACKWARD), lambda output_grad: (output_grad.contiguous(),)),
-  # (UPat(OpCode.RESHAPE, name="input"), lambda output_grad, input: (output_grad.reshape(input.src[0].shape), None)),
-  # (UPat(OpCode.EXPAND, name="input"), lambda output_grad, input: (output_grad.r(OpCode.ADD,tuple(i for i,(s,n) in enumerate(zip(input.src[0].shape, input.shape)) if s!=n)), None)),
-  # (UPat(OpCode.PAD, name="input"), lambda output_grad, input: (output_grad.shrink(tuple([(p[0], s+p[0]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
-  # (UPat(OpCode.SHRINK, name="input"), lambda output_grad, input: (output_grad.pad(tuple([(p[0], s-p[1]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
-  # (UPat(OpCode.PERMUTE, name="input"), lambda output_grad, input: (output_grad.permute(argsort(input.marg)),)),
-  # (UPat(OpCode.FLIP, name="input"), lambda output_grad, input: (output_grad.flip(input.marg),)),
-  # (UPat(OpCode.MULTI, name="input"), lambda output_grad, input: output_grad.shard(input.device, input.axis).src),
+  # (Patttern(OpCode.WHERE, name="input"), lambda output_grad, input: (None, input.src[0].where(output_grad, output_grad.const_like(0)), input.src[0].where(output_grad.const_like(0), output_grad))),
+  # (Patttern(OpCode.REDUCE_AXIS, name="input"), reduce_gradient),
+  # (Patttern(OpCode.CONTIGUOUS), lambda output_grad: (output_grad,)),
+  # (Patttern(OpCode.CONTIGUOUS_BACKWARD), lambda output_grad: (output_grad.contiguous(),)),
+  # (Patttern(OpCode.RESHAPE, name="input"), lambda output_grad, input: (output_grad.reshape(input.src[0].shape), None)),
+  # (Patttern(OpCode.EXPAND, name="input"), lambda output_grad, input: (output_grad.r(OpCode.ADD,tuple(i for i,(s,n) in enumerate(zip(input.src[0].shape, input.shape)) if s!=n)), None)),
+  # (Patttern(OpCode.PAD, name="input"), lambda output_grad, input: (output_grad.shrink(tuple([(p[0], s+p[0]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
+  # (Patttern(OpCode.SHRINK, name="input"), lambda output_grad, input: (output_grad.pad(tuple([(p[0], s-p[1]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
+  # (Patttern(OpCode.PERMUTE, name="input"), lambda output_grad, input: (output_grad.permute(argsort(input.marg)),)),
+  # (Patttern(OpCode.FLIP, name="input"), lambda output_grad, input: (output_grad.flip(input.marg),)),
+  # (Patttern(OpCode.MULTI, name="input"), lambda output_grad, input: output_grad.shard(input.device, input.axis).src),
   # # NOTE: this is only correct when the KERNEL has a single output
-  # (UPat(OpCode.AFTER), lambda output_grad: (output_grad, output_grad)),
-  # (UPat(OpCode.KERNEL, name="k"), lambda output_grad, k: k.arg.grad_fxn(output_grad, k)),
+  # (Patttern(OpCode.AFTER), lambda output_grad: (output_grad, output_grad)),
+  # (Patttern(OpCode.KERNEL, name="k"), lambda output_grad, k: k.arg.grad_fxn(output_grad, k)),
   # # there's no gradient for bitcast
-  # (UPat(OpCode.BITCAST), lambda: (None,)),
+  # (Patttern(OpCode.BITCAST), lambda: (None,)),
 ])
 
 class Tensor(): #(ComputeMixin): # , MovementMixin):
@@ -54,7 +55,7 @@ class Tensor(): #(ComputeMixin): # , MovementMixin):
 
   with the advent of transformers and tensor cores, many workloads move from compute-bound/framework-bound to memory-bound
   bc they bottleneck on the data movement of non-tensor computations.
-  see (Ivanovet et al. https://proceedings.mlsys.org/paper_files/paper/2021/file/bc86e95606a6392f51f95a8de106728d-Paper.pdf)
+  see Data Movment is All You Need (Ivanovet et al. https://proceedings.mlsys.org/paper_files/paper/2021/file/bc86e95606a6392f51f95a8de106728d-Paper.pdf)
   picograd follows pt2/jax/tinygrad which modify the language implementation strategy from eager interpretation to just-in-time/lazy compilation
   in order to obtain a global view of the computational graph, and to apply optimizations; the primary one being fusion.
   specifically, picograd follows tinygrad (and torch/xla and swift for tensorflow) with lazy graph capture, see (Suhan et al. https://arxiv.org/abs/2102.13267)
@@ -72,9 +73,9 @@ class Tensor(): #(ComputeMixin): # , MovementMixin):
   
   picograd's forward passes follow the architecture of classic numerical computing
   which separate concerns into levels 1,2,3 like LAPACK/BLAS
-    2. (DNN)   provides high level mathematical primitives (mathematician)
-  0/1. (BLAS)  provides performance primitives (perf engineer)
-    1. (DATA)  provides the foundational multi-dimensional array data structure (compiler engineer)
+    2. (DNN)   provides high level mathematical primitives
+  0/1. (BLAS)  provides performance primitives
+   -1. (DATA)  provides the foundational multi-dimensional array data structure
       the semantics of k in level k has *three* meanings in of itself
         1. publish order of BLAS
         2. algorithmic complexity in naive implementation (n -> n^k)
@@ -83,13 +84,18 @@ class Tensor(): #(ComputeMixin): # , MovementMixin):
                          and https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms#Functionality
   """
 
-  # ***** Tensor Data (Level -1) *****
+  # ************ Tensor Data ************
   def __init__(self):
     self.shape, self.stride = [], []
   __slots__ = "uop", "requires_grad", "grad"
   def data(self): raise NotImplementedError("todo")
   def item(self): raise NotImplementedError("todo")
   def to(self, device:str|tuple[str, ...]|None) -> Tensor: raise NotImplementedError("todo")
+  def numel(self) -> sint: raise NotImplementedError("TODO")
+  def element_size(self) -> int: raise NotImplementedError("TODO")
+  def nbytes(self) -> int: raise NotImplementedError("TODO")
+  def is_floating_point(self) -> bool: raise NotImplementedError("TODO")
+  def size(self, dim:int|None=None) -> sint|tuple[sint, ...]: raise NotImplementedError("TODO")
 
   # runtime data like device, shape, and dtype are deleted to uop, not tensor
   @property
@@ -101,18 +107,37 @@ class Tensor(): #(ComputeMixin): # , MovementMixin):
   @property
   def ndim(self) -> int: raise NotImplementedError("TODO")
 
-  def numel(self) -> sint: raise NotImplementedError("TODO")
-  def element_size(self) -> int: raise NotImplementedError("TODO")
-  def nbytes(self) -> int: raise NotImplementedError("TODO")
-  def is_floating_point(self) -> bool: raise NotImplementedError("TODO")
-  def size(self, dim:int|None=None) -> sint|tuple[sint, ...]: raise NotImplementedError("TODO")
+  
+  # --high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
+  # --low level:
+  @staticmethod
+  def empty(*shape, device:str|tuple[str, ...]|None=None, dtype:DTypeLike|None=None, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  def empty_like(self, **kwargs) -> Tensor: return Tensor.empty(self.shape, dtype=kwargs.pop("dtype", self.dtype), device=kwargs.pop("device", self.device), **kwargs)
+  @staticmethod
+  def rand(*shape, device:str|None=None, dtype:DTypeLike|None=None, contiguous:bool=True, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  @staticmethod
+  def full(shape:tuple[sint, ...], fill_value:ConstType, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  @staticmethod
+  def zeros(*shape, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  @staticmethod
+  def ones(*shape, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  @staticmethod
+  def arange(start, stop=None, step=1, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  @staticmethod
+  def linspace(start:int|float, stop:int|float, steps:int, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  @staticmethod
+  def eye(n:int, m:int|None=None, **kwargs) -> Tensor: raise NotImplementedError("TODO")
 
+
+
+
+  # ************ Tensor Forward and Backward ************
   def backward(self, grad:Tensor|None=None) -> Tensor:
     """
     backward performs by collecting tensors, computing gradients with automatic differentiation, and updating said tensors.
     """
     # 1. collect all tensors that requires grad by topologically sorting the graph of uops and filter
-    all_uops = self.uop.toposort() # < ---------------------MOOSE: assumes the graph is pointed to by self.uop
+    all_uops = self.uop.toposort()
     tensors_require_grad: list[Tensor] = [t for tref in all_tensors if (t:=tref()) is not None and t.uop in all_uops and t.requires_grad]
     uops_require_grad = [t.uop for t in tensors_require_grad]
     assert grad is not None or self.shape == tuple(), "when no gradient is provided, backward must be called on a scalar tensor"
@@ -164,7 +189,7 @@ class Tensor(): #(ComputeMixin): # , MovementMixin):
     return tens2grads
 
   def _binop(self, op, x, reverse):
-    return self._apply_broadcasted_uop(lambda *u: UOp.alu(u[0], op, *u[1:]), x, reverse) # _binop is used by MathTrait
+    return self._apply_broadcasted_uop(lambda *u: Op.alu(u[0], op, *u[1:]), x, reverse) # _binop is used by MathTrait
   def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|ConstType, reverse=False) -> Tensor:
     lhs,rhs = self._broadcasted(x, reverse)
     return lhs._apply_uop(fxn, rhs)
@@ -173,7 +198,7 @@ class Tensor(): #(ComputeMixin): # , MovementMixin):
       out_tensor = evaluator.eval_uop([self, other], out_uop)
       return out_tensor
     elif os.getenv("GRAPH") == 1: # lazy compilation: build the graph for .realize()
-      out_uop: Op = f(*[t.uop for t in (self,)+x])#, *extra_args, **kwargs)
+      out_uop: Op = f(*[t.uop for t in (self,)+other])#, *extra_args, **kwargs)
       # if (metadata:=_METADATA.get()) is not None: all_metadata[out_uop] = (metadata,)
       needs_input_grad = [t.requires_grad for t in (self,)+other]
       return Tensor(out_uop, device=out_uop.device, requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False)
@@ -186,52 +211,18 @@ class Tensor(): #(ComputeMixin): # , MovementMixin):
 
 
 
-
-
-  # ***** Tensor DNN (Level 2) *****
-  def fa() -> Tensor:
-    raise NotImplementedError("todo")
-
-  # ***** Tensor BLAS Operations (Level 1/0) *****
-  def mm() -> Tensor:
-    raise NotImplementedError("todo")
-
+  # ************ Tensor Operations ************
+  def fa(self) -> Tensor: return self._forward(Op.FA)
+  def mm(self) -> Tensor: return self._forward(Op.MM)
   # --activation
   def tanh(self) -> Tensor: return 2.0 * ((2.0 * self).sigmoid()) - 1.0
   def sigmoid(self) -> Tensor: return (1 + (self * (-1/math.log(2))).exp2()).reciprocal()
-
   # --unary
   def exp2(self) -> Tensor: return self._forward(Op.exp2) # self.cast(least_upper_float(self.dtype))._apply_uop(UOp.exp2)
 
   # reduce ops
-
   # movement ops
   # --high level: gather, cat, stack, repeat, split, chunk, unfold, squeeze, unsqueeze
   # --low level: view, reshape, expand, permute, flip, shrink, pad
-
-
-
-
-
-  # ***** Tensor Constructors *****
-  # --high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
-  # --low level:
-  @staticmethod
-  def empty(*shape, device:str|tuple[str, ...]|None=None, dtype:DTypeLike|None=None, **kwargs) -> Tensor: raise NotImplementedError("TODO")
-  def empty_like(self, **kwargs) -> Tensor: return Tensor.empty(self.shape, dtype=kwargs.pop("dtype", self.dtype), device=kwargs.pop("device", self.device), **kwargs)
-  @staticmethod
-  def rand(*shape, device:str|None=None, dtype:DTypeLike|None=None, contiguous:bool=True, **kwargs) -> Tensor: raise NotImplementedError("TODO")
-  @staticmethod
-  def full(shape:tuple[sint, ...], fill_value:ConstType, **kwargs) -> Tensor: raise NotImplementedError("TODO")
-  @staticmethod
-  def zeros(*shape, **kwargs) -> Tensor: raise NotImplementedError("TODO")
-  @staticmethod
-  def ones(*shape, **kwargs) -> Tensor: raise NotImplementedError("TODO")
-  @staticmethod
-  def arange(start, stop=None, step=1, **kwargs) -> Tensor: raise NotImplementedError("TODO")
-  @staticmethod
-  def linspace(start:int|float, stop:int|float, steps:int, **kwargs) -> Tensor: raise NotImplementedError("TODO")
-  @staticmethod
-  def eye(n:int, m:int|None=None, **kwargs) -> Tensor: raise NotImplementedError("TODO")
 
 __all__ = ["Tensor"]
