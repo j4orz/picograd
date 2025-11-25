@@ -1,87 +1,34 @@
-import ctypes
-import functools
+import functools, ctypes, tempfile, subprocess, pathlib, hashlib
 import gpuctypes.hip as hip
-from picograd.device import BufferSpec, CompileError, Compiler, Device, LRUAllocator
-from picograd.runtime.cpu import LLVMCompiler
+from picograd.helpers import OSX, init_c_struct_t, init_c_var, mv_address, system
+from picograd.device import BufferSpec, CompileError, Compiler, Device, LLVMCompiler, LRUAllocator
+# from picograd.runtime.cpu import LLVMCompiler
 
 def check(status):
   if status != 0: raise RuntimeError(f"HIP Error {status}, {ctypes.string_at(hip.hipGetErrorString(status)).decode()}")
 
+# **************** Device ****************
 class HIPDevice(Device):
   def __init__(self, device:str=""):
     self.device_id = int(device.split(":")[1]) if ":" in device else 0
     self.arch = init_c_var(hip.hipDeviceProp_t(), lambda x: check(hip.hipGetDeviceProperties(x, self.device_id))).gcnArchName.decode()
     self.time_event_st, self.time_event_en = [init_c_var(hip.hipEvent_t(), lambda x: hip.hipEventCreate(ctypes.byref(x), 0)) for _ in range(2)]
 
-    compilers = [(functools.partial(HIPRenderer, self.arch), functools.partial(HIPCompiler, self.arch))]
+    compilers = [(functools.partial(HIPCompiler, self.arch))] # compilers = [(functools.partial(HIPRenderer, self.arch), functools.partial(HIPCompiler, self.arch))]
     super().__init__(device, HIPAllocator(self), compilers, functools.partial(HIPKernel, self))
+
   def synchronize(self):
     check(hip.hipSetDevice(self.device_id))
     check(hip.hipDeviceSynchronize())
 
-# **************** Host Allocator, Device Kernels ****************
-class HIPAllocator(LRUAllocator[HIPDevice]):
-  def _alloc(self, size:int, options:BufferSpec):
-    check(hip.hipSetDevice(self.dev.device_id))
-    return init_c_var(hip.hipDeviceptr_t(), lambda x: check(hip.hipMalloc(ctypes.byref(x), size)))
-  def _free(self, opaque, options:BufferSpec): check(hip.hipFree(opaque))
-  def _copyin(self, dest, src: memoryview):
-    check(hip.hipSetDevice(self.dev.device_id))
-    check(hip.hipMemcpy(dest, mv_address(src), len(src), hip.hipMemcpyHostToDevice))
-  def _copyout(self, dest:memoryview, src):
-    self.dev.synchronize()
-    check(hip.hipMemcpy(mv_address(dest), src, len(dest), hip.hipMemcpyDeviceToHost))
 
-class HIPKernel:
-  def __init__(self, dev:HIPDevice, name:str, lib:bytes):
-    self.dev, self.name, self.lib = dev, name, lib
-    check(hip.hipSetDevice(self.dev.device_id))
-    self.module = init_c_var(hip.hipModule_t(), lambda x: check(hip.hipModuleLoadData(ctypes.byref(x), lib)))
-    self.prg = init_c_var(hip.hipFunction_t(), lambda x: check(hip.hipModuleGetFunction(ctypes.byref(x), self.module, name.encode("utf-8"))))
-
-  def __call__(self, *args, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False):
-    check(hip.hipSetDevice(self.dev.device_id))
-    if not hasattr(self, "vargs"):
-      self.c_args = init_c_struct_t(tuple([(f'f{i}', hip.hipDeviceptr_t) for i in range(len(args))] + [(f'v{i}', ctypes.c_int) for i in range(len(vals))]))(*args, *vals)
-      self.vargs = (ctypes.c_void_p * 5)(1, ctypes.cast(ctypes.byref(self.c_args), ctypes.c_void_p), 2, ctypes.cast(ctypes.pointer(ctypes.c_size_t(ctypes.sizeof(self.c_args))), ctypes.c_void_p), 3)
-
-    for i in range(len(args)): self.c_args.__setattr__(f'f{i}', args[i])
-    for i in range(len(vals)): self.c_args.__setattr__(f'v{i}', vals[i])
-    if wait: check(hip.hipEventRecord(self.dev.time_event_st, None))
-    check(hip.hipModuleLaunchKernel(self.prg, *global_size, *local_size, 0, None, None, self.vargs))
-
-    if wait:
-      check(hip.hipEventRecord(self.dev.time_event_en, None))
-      check(hip.hipEventSynchronize(self.dev.time_event_en))
-      check(hip.hipEventElapsedTime(ctypes.byref(ret := ctypes.c_floaşt()), self.dev.time_event_st, self.dev.time_event_en))
-      return ret.value * 1e-3
-    
-  def __del__(self):
-    if hasattr(self, 'module'): check(hip.hipModuleUnload(self.module))
 
 # **************** Compilers ****************
-class HIPCompiler(Compiler):
-  def __init__(self, arch:str):
-    self.arch = arch
-    super().__init__(f"compile_hip_{self.arch}")
-  def compile(self, src:str) -> bytes:
-    try: return compile_hip(src, self.arch, src.split('\n', 1)[0].strip() == '.text')
-    except RuntimeError as e: raise CompileError(e) from e
-  def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
+def amdgpu_disassemble(lib:bytes):
+  asm = system(f"{'/opt/homebrew/opt/llvm/bin/llvm-objdump' if OSX else '/opt/rocm/llvm/bin/llvm-objdump'} -d -", input=lib).splitlines()
+  while asm and ("s_nop 0" in asm[-1] or "s_code_end" in asm[-1]): asm.pop()
+  print("\n".join(asm))
 
-class AMDLLVMCompiler(LLVMCompiler):
-  jit = False
-  target_arch = "AMDGPU"
-  def __init__(self, arch: str):
-    self.arch = arch
-    super().__init__(self.arch, "+cumode")
-  def __reduce__(self): return (AMDLLVMCompiler, (self.arch,))
-  def compile(self, src:str) -> bytes:
-    try: return super().compile(src)
-    except RuntimeError as e:
-      if "undefined value '@llvm.amdgcn." in str(e): raise CompileError(str(e) + "AMD with LLVM backend requires LLVM >= 18") from e
-      raise CompileError(e) from e
-  def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
 
 # AMD_COMGR_SAVE_TEMPS=1 AMD_COMGR_REDIRECT_LOGS=stdout AMD_COMGR_EMIT_VERBOSE_LOGS=1
 def compile_hip(prg:str, arch="gfx1100", asm=False) -> bytes:
@@ -128,3 +75,86 @@ def compile_hip(prg:str, arch="gfx1100", asm=False) -> bytes:
   for x in [data_set_src, data_set_bc, data_set_reloc, data_set_exec]: check(comgr.amd_comgr_destroy_data_set(x))
   check(comgr.amd_comgr_destroy_action_info(action_info))
   return ret
+
+class HIPCompiler(Compiler):
+  def __init__(self, arch:str):
+    self.arch = arch
+    super().__init__(f"compile_hip_{self.arch}")
+  def compile(self, src:str) -> bytes:
+    try: return compile_hip(src, self.arch, src.split('\n', 1)[0].strip() == '.text')
+    except RuntimeError as e: raise CompileError(e) from e
+  def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
+
+class HIPCCCompiler(Compiler):
+  def __init__(self, arch:str, extra_options:list[str]=[]):
+    self.arch, self.extra_options = arch, extra_options
+    super().__init__(f"compile_hipcc_{self.arch}_{hashlib.sha256(' '.join(extra_options).encode()).hexdigest()[:8]}")
+  def compile(self, src:str) -> bytes:
+    with tempfile.NamedTemporaryFile(suffix=".cpp") as srcf, tempfile.NamedTemporaryFile(suffix=".bc") as bcf:
+      with tempfile.NamedTemporaryFile(suffix=".hsaco") as libf:
+        srcf.write(src.encode())
+        srcf.flush()
+
+        subprocess.run(["hipcc", "-c", "-emit-llvm", "--cuda-device-only", "-O3", "-mcumode",
+                        f"--offload-arch={self.arch}", "-I/opt/rocm/include/hip", "-o", bcf.name, srcf.name] + self.extra_options, check=True)
+        subprocess.run(["hipcc", "-target", "amdgcn-amd-amdhsa", f"-mcpu={self.arch}",
+                        "-O3", "-mllvm", "-amdgpu-internalize-symbols", "-c", "-o", libf.name, bcf.name] + self.extra_options, check=True)
+
+        return pathlib.Path(libf.name).read_bytes()
+  def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
+
+class AMDLLVMCompiler(LLVMCompiler):
+  jit = False
+  target_arch = "AMDGPU"
+  def __init__(self, arch: str):
+    self.arch = arch
+    super().__init__(self.arch, "+cumode")
+  def __reduce__(self): return (AMDLLVMCompiler, (self.arch,))
+  def compile(self, src:str) -> bytes:
+    try: return super().compile(src)
+    except RuntimeError as e:
+      if "undefined value '@llvm.amdgcn." in str(e): raise CompileError(str(e) + "AMD with LLVM backend requires LLVM >= 18") from e
+      raise CompileError(e) from e
+  def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
+
+
+
+# **************** Host Allocator & Device Kernels ****************
+class HIPAllocator(LRUAllocator[HIPDevice]):
+  def _alloc(self, size:int, options:BufferSpec):
+    check(hip.hipSetDevice(self.dev.device_id))
+    return init_c_var(hip.hipDeviceptr_t(), lambda x: check(hip.hipMalloc(ctypes.byref(x), size)))
+  def _free(self, opaque, options:BufferSpec): check(hip.hipFree(opaque))
+  def _copyin(self, dest, src: memoryview):
+    check(hip.hipSetDevice(self.dev.device_id))
+    check(hip.hipMemcpy(dest, mv_address(src), len(src), hip.hipMemcpyHostToDevice))
+  def _copyout(self, dest:memoryview, src):
+    self.dev.synchronize()
+    check(hip.hipMemcpy(mv_address(dest), src, len(dest), hip.hipMemcpyDeviceToHost))
+
+class HIPKernel:
+  def __init__(self, dev:HIPDevice, name:str, lib:bytes):
+    self.dev, self.name, self.lib = dev, name, lib
+    check(hip.hipSetDevice(self.dev.device_id))
+    self.module = init_c_var(hip.hipModule_t(), lambda x: check(hip.hipModuleLoadData(ctypes.byref(x), lib)))
+    self.prg = init_c_var(hip.hipFunction_t(), lambda x: check(hip.hipModuleGetFunction(ctypes.byref(x), self.module, name.encode("utf-8"))))
+
+  def __call__(self, *args, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False):
+    check(hip.hipSetDevice(self.dev.device_id))
+    if not hasattr(self, "vargs"):
+      self.c_args = init_c_struct_t(tuple([(f'f{i}', hip.hipDeviceptr_t) for i in range(len(args))] + [(f'v{i}', ctypes.c_int) for i in range(len(vals))]))(*args, *vals)
+      self.vargs = (ctypes.c_void_p * 5)(1, ctypes.cast(ctypes.byref(self.c_args), ctypes.c_void_p), 2, ctypes.cast(ctypes.pointer(ctypes.c_size_t(ctypes.sizeof(self.c_args))), ctypes.c_void_p), 3)
+
+    for i in range(len(args)): self.c_args.__setattr__(f'f{i}', args[i])
+    for i in range(len(vals)): self.c_args.__setattr__(f'v{i}', vals[i])
+    if wait: check(hip.hipEventRecord(self.dev.time_event_st, None))
+    check(hip.hipModuleLaunchKernel(self.prg, *global_size, *local_size, 0, None, None, self.vargs))
+
+    if wait:
+      check(hip.hipEventRecord(self.dev.time_event_en, None))
+      check(hip.hipEventSynchronize(self.dev.time_event_en))
+      check(hip.hipEventElapsedTime(ctypes.byref(ret := ctypes.c_floaşt()), self.dev.time_event_st, self.dev.time_event_en))
+      return ret.value * 1e-3
+    
+  def __del__(self):
+    if hasattr(self, 'module'): check(hip.hipModuleUnload(self.module))
