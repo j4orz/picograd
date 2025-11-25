@@ -4,12 +4,27 @@ from typing import TYPE_CHECKING
 # from picograd.device import Allocator
 from picograd.op import OpCode
 if TYPE_CHECKING: from picograd.tensor import Tensor
+from math import exp, sin
+
+def f(x,y):
+  a = exp(x)\
+  b = sin(y)
+  c = b*y
+  d = a*c
+  return a*d
 
 def eval_uop(inputs, opcode) -> Tensor:
   """
   the eager evaluator is an embedded interpreter which override the semantics of the host language
   since inputs are values they need to be dynamically destructured
   TODO: dispatcher, registry?
+
+  householder convention:
+  scalars: α,β ∈ F
+  vectors: x,y,z ∈ V
+  matrices: A,B,C ∈ (V1 -> V2)
+
+  MOOSE: basically abstractions.py needs to go in here
   """
   match opcode:
     case OpCode.NEG: raise NotImplementedError("todo")
@@ -22,7 +37,13 @@ def eval_uop(inputs, opcode) -> Tensor:
     case OpCode.SIN: raise NotImplementedError("todo")
     case _: raise NotImplementedError(f"unsupported opcode {opcode!r}")
 
-def launch_add(A: Tensor, B: Tensor): raise NotImplementedError("")
+def launch_add(x: Tensor, y: Tensor):
+  raise NotImplementedError("")
+  # out = cpu.allocator.alloc(4)
+  # run_kernel("void kernel(int *out, int *a, int *b){ out[0]=a[0]+b[0]; }",
+  #                   out, self.buf, other.buf)
+  # raise NotImplementedError("")
+
 def launch_mul(A: Tensor, B: Tensor): raise NotImplementedError("")
 def launch_mm(A: Tensor, B: Tensor): raise NotImplementedError("")
   # if os.getenv("EAGER_NAIVE") == 1: # allocate/synchronize per op (no views)

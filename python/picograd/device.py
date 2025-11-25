@@ -1,14 +1,14 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Generic, Iterator, Sequence
+import functools
+from typing import Generic, Iterator, Sequence, TypeVar
 
 ALL_DEVICES = ["CPU", "CL", "HIP", "CUDA"]
+DeviceType = TypeVar('DeviceType', bound='Device')
 
 class Device:
   # profile_events:list[ProfileEvent] = [ProfileDeviceEvent("CPU")] # NOTE: CPU is the default device.
-
-  def __init__(self, device:str, allocator:Allocator, compilers:Sequence[CompilerPairT]|None,
-               runtime, graph=None, group_id=None):
+  def __init__(self, device:str, allocator:Allocator, compilers:Sequence[CompilerPairT]|None, runtime, graph=None, group_id=None):
     self.device, self.allocator, self.runtime = device, allocator, runtime
     self.graph, self.group_id = graph, group_id
     self.compilers = cast(list[CompilerPairT], compilers or [(Renderer, Compiler)])
@@ -38,40 +38,7 @@ class Device:
     # def _at_profile_finalize(self): # override this in your device implementation
     # def finalize(self): # override this in your device implementation
 
-# **************** Compilers ****************
-
-class Compiler:
-  def __init__(self, cachekey:str|None=None): self.cachekey = None if DISABLE_COMPILER_CACHE else cachekey
-  def compile(self, src:str) -> bytes: return src.encode()   # NOTE: empty compiler is the default
-  def compile_cached(self, src:str) -> bytes:
-    if self.cachekey is None or (lib := diskcache_get(self.cachekey, src)) is None:
-      assert not getenv("ASSERT_COMPILE"), f"tried to compile with ASSERT_COMPILE set\n{src}"
-      lib = self.compile(src)
-      if self.cachekey is not None: diskcache_put(self.cachekey, src, lib)
-    return lib
-  def disassemble(self, lib:bytes): pass
-  def __init__(self): raise NotImplementedError("todo")
-
-# **************** Host Allocator, Device Buffers ****************
-
-# TODO: size, dest, src are the same type. can we enforce this?
-class Allocator(Generic[DeviceType]):
-  def __init__(self, dev:DeviceType):
-    self.dev: DeviceType = dev
-    self.default_buffer_spec: BufferSpec = BufferSpec()
-    self.supports_copy_from_disk: bool = True
-  # overridden in LRUAllocator
-  def alloc(self, size:int, options:BufferSpec|None=None):
-    assert size > 0, f"alloc size must be positive, getting {size}"
-    return self._alloc(size, options if options is not None else self.default_buffer_spec)
-  def free(self, opaque, size:int, options:BufferSpec|None=None):
-    self._free(opaque, options if options is not None else self.default_buffer_spec)
-
-  # implemented by the runtime
-  def _alloc(self, size:int, options:BufferSpec): raise NotImplementedError("need alloc")
-  def _free(self, opaque, options:BufferSpec): pass  # if opaque is a Python object, you don't need a free
-  def _copyin(self, dest, src:memoryview): raise NotImplementedError("need copyin")
-  def _copyout(self, dest:memoryview, src): raise NotImplementedError("need copyout")
+# **************** Allocator ****************
 
 @dataclass(frozen=True, eq=True)
 class BufferSpec:
@@ -194,3 +161,60 @@ class Buffer:
     assert offset < self.nbytes, "offset must be less than nbytes"
     if self._base is not None: return Buffer(self.device, size, dtype, base=self._base, offset=self.offset+offset)
     return Buffer(self.device, size, dtype, base=self, offset=offset)
+
+# TODO: size, dest, src are the same type. can we enforce this?
+class Allocator(Generic[DeviceType]):
+  def __init__(self, dev:DeviceType):
+    self.dev: DeviceType = dev
+    self.default_buffer_spec: BufferSpec = BufferSpec()
+    self.supports_copy_from_disk: bool = True
+  # overridden in LRUAllocator
+  def alloc(self, size:int, options:BufferSpec|None=None):
+    assert size > 0, f"alloc size must be positive, getting {size}"
+    return self._alloc(size, options if options is not None else self.default_buffer_spec)
+  def free(self, opaque, size:int, options:BufferSpec|None=None):
+    self._free(opaque, options if options is not None else self.default_buffer_spec)
+
+  # implemented by the runtime
+  def _alloc(self, size:int, options:BufferSpec): raise NotImplementedError("need alloc")
+  def _free(self, opaque, options:BufferSpec): pass  # if opaque is a Python object, you don't need a free
+  def _copyin(self, dest, src:memoryview): raise NotImplementedError("need copyin")
+  def _copyout(self, dest:memoryview, src): raise NotImplementedError("need copyout")
+
+class LRUAllocator(Allocator, Generic[DeviceType]):
+  """
+  The LRU Allocator is responsible for caching buffers.
+  It ensures that buffers are not freed until it is absolutely necessary, optimizing performance.
+  """
+  def __init__(self, dev:DeviceType):
+    self.cache: dict[tuple[int, BufferSpec|None], Any] = defaultdict(list)
+    super().__init__(dev)
+  def alloc(self, size:int, options:BufferSpec|None=None):
+    if len(c := self.cache[(size, options)]): return c.pop()
+    try: return super().alloc(size, options)
+    except (RuntimeError, MemoryError):
+      self.free_cache()
+      return super().alloc(size, options)
+  def free_cache(self):
+    for (sz,options),opaques in self.cache.items():
+      for opaque in opaques: super().free(opaque, sz, options)
+      opaques.clear()
+  def free(self, opaque:Any, size:int, options:BufferSpec|None=None):
+    if LRU and (options is None or not options.nolru): self.cache[(size, options)].append(opaque)
+    else: super().free(opaque, size, options)
+
+# **************** Compilers ****************
+
+class Compiler:
+  def __init__(self, cachekey:str|None=None): self.cachekey = None if DISABLE_COMPILER_CACHE else cachekey
+  def compile(self, src:str) -> bytes: return src.encode()   # NOTE: empty compiler is the default
+  # def compile_cached(self, src:str) -> bytes:
+  #   if self.cachekey is None or (lib := diskcache_get(self.cachekey, src)) is None:
+  #     assert not getenv("ASSERT_COMPILE"), f"tried to compile with ASSERT_COMPILE set\n{src}"
+  #     lib = self.compile(src)
+  #     if self.cachekey is not None: diskcache_put(self.cachekey, src, lib)
+  #   return lib
+  def disassemble(self, lib:bytes): pass
+
+class CompileError(Exception): pass
+CompilerPairT = tuple[functools.partial|type[Renderer], functools.partial|type[Compiler]]

@@ -70,24 +70,23 @@ class Tensor(): #(ComputeMixin): # , MovementMixin):
 
   TODO:
   - tensor with ComputeMixin and MovementMixin...
-  
-  picograd's forward passes follow the architecture of classic numerical computing
-  which separate concerns into levels 1,2,3 like LAPACK/BLAS
-    2. (DNN)   provides high level mathematical primitives
-  0/1. (BLAS)  provides performance primitives
-   -1. (DATA)  provides the foundational multi-dimensional array data structure
-      the semantics of k in level k has *three* meanings in of itself
-        1. publish order of BLAS
-        2. algorithmic complexity in naive implementation (n -> n^k)
-        3. ptoential of data reuse, loop fusion, parallelism
-        for more details refer to (Dodson, Lewis 1985) https://dl.acm.org/doi/pdf/10.1145/1057935.1057937
-                         and https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms#Functionality
+  picograd's follows the layered architecture of classic numerical computing
+    2. (picograd.nn)         provides 
+    1. (LINPACK/EISPACK)     provides linear systems, least squares, and eigenvalue problems
+    0. (BLAS)                provides performance primitives that require knowledge of microarchitecture
+                                1. vector-vector
+                                2. vector-matrix
+                                3. matrix-matrix
+   -1. (DATA)                provides the foundational multi-dimensional array data structure
   """
 
-  # ************ Tensor Data ************
-  def __init__(self):
-    self.shape, self.stride = [], []
   __slots__ = "uop", "requires_grad", "grad"
+  def __init__(self):
+    # MOOOSE: allocate *data* for evaluator to *operate* on
+    self.shape, self.stride = [], []
+
+
+  # ************ Tensor Data ************
   def data(self): raise NotImplementedError("todo")
   def item(self): raise NotImplementedError("todo")
   def to(self, device:str|tuple[str, ...]|None) -> Tensor: raise NotImplementedError("todo")
