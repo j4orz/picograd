@@ -14,7 +14,6 @@ dynamic = ["version"]
 dependencies = [
     "gpuctypes>=0.3.0",
     "maturin>=1.9.5",
-    "triton>=3.4.0",
 ]
 [tool.maturin]
 features = ["pyo3/extension-module"]
@@ -27,19 +26,6 @@ module-name = "picograd._pgrs"
 members = [
     "examples",
 ]
-
-[[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
-
-[[tool.uv.index]]
-url = "https://pypi.org/simple"
-
-[[tool.uv.index]]
-url = "https://test.pypi.org/simple"
-
-[tool.uv.sources]
-triton = { index = "pytorch-cu128" }
 
 [dependency-groups]
 dev = [
