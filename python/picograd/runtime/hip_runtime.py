@@ -10,15 +10,23 @@ def check(status):
 # **************** Runtime: Host Allocators + Device Compilers ****************
 class HIPDevice(Runtime):
   """
-  picograd's hip runtime is a thin shim (this file is ~100loc) over vendor provided and implemented hip runtime api
-  which stands in contrast to custom implemented tinygrad hardware command queue runtimes
-  enabling features like egpu over usb, a valuable feature to applications such as comma's self driving via openpilot
+  picograd's hip runtime is a thin shim (this file is ~100loc) over vendor provided and implemented
+  1. hip runtime api (accessed through tinygrad/gpuctypes, generated via trolldbois/ctypeslib)
+      tinygrad/gpuctypes: https://github.com/tinygrad/gpuctypes
+      trolldbois/ctypeslib: https://github.com/trolldbois/ctypeslib
 
-  for more information, see:
-    1. hip runtime api reference https://rocm.docs.amd.com/projects/HIP/en/latest/reference/hip_runtime_api_reference.html
-    2. hip runtime api header https://github.com/ROCm/rocm-systems/blob/develop/projects/hip/include/hip/hip_runtime_api.h
-    3. hip runtime api implementation ("compute language runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/clr 
-    4. hsa runtime (driven by kernel drivers "rocr runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/rocr-runtime
+      see:
+      a. hip runtime api reference https://rocm.docs.amd.com/projects/HIP/en/latest/reference/hip_runtime_api_reference.html
+      b. hip runtime api header https://github.com/ROCm/rocm-systems/blob/develop/projects/hip/include/hip/hip_runtime_api.h
+      c. hip runtime source ("compute language runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/clr 
+      d. hsa runtime (driven by kernel drivers "rocr runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/rocr-runtime
+  2. the hipcc compiler driver (which in turn, calls clang or nvcc)
+      see:
+      a. hipcc documentation https://rocm.docs.amd.com/projects/HIPCC/en/latest/index.html
+      b. hipcc source https://github.com/ROCm/llvm-project/tree/amd-staging/amd/hipcc
+
+  picograd's hip runtime stands in contrast to custom implemented tinygrad hardware command queue runtimes
+  enabling features like egpu over usb, a valuable feature to applications such as comma's self driving via openpilot
   """
   def __init__(self, device:str=""):
     self.device_id = int(device.split(":")[1]) if ":" in device else 0

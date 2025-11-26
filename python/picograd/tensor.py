@@ -42,42 +42,12 @@ chain_rules = PatternMatcher([
   # (Patttern(OpCode.BITCAST), lambda: (None,)),
 ])
 
-class Tensor(): #(ComputeMixin): # , MovementMixin):
+class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMixin):
   """
-  picograd follows chainer/autograd/pt1 which takes the numpy ndarray and adds
-    - gpu acceleration to forward kernels with .forward()
-    - and automatic differentiation with backward kernels with .backward()
-
-  like pt1, picograd's forward passes for the tensor object decompose (desugar) methods into a more primitive set of ops.
-  the exact decomposition and intermediate representation is taken directly from tinygrad's RISC-y opset of element ops, reduce ops, and movement ops.
-  when evaluating the model, a graph of those decomposed ops will be traced dynamically at runtime (as opposed to just-in-time source to source transform like autograd/jax),
-  which then serves as the data structure for automatic differentiation to apply backpropagation and route gradients throughout the graph
-
-  with the advent of transformers and tensor cores, many workloads move from compute-bound/framework-bound to memory-bound
-  bc they bottleneck on the data movement of non-tensor computations.
-  see Data Movment is All You Need (Ivanovet et al. https://proceedings.mlsys.org/paper_files/paper/2021/file/bc86e95606a6392f51f95a8de106728d-Paper.pdf)
-  picograd follows pt2/jax/tinygrad which modify the language implementation strategy from eager interpretation to just-in-time/lazy compilation
-  in order to obtain a global view of the computational graph, and to apply optimizations; the primary one being fusion.
-  specifically, picograd follows tinygrad (and torch/xla and swift for tensorflow) with lazy graph capture, see (Suhan et al. https://arxiv.org/abs/2102.13267)
-  and modifying the semantics of the programming model where users must explicitly materialize data with .realize(),
-  as opposed to pt2 which maintains the eager programming model surface via graph capture at the host-language level (python bytecode interception)
-  see (Ansel et al. https://docs.pytorch.org/assets/pytorch2-2.pdf)
-  
-  so all tensor methods funnel through ._forward(), whose semantics depend on
-  whether eager mode or graph mode is respectively set with EAGER=1 or GRAPH=1
-  with EAGER=1, ._forward() will build up the expression graph (for backprop) but perform kernel dispatch and tensor materialization immediately 
-  with GRAPH=1, ._forward() will lazily build up the graph and user's must initiate computation with a .realize() barrier (like torch_xla.sync())
-
-  TODO:
-  - tensor with ComputeMixin and MovementMixin...
-  picograd's follows the layered architecture of classic numerical computing
-    2. (picograd.nn)         provides 
-    1. (LINPACK/EISPACK)     provides linear systems, least squares, and eigenvalue problems
-    0. (BLAS)                provides performance primitives that require knowledge of microarchitecture
-                                1. vector-vector
-                                2. vector-matrix
-                                3. matrix-matrix
-   -1. (DATA)                provides the foundational multi-dimensional array data structure
+  the Tensor class is ndarray domain specific language dual to the heterogenous Runtime
+  all tensor methods funnel through ._forward(), whose semantics depend on whether eager mode or graph mode is respectively set with EAGER=1 or GRAPH=1
+    - with EAGER=1, ._forward() will build up the expression graph (for backprop) but perform kernel dispatch and tensor materialization immediately 
+    - with GRAPH=1, ._forward() will lazily build up the graph and user's must initiate computation with a .realize() barrier (like torch_xla.sync())
   """
 
   __slots__ = "uop", "requires_grad", "grad"
