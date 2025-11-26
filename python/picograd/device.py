@@ -8,54 +8,10 @@ from picograd.dtype import DType, PtrDType
 from picograd.engine.compiler import Renderer
 from picograd.helpers import DEBUG, LRU, getenv, select_first_inited, unwrap_class_type
 
-ALL_DEVICES = ["CPU", "CL", "HIP", "CUDA"]
+ALL_DEVICES = ["CPU", "HIP", "CUDA"]
 DeviceType = TypeVar('DeviceType', bound='Runtime')
 
 # **************** Host Memory Allocation ****************
-# TODO: size, dest, src are the same type. can we enforce this?
-class Allocator(Generic[DeviceType]):
-  def __init__(self, dev:DeviceType):
-    self.dev: DeviceType = dev
-    self.default_buffer_spec: BufferSpec = BufferSpec()
-    self.supports_copy_from_disk: bool = True
-  # overridden in LRUAllocator
-  def alloc(self, size:int, options:BufferSpec|None=None):
-    assert size > 0, f"alloc size must be positive, getting {size}"
-    return self._alloc(size, options if options is not None else self.default_buffer_spec)
-  def free(self, opaque, size:int, options:BufferSpec|None=None):
-    self._free(opaque, options if options is not None else self.default_buffer_spec)
-
-  # implemented by the runtime
-  def _alloc(self, size:int, options:BufferSpec): raise NotImplementedError("need alloc")
-  def _free(self, opaque, options:BufferSpec): pass  # if opaque is a Python object, you don't need a free
-  def _copyin(self, dest, src:memoryview): raise NotImplementedError("need copyin")
-  def _copyout(self, dest:memoryview, src): raise NotImplementedError("need copyout")
-  # def _as_buffer(self, src) -> memoryview:
-  # def _offset(self, buf, size:int, offset:int):
-  # def _transfer(self, dest, src, sz:int, src_dev, dest_dev):
-
-class LRUAllocator(Allocator, Generic[DeviceType]):
-  """
-  The LRU Allocator is responsible for caching buffers.
-  It ensures that buffers are not freed until it is absolutely necessary, optimizing performance.
-  """
-  def __init__(self, dev:DeviceType):
-    self.cache: dict[tuple[int, BufferSpec|None], Any] = defaultdict(list)
-    super().__init__(dev)
-  def alloc(self, size:int, options:BufferSpec|None=None):
-    if len(c := self.cache[(size, options)]): return c.pop()
-    try: return super().alloc(size, options)
-    except (RuntimeError, MemoryError):
-      self.free_cache()
-      return super().alloc(size, options)
-  def free_cache(self):
-    for (sz,options),opaques in self.cache.items():
-      for opaque in opaques: super().free(opaque, sz, options)
-      opaques.clear()
-  def free(self, opaque:Any, size:int, options:BufferSpec|None=None):
-    if LRU and (options is None or not options.nolru): self.cache[(size, options)].append(opaque)
-    else: super().free(opaque, size, options)
-
 @dataclass(frozen=True, eq=True)
 class BufferSpec:
   # TODO: move device, size, dtype here?
@@ -85,6 +41,34 @@ class Buffer:
       assert device == base.device, "base must have the same device"
       self._base = base
     if preallocate: self.allocate()
+
+# TODO: size, dest, src are the same type. can we enforce this?
+class Allocator(Generic[DeviceType]):
+  """
+  moose
+  """
+  def __init__(self, dev:DeviceType):
+    self.dev: DeviceType = dev
+    self.default_buffer_spec: BufferSpec = BufferSpec()
+    self.supports_copy_from_disk: bool = True
+  # overridden in LRUAllocator
+  def alloc(self, size:int, options:BufferSpec|None=None):
+    assert size > 0, f"alloc size must be positive, getting {size}"
+    return self._alloc(size, options if options is not None else self.default_buffer_spec)
+  def free(self, opaque, size:int, options:BufferSpec|None=None):
+    self._free(opaque, options if options is not None else self.default_buffer_spec)
+
+  # implemented by the runtime
+  def _alloc(self, size:int, options:BufferSpec): raise NotImplementedError("need alloc")
+  def _free(self, opaque, options:BufferSpec): pass  # if opaque is a Python object, you don't need a free
+  def _copyin(self, dest, src:memoryview): raise NotImplementedError("need copyin")
+  def _copyout(self, dest:memoryview, src): raise NotImplementedError("need copyout")
+  # def _as_buffer(self, src) -> memoryview:
+  # def _offset(self, buf, size:int, offset:int):
+  # def _transfer(self, dest, src, sz:int, src_dev, dest_dev):
+
+# TODO: picograd lru buffer cache
+# class LRUAllocator(Allocator, Generic[DeviceType]):
 
 # **************** Device Compute Compilation ****************
 
