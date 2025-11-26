@@ -1,9 +1,16 @@
-import platform
-import sys
-import time, ctypes, subprocess
+import functools, platform, sys, os, time, ctypes, subprocess
+from typing import overload
 
-# DEBUG = ContextVar("DEBUG", 0)
+DEBUG = 0 # ContextVar("DEBUG", 0)
 OSX, WIN = platform.system() == "Darwin", sys.platform == "win32"
+LRU = 1 # ContextVar("LRU", 1)
+
+@overload
+def getenv(key:str) -> int: ...
+@overload
+def getenv(key:str, default:T) -> T: ...
+@functools.cache
+def getenv(key:str, default:Any=0): return type(default)(os.getenv(key, default))
 
 def init_c_struct_t(fields: tuple[tuple[str, type[ctypes._SimpleCData]], ...]):
   class CStruct(ctypes.Structure):
@@ -11,6 +18,7 @@ def init_c_struct_t(fields: tuple[tuple[str, type[ctypes._SimpleCData]], ...]):
   return CStruct
 def init_c_var(ctypes_var, creat_cb): return (creat_cb(ctypes_var), ctypes_var)[1]
 def mv_address(mv): return ctypes.addressof(ctypes.c_char.from_buffer(mv))
+def unwrap_class_type(cls_t): return cls_t.func if isinstance(cls_t, functools.partial) else cls_t
 
 def system(cmd:str, **kwargs) -> str:
   st = time.perf_counter()
@@ -18,3 +26,10 @@ def system(cmd:str, **kwargs) -> str:
   # if DEBUG >= 1: print(f"system: '{cmd}' returned {len(ret)} bytes in {(time.perf_counter() - st)*1e3:.2f} ms")
   print(f"system: '{cmd}' returned {len(ret)} bytes in {(time.perf_counter() - st)*1e3:.2f} ms")
   return ret
+
+def select_first_inited(candidates:Sequence[Callable[...,T]|Sequence[Callable[...,T]]], err_msg: str) -> tuple[T,...]|T:
+  excs = []
+  for typ in candidates:
+    try: return tuple([cast(Callable, t)() for t in typ]) if isinstance(typ, Sequence) else cast(Callable, typ)()
+    except Exception as e: excs.append(e)
+  raise ExceptionGroup(err_msg, excs)

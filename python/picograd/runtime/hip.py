@@ -1,20 +1,20 @@
 import functools, ctypes, tempfile, subprocess, pathlib, hashlib
 import gpuctypes.hip as hip
 from picograd.helpers import OSX, init_c_struct_t, init_c_var, mv_address, system
-from picograd.device import BufferSpec, CompileError, Compiler, Device, LLVMCompiler, LRUAllocator
+from picograd.device import BufferSpec, CompileError, Compiler, LRUAllocator, Runtime
 # from picograd.runtime.cpu import LLVMCompiler
 
 def check(status):
   if status != 0: raise RuntimeError(f"HIP Error {status}, {ctypes.string_at(hip.hipGetErrorString(status)).decode()}")
 
-# **************** Device ****************
-class HIPDevice(Device):
+# **************** Runtime: Host Allocators + Device Compilers ****************
+class HIPDevice(Runtime):
   def __init__(self, device:str=""):
     self.device_id = int(device.split(":")[1]) if ":" in device else 0
     self.arch = init_c_var(hip.hipDeviceProp_t(), lambda x: check(hip.hipGetDeviceProperties(x, self.device_id))).gcnArchName.decode()
     self.time_event_st, self.time_event_en = [init_c_var(hip.hipEvent_t(), lambda x: hip.hipEventCreate(ctypes.byref(x), 0)) for _ in range(2)]
 
-    compilers = [(functools.partial(HIPCompiler, self.arch))] # compilers = [(functools.partial(HIPRenderer, self.arch), functools.partial(HIPCompiler, self.arch))]
+    compilers = [(functools.partial(HIPRenderer, self.arch), functools.partial(HIPCompiler, self.arch))]
     super().__init__(device, HIPAllocator(self), compilers, functools.partial(HIPKernel, self))
 
   def synchronize(self):
@@ -23,12 +23,11 @@ class HIPDevice(Device):
 
 
 
-# **************** Compilers ****************
+# **************** Device Compute Compilation ****************
 def amdgpu_disassemble(lib:bytes):
   asm = system(f"{'/opt/homebrew/opt/llvm/bin/llvm-objdump' if OSX else '/opt/rocm/llvm/bin/llvm-objdump'} -d -", input=lib).splitlines()
   while asm and ("s_nop 0" in asm[-1] or "s_code_end" in asm[-1]): asm.pop()
   print("\n".join(asm))
-
 
 # AMD_COMGR_SAVE_TEMPS=1 AMD_COMGR_REDIRECT_LOGS=stdout AMD_COMGR_EMIT_VERBOSE_LOGS=1
 def compile_hip(prg:str, arch="gfx1100", asm=False) -> bytes:
@@ -103,23 +102,23 @@ class HIPCCCompiler(Compiler):
         return pathlib.Path(libf.name).read_bytes()
   def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
 
-class AMDLLVMCompiler(LLVMCompiler):
-  jit = False
-  target_arch = "AMDGPU"
-  def __init__(self, arch: str):
-    self.arch = arch
-    super().__init__(self.arch, "+cumode")
-  def __reduce__(self): return (AMDLLVMCompiler, (self.arch,))
-  def compile(self, src:str) -> bytes:
-    try: return super().compile(src)
-    except RuntimeError as e:
-      if "undefined value '@llvm.amdgcn." in str(e): raise CompileError(str(e) + "AMD with LLVM backend requires LLVM >= 18") from e
-      raise CompileError(e) from e
-  def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
+# TODO (picograd amdllvmcompiler) class AMDLLVMCompiler(LLVMCompiler):
+#   jit = False
+#   target_arch = "AMDGPU"
+#   def __init__(self, arch: str):
+#     self.arch = arch
+#     super().__init__(self.arch, "+cumode")
+#   def __reduce__(self): return (AMDLLVMCompiler, (self.arch,))
+#   def compile(self, src:str) -> bytes:
+#     try: return super().compile(src)
+#     except RuntimeError as e:
+#       if "undefined value '@llvm.amdgcn." in str(e): raise CompileError(str(e) + "AMD with LLVM backend requires LLVM >= 18") from e
+#       raise CompileError(e) from e
+#   def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
 
 
 
-# **************** Host Allocator & Device Kernels ****************
+# **************** Host Memory Allocation ****************
 class HIPAllocator(LRUAllocator[HIPDevice]):
   def _alloc(self, size:int, options:BufferSpec):
     check(hip.hipSetDevice(self.dev.device_id))
