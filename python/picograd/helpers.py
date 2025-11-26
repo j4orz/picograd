@@ -19,6 +19,9 @@ def init_c_struct_t(fields: tuple[tuple[str, type[ctypes._SimpleCData]], ...]):
 def init_c_var(ctypes_var, creat_cb): return (creat_cb(ctypes_var), ctypes_var)[1]
 def mv_address(mv): return ctypes.addressof(ctypes.c_char.from_buffer(mv))
 def unwrap_class_type(cls_t): return cls_t.func if isinstance(cls_t, functools.partial) else cls_t
+def colored(st, color:str|None, background=False): # replace the termcolor library
+  colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white']
+  return f"\u001b[{10*background+60*(color.upper() == color)+30+colors.index(color.lower())}m{st}\u001b[0m" if color is not None else st
 
 def system(cmd:str, **kwargs) -> str:
   st = time.perf_counter()
@@ -33,3 +36,10 @@ def select_first_inited(candidates:Sequence[Callable[...,T]|Sequence[Callable[..
     try: return tuple([cast(Callable, t)() for t in typ]) if isinstance(typ, Sequence) else cast(Callable, typ)()
     except Exception as e: excs.append(e)
   raise ExceptionGroup(err_msg, excs)
+
+def suppress_finalizing(func):
+  def wrapper(*args, **kwargs):
+    try: return func(*args, **kwargs)
+    except (RuntimeError, AttributeError, TypeError, ImportError):
+      if not getattr(sys, 'is_finalizing', lambda: True)(): raise # re-raise if not finalizing
+  return wrapper

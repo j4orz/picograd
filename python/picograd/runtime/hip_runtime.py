@@ -1,4 +1,4 @@
-import functools, ctypes, tempfile, subprocess, pathlib, hashlib
+import functools, ctypes, pathlib, hashlib, tempfile, subprocess
 import gpuctypes.hip as hip
 from picograd.helpers import OSX, init_c_struct_t, init_c_var, mv_address, system
 from picograd.device import Allocator, BufferSpec, CompileError, Compiler, LRUAllocator, Runtime
@@ -10,12 +10,20 @@ def check(status):
 # **************** Runtime: Host Allocators + Device Compilers ****************
 class HIPDevice(Runtime):
   """
-  moose:
+  picograd's hip runtime is a thin shim (this file is ~100loc) over vendor provided and implemented hip runtime api
+  which stands in contrast to custom implemented tinygrad hardware command queue runtimes
+  enabling features like egpu over usb, a valuable feature to applications such as comma's self driving via openpilot
+
+  for more information, see:
+    1. hip runtime api reference https://rocm.docs.amd.com/projects/HIP/en/latest/reference/hip_runtime_api_reference.html
+    2. hip runtime api header https://github.com/ROCm/rocm-systems/blob/develop/projects/hip/include/hip/hip_runtime_api.h
+    3. hip runtime api implementation ("compute language runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/clr 
+    4. hsa runtime (driven by kernel drivers "rocr runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/rocr-runtime
   """
   def __init__(self, device:str=""):
     self.device_id = int(device.split(":")[1]) if ":" in device else 0
     self.arch = init_c_var(hip.hipDeviceProp_t(), lambda x: check(hip.hipGetDeviceProperties(x, self.device_id))).gcnArchName.decode()
-    self.time_event_st, self.time_event_en = [init_c_var(hip.hipEvent_t(), lambda x: hip.hipEventCreate(ctypes.byref(x), 0)) for _ in range(2)]
+    # TODO (picograd profiling) self.time_event_st, self.time_event_en = [init_c_var(hip.hipEvent_t(), lambda x: hip.hipEventCreate(ctypes.byref(x), 0)) for _ in range(2)]
 
     compilers = [(functools.partial(HIPRenderer, self.arch), functools.partial(HIPCCCompiler, self.arch))] # MOOSE: renderer, fusion compiler pipeline
     super().__init__(device, HIPAllocator(self), compilers, functools.partial(HIPKernel, self))
@@ -40,7 +48,7 @@ class HIPAllocator(Allocator[HIPDevice]):
     self.dev.synchronize()
     check(hip.hipMemcpy(mv_address(dest), src, len(dest), hip.hipMemcpyDeviceToHost))
 
-# **************** Device Compute Compilation ****************
+# **************** Device Kernel Compilation ****************
 class HIPKernel:
   """
   moose:
@@ -59,14 +67,14 @@ class HIPKernel:
 
     for i in range(len(args)): self.c_args.__setattr__(f'f{i}', args[i])
     for i in range(len(vals)): self.c_args.__setattr__(f'v{i}', vals[i])
-    if wait: check(hip.hipEventRecord(self.dev.time_event_st, None))
+    # if wait: check(hip.hipEventRecord(self.dev.time_event_st, None))
     check(hip.hipModuleLaunchKernel(self.prg, *global_size, *local_size, 0, None, None, self.vargs))
 
-    if wait:
-      check(hip.hipEventRecord(self.dev.time_event_en, None))
-      check(hip.hipEventSynchronize(self.dev.time_event_en))
-      check(hip.hipEventElapsedTime(ctypes.byref(ret := ctypes.c_floaşt()), self.dev.time_event_st, self.dev.time_event_en))
-      return ret.value * 1e-3
+    # if wait:
+    #   check(hip.hipEventRecord(self.dev.time_event_en, None))
+    #   check(hip.hipEventSynchronize(self.dev.time_event_en))
+    #   check(hip.hipEventElapsedTime(ctypes.byref(ret := ctypes.c_floaşt()), self.dev.time_event_st, self.dev.time_event_en))
+    #   return ret.value * 1e-3
     
   def __del__(self):
     if hasattr(self, 'module'): check(hip.hipModuleUnload(self.module))
@@ -96,7 +104,6 @@ class HIPCCCompiler(Compiler):
   def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
 
 # TODO (picograd amdllvmcompiler) class AMDLLVMCompiler(LLVMCompiler):
-
 def amdgpu_disassemble(lib:bytes):
   asm = system(f"{'/opt/homebrew/opt/llvm/bin/llvm-objdump' if OSX else '/opt/rocm/llvm/bin/llvm-objdump'} -d -", input=lib).splitlines()
   while asm and ("s_nop 0" in asm[-1] or "s_code_end" in asm[-1]): asm.pop()
