@@ -16,10 +16,10 @@ for more details on the usage of each layer of abstraction, see examples/abstrac
 """
 
 print("picograd: a bridge from micrograd to tinygrad")
-from . import optim
-from . import nn
-from .tensor import Tensor
-from .device import Runtime
+from .frontend import optim
+from .frontend import nn
+from .frontend.tensor import Tensor
+from .runtime.device import Runtime
 __all__ = ["Runtime", "Tensor", "nn", "optim"]
 
 from importlib import import_module as _import_module

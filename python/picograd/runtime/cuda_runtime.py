@@ -2,7 +2,7 @@ from __future__ import annotations
 import re
 import functools, ctypes, hashlib, pathlib, subprocess, tempfile
 import gpuctypes.hip as cuda
-from picograd.device import Allocator, BufferSpec, Compiler, CompilerPairT, Runtime
+from picograd.runtime.device import Allocator, BufferSpec, Compiler, CompilerPairT, Runtime
 from picograd.helpers import DEBUG, colored, init_c_struct_t, init_c_var, mv_address, suppress_finalizing, system
 
 # **************** Python/C Foreign Function Helpers  ****************

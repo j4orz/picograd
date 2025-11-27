@@ -1,5 +1,6 @@
 import picograd as pg
-from picograd import StridedTensor, nn
+from picograd import StridedTensor
+from picograd.frontend import nn
 # import matplotlib.pyplot as plt
 
 # ------------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import functools, ctypes, pathlib, hashlib, tempfile, subprocess
 import gpuctypes.hip as hip
 from picograd.helpers import DEBUG, OSX, system
-from picograd.device import Allocator, BufferSpec, CompileError, Compiler, LRUAllocator, Runtime
+from picograd.runtime.device import Allocator, BufferSpec, CompileError, Compiler, LRUAllocator, Runtime
 # from picograd.runtime.cpu import LLVMCompiler
 
 # **************** Python/C Foreign Function Helpers  ****************

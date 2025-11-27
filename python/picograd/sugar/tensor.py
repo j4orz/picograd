@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Callable, cast
 import math, os, weakref
 from picograd.dtype import DType
-from picograd.op import sint, Op, OpCode, Pattern, PatternMatcher
+from picograd.engine.op import sint, Op, OpCode, Pattern, PatternMatcher
 from picograd.engine import evaluator
 # from picograd.mixins import ComputeMixin
 # from . import _pgrs
@@ -95,7 +95,7 @@ class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMix
 
     # 1. topological sort ordering is NP-complete?????????? <--------------------------- MOOOOOOOOOOOOOOOOOOSEEEEEE
     in_target_path: dict[Op, bool] = {}
-    for u in root.toposort(): in_target_path[u] = any(x in targets or in_target_path[x] for x in u.src)
+    for u in root.toposort(): in_target_path[u] = any(x in targets or in_target_path[x] for x in u.inputs)
     dfs = list(root.toposort()) # lambda node: node.op not in {OpCode.DETACH, OpCode.ASSIGN} and in_target_path[node])) # don't flow through DETACH/ASSIGN or anything not in target path
 
     # 2. backpropagation with the chain rule
@@ -104,9 +104,9 @@ class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMix
 
       local_grads: tuple[Op|None, ...]|None = cast(tuple[Op, ...]|None, chain_rules.rewrite(tensor, ctx=tens2grads[tensor]))
       if local_grads is None: raise RuntimeError(f"failed to compute gradient for {tensor.op}\n\nin {str(tensor)[0:1000]}...")
-      assert len(local_grads) == len(tensor.src), f"got {len(local_grads)} gradient, expected {len(tensor.src)}"
+      assert len(local_grads) == len(tensor.inputs), f"got {len(local_grads)} gradient, expected {len(tensor.inputs)}"
 
-      for tensor,local_grad in zip(tensor.src, local_grads): # <--------------------- MOOOSE: why are we accumulating inside ad()? don't we do it in backward()??
+      for tensor,local_grad in zip(tensor.inputs, local_grads): # <--------------------- MOOOSE: why are we accumulating inside ad()? don't we do it in backward()??
         if local_grad is None: continue
         if tensor in tens2grads: tens2grads[tensor] = tens2grads[tensor] + local_grad # accumulate if tensor exists
         else: tens2grads[tensor] = local_grad # o/w initialize

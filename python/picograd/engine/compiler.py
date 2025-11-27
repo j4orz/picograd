@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from picograd.dtype import DType
-from picograd.op import Op, OpCode, PatternMatcher
+from picograd.engine.op import Op, OpCode, PatternMatcher
 
 @dataclass(frozen=True)
 class TensorCore: # D = A * B + C, A is (M x K), B is (K x N), C and D are (M x N)
