@@ -1,12 +1,11 @@
 from __future__ import annotations
 from typing import Any, Generic, Sequence, Iterator, TypeVar, cast
-import functools
+import functools, ctypes
 from dataclasses import dataclass
 from collections import defaultdict
-
 from picograd.dtype import DType, PtrDType
 from picograd.engine.compiler import Renderer
-from picograd.helpers import DEBUG, LRU, getenv, select_first_inited, unwrap_class_type
+from picograd.helpers import DEBUG, LRU, getenv, select_first_inited
 
 ALL_DEVICES = ["CPU", "HIP", "CUDA"]
 DeviceType = TypeVar('DeviceType', bound='Runtime')
@@ -18,8 +17,16 @@ class Runtime:
   picograd's runtime implementations will subclass Runtime to provide memory and compute management used by both interpreter(pt1) and compiler(pt2) pipelines
   - Buffer Allocator
   - Kernel Compiler
+
+  python/c ffi
+  - differences for the same language feature
+  - differences in semantic level
   """
   # TODO (picograd profiling): profile_events:list[ProfileEvent] = [ProfileDeviceEvent("CPU")] # NOTE: CPU is the default device.
+
+  def _get_compiler_envvar(self, c):
+    compiler_name = f"{unwrap_class_type(c).__name__.upper().removesuffix('COMPILER').removeprefix(devname:=self.device.split(':')[0].upper())}"
+    return f"{devname}_{compiler_name if len(compiler_name) > 0 else unwrap_class_type(c).__name__.upper()}"
 
   def __init__(self, device:str, allocator:Allocator, compilers:Sequence[CompilerPairT]|None, kernel, graph=None, group_id=None):
     self.device, self.allocator, self.kernel, self.graph, self.group_id = device, allocator, kernel, graph, group_id
@@ -36,10 +43,6 @@ class Runtime:
                                                        f"No compiler for {self.device} is available")
 
     if DEBUG >= 1: print(f"{self.device}: using {self.compiler.__class__.__name__}")
-
-  def _get_compiler_envvar(self, c):
-    compiler_name = f"{unwrap_class_type(c).__name__.upper().removesuffix('COMPILER').removeprefix(devname:=self.device.split(':')[0].upper())}"
-    return f"{devname}_{compiler_name if len(compiler_name) > 0 else unwrap_class_type(c).__name__.upper()}"
 
   def synchronize(self):
     """
@@ -71,7 +74,7 @@ class BufferSpec:
 
 class Buffer:
   """
-  moose
+  ...
   """
   def __init__(self, device:str, size:int, dtype:DType, opaque:Any=None, options:BufferSpec|None=None, initial_value:bytes|None=None,
                uop_refcount=0, base:Buffer|None=None, offset:int=0, preallocate=False):
@@ -96,7 +99,7 @@ class Buffer:
 # TODO: size, dest, src are the same type. can we enforce this?
 class Allocator(Generic[DeviceType]):
   """
-  moose
+  ...
   """
   def __init__(self, dev:DeviceType):
     self.dev: DeviceType = dev

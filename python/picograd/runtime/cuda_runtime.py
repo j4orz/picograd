@@ -5,11 +5,19 @@ import gpuctypes.hip as cuda
 from picograd.device import Allocator, BufferSpec, Compiler, CompilerPairT, Runtime
 from picograd.helpers import DEBUG, colored, init_c_struct_t, init_c_var, mv_address, suppress_finalizing, system
 
+# **************** Python/C Foreign Function Helpers  ****************
+"""
+...
+"""
+def mv_address(mv): return ctypes.addressof(ctypes.c_char.from_buffer(mv))
+def unwrap_class_type(cls_t): return cls_t.func if isinstance(cls_t, functools.partial) else cls_t
 def check(status):
-  if status != 0:
-    error = ctypes.string_at(init_c_var(ctypes.c_char_p(), lambda x: cuda.cuGetErrorString(status, x))).decode()
-    raise RuntimeError(f"CUDA Error {status}, {error}")  
-
+  if status != 0: raise RuntimeError(f"HIP Error {status}, {ctypes.string_at(hip.hipGetErrorString(status)).decode()}")
+def init_c_var(ctypes_var, init_cb): return (init_cb(ctypes_var), ctypes_var)[1]
+def init_c_struct_t(fields: tuple[tuple[str, type[ctypes._SimpleCData]], ...]):
+  class CStruct(ctypes.Structure):
+    _pack_, _fields_ = 1, fields
+  return CStruct
 def encode_args(args, vals) -> tuple[ctypes.Structure, ctypes.Array]:
   c_args = init_c_struct_t(tuple([(f'f{i}', cuda.CUdeviceptr_v2) for i in range(len(args))] +
                                  [(f'v{i}', ctypes.c_int) for i in range(len(vals))]))(*args, *vals)

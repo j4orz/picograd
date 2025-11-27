@@ -1,53 +1,66 @@
 import functools, ctypes, pathlib, hashlib, tempfile, subprocess
 import gpuctypes.hip as hip
-from picograd.helpers import OSX, init_c_struct_t, init_c_var, mv_address, system
+from picograd.helpers import DEBUG, OSX, system
 from picograd.device import Allocator, BufferSpec, CompileError, Compiler, LRUAllocator, Runtime
 # from picograd.runtime.cpu import LLVMCompiler
 
+# **************** Python/C Foreign Function Helpers  ****************
+"""
+HIPDevice, HIPAllocator, and HIPKernel's uses the C/C++ hipamd runtime through foreign function library gpuctypes.hip
+all hipamd function calls are wrapped with check(_) to assert success (see: https://rocm.docs.amd.com/projects/HIP/en/latest/reference/error_codes.html#basic-runtime-errors)
+and functions calls whose arguments need to be passed by reference are wrapped with f_by_ref
+- ret_init_c_struct_t(_,_): ...
+"""
 def check(status):
   if status != 0: raise RuntimeError(f"HIP Error {status}, {ctypes.string_at(hip.hipGetErrorString(status)).decode()}")
+def f_by_ref(ref, f): return (f(ref), ref)[1]
+def mv_address(mv): return ctypes.addressof(ctypes.c_char.from_buffer(mv))
+
+def init_c_struct_t(fields: tuple[tuple[str, type[ctypes._SimpleCData]], ...]):
+  class CStruct(ctypes.Structure):
+    _pack_, _fields_ = 1, fields
+  return CStruct
+
 
 # **************** Runtime: Host Allocators + Device Compilers ****************
 class HIPDevice(Runtime):
   """
-  picograd's HIPDevice(Runtime) is a thin shim (this file is ~100loc) over vendor provided and implemented hip runtime api and hipcc compiler.
-  HIPDevice wires up hip's runtime and compiler into the HIPAllocator and HIPCCCompiler abstractions
-  
+  picograd's HIPDevice(Runtime) is a thin python/c foreign function shim (this file is ~100loc)
+  over vendor provided and implemented `hipamd` runtime and `hipcc` compiler.
+  picograd's hip runtime stands in contrast to custom implemented tinygrad hardware command queue runtimes
+  enabling features like egpu over usb, a valuable feature to applications such as openpilot.
+
   1. hip runtime api (accessed through tinygrad/gpuctypes, generated via trolldbois/ctypeslib)
-      see:
-      a. tinygrad gpuctypes tinygrad/gpuctypes: https://github.com/tinygrad/gpuctypes
-      b. hip runtime api reference https://rocm.docs.amd.com/projects/HIP/en/latest/reference/hip_runtime_api_reference.html
-      c. hip runtime api header https://github.com/ROCm/rocm-systems/blob/develop/projects/hip/include/hip/hip_runtime_api.h
-      d. hip runtime source ("compute language runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/clr 
-      e. hsa runtime (driven by kernel drivers "rocr runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/rocr-runtime
+      a. hip runtime documentation https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/hip_runtime_api.html
+      b. hip runtime reference/headers https://rocm.docs.amd.com/projects/HIP/en/latest/reference/hip_runtime_api_reference.html https://github.com/ROCm/rocm-systems/blob/develop/projects/hip/include/hip/hip_runtime_api.h
+      c. hip runtime source (hipamd), on nv devices, the hip runtime itself is a shim (hipother) over cuda runtime/driver apis https://github.com/ROCm/rocm-systems/blob/develop/projects/clr/README-doc.md https://github.com/ROCm/hipother
+      d. hsa runtime (driven by kernel drivers "rocr runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/rocr-runtime
   2. the hipcc compiler driver (which in turn, calls clang or nvcc)
-      see:
       a. hipcc documentation https://rocm.docs.amd.com/projects/HIPCC/en/latest/index.html
       b. hipcc source https://github.com/ROCm/llvm-project/tree/amd-staging/amd/hipcc
-
-  picograd's hip runtime stands in contrast to custom implemented tinygrad hardware command queue runtimes
-  enabling features like egpu over usb, a valuable feature to applications such as comma's self driving via openpilot
   """
   def __init__(self, device:str=""):
     self.device_id = int(device.split(":")[1]) if ":" in device else 0
-    self.arch = init_c_var(hip.hipDeviceProp_t(), lambda x: check(hip.hipGetDeviceProperties(x, self.device_id))).gcnArchName.decode()
+    if DEBUG >= 1: print("initializing hipdevice(runtime) for device", self.device_id)
+    self.arch = f_by_ref(hip.hipDeviceProp_t(), lambda x: check(hip.hipGetDeviceProperties(x, self.device_id))).gcnArchName.decode()
     # TODO (picograd profiling) self.time_event_st, self.time_event_en = [init_c_var(hip.hipEvent_t(), lambda x: hip.hipEventCreate(ctypes.byref(x), 0)) for _ in range(2)]
 
     compilers = [(functools.partial(HIPRenderer, self.arch), functools.partial(HIPCCCompiler, self.arch))] # MOOSE: renderer, fusion compiler pipeline
     super().__init__(device, HIPAllocator(self), compilers, functools.partial(HIPKernel, self))
 
   def synchronize(self):
+    if DEBUG >= 1: print("synchronizing device", self.device_id)
     check(hip.hipSetDevice(self.device_id))
     check(hip.hipDeviceSynchronize())
 
 # **************** Host Memory Allocation ****************
 class HIPAllocator(Allocator[HIPDevice]):
   """
-  moose:
+  ...
   """
   def _alloc(self, size:int, options:BufferSpec):
     check(hip.hipSetDevice(self.dev.device_id))
-    return init_c_var(hip.hipDeviceptr_t(), lambda x: check(hip.hipMalloc(ctypes.byref(x), size)))
+    return f_by_ref(hip.hipDeviceptr_t(), lambda x: check(hip.hipMalloc(ctypes.byref(x), size)))
   def _free(self, opaque, options:BufferSpec): check(hip.hipFree(opaque))
   def _copyin(self, dest, src: memoryview):
     check(hip.hipSetDevice(self.dev.device_id))
@@ -59,13 +72,13 @@ class HIPAllocator(Allocator[HIPDevice]):
 # **************** Device Kernel Compilation ****************
 class HIPKernel:
   """
-  moose:
+  ...
   """
   def __init__(self, dev:HIPDevice, name:str, lib:bytes):
     self.dev, self.name, self.lib = dev, name, lib
     check(hip.hipSetDevice(self.dev.device_id))
-    self.module = init_c_var(hip.hipModule_t(), lambda x: check(hip.hipModuleLoadData(ctypes.byref(x), lib)))
-    self.prg = init_c_var(hip.hipFunction_t(), lambda x: check(hip.hipModuleGetFunction(ctypes.byref(x), self.module, name.encode("utf-8"))))
+    self.module = f_by_ref(hip.hipModule_t(), lambda x: check(hip.hipModuleLoadData(ctypes.byref(x), lib)))
+    self.prg = f_by_ref(hip.hipFunction_t(), lambda x: check(hip.hipModuleGetFunction(ctypes.byref(x), self.module, name.encode("utf-8"))))
 
   def __call__(self, *args, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False):
     check(hip.hipSetDevice(self.dev.device_id))
@@ -92,7 +105,7 @@ class HIPKernel:
 
 class HIPCCCompiler(Compiler):
   """
-  moose:
+  ...
   """
   def __init__(self, arch:str, extra_options:list[str]=[]):
     self.arch, self.extra_options = arch, extra_options

@@ -12,23 +12,8 @@ def getenv(key:str, default:T) -> T: ...
 @functools.cache
 def getenv(key:str, default:Any=0): return type(default)(os.getenv(key, default))
 
-def init_c_struct_t(fields: tuple[tuple[str, type[ctypes._SimpleCData]], ...]):
-  class CStruct(ctypes.Structure):
-    _pack_, _fields_ = 1, fields
-  return CStruct
-def init_c_var(ctypes_var, creat_cb): return (creat_cb(ctypes_var), ctypes_var)[1]
-def mv_address(mv): return ctypes.addressof(ctypes.c_char.from_buffer(mv))
 def unwrap_class_type(cls_t): return cls_t.func if isinstance(cls_t, functools.partial) else cls_t
-def colored(st, color:str|None, background=False): # replace the termcolor library
-  colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white']
-  return f"\u001b[{10*background+60*(color.upper() == color)+30+colors.index(color.lower())}m{st}\u001b[0m" if color is not None else st
 
-def system(cmd:str, **kwargs) -> str:
-  st = time.perf_counter()
-  ret = subprocess.check_output(cmd.split(), **kwargs).decode().strip()
-  # if DEBUG >= 1: print(f"system: '{cmd}' returned {len(ret)} bytes in {(time.perf_counter() - st)*1e3:.2f} ms")
-  print(f"system: '{cmd}' returned {len(ret)} bytes in {(time.perf_counter() - st)*1e3:.2f} ms")
-  return ret
 
 def select_first_inited(candidates:Sequence[Callable[...,T]|Sequence[Callable[...,T]]], err_msg: str) -> tuple[T,...]|T:
   excs = []
@@ -43,3 +28,14 @@ def suppress_finalizing(func):
     except (RuntimeError, AttributeError, TypeError, ImportError):
       if not getattr(sys, 'is_finalizing', lambda: True)(): raise # re-raise if not finalizing
   return wrapper
+
+def colored(st, color:str|None, background=False): # replace the termcolor library
+  colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white']
+  return f"\u001b[{10*background+60*(color.upper() == color)+30+colors.index(color.lower())}m{st}\u001b[0m" if color is not None else st
+
+def system(cmd:str, **kwargs) -> str:
+  st = time.perf_counter()
+  ret = subprocess.check_output(cmd.split(), **kwargs).decode().strip()
+  # if DEBUG >= 1: print(f"system: '{cmd}' returned {len(ret)} bytes in {(time.perf_counter() - st)*1e3:.2f} ms")
+  print(f"system: '{cmd}' returned {len(ret)} bytes in {(time.perf_counter() - st)*1e3:.2f} ms")
+  return ret
