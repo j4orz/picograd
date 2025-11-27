@@ -7,14 +7,75 @@ from picograd.device import Allocator
 from picograd.dtype import DType, dtypes
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
 
+# **************** Python/C Foreign Function Helpers  ****************
+def from_mv(mv:memoryview, to_type:type[ctypes._SimpleCData]=ctypes.c_char) -> ctypes.Array:
+  return ctypes.cast(ctypes.addressof(to_type.from_buffer(mv)), ctypes.POINTER(to_type * len(mv))).contents
+def to_mv(ptr:int, sz:int) -> memoryview: return memoryview((ctypes.c_uint8 * sz).from_address(ptr)).cast("B")
+def mv_address(mv): return ctypes.addressof(ctypes.c_char.from_buffer(mv))
+def flat_mv(mv:memoryview): return mv if len(mv) == 0 else mv.cast("B", shape=(mv.nbytes,))
+
+class Buffer:
+  """
+  Buffer provides an on-device handle of a Tensor's backing storage with a Runtime's Allocator
+  """
+  def __init__(self,
+               device:str, size:int, dtype:DType,
+               opaque:Any=None, options:BufferSpec|None=None, initial_value:bytes|None=None,
+               Op_refcount=0, base:Buffer|None=None, offset:int=0, preallocate=False):
+    assert isinstance(dtype, DType) and not isinstance(dtype, PtrDType)
+    self.device, self.size, self.dtype, self.options, self.offset, self.allocated_views = device, size, dtype, options, offset, 0
+
+    if base is None:
+      assert offset == 0, "base buffers can't have offset"
+      self._base = None
+      self._Op_refcount = Op_refcount
+
+      if opaque is not None: self.allocate(opaque)
+      if initial_value is not None:
+        self.allocate()
+        self.copyin(memoryview(initial_value))
+    else:
+      assert base._base is None, "base can't have a base"
+      assert device == base.device, "base must have the same device"
+      self._base = base
+    if preallocate: self.allocate()
+  
+  def is_initialized(self) -> bool: return self.is_allocated() and hasattr(self, '_buf') # check if the underlying buffer is allocated and the current buffer/view is initialized
+  def is_allocated(self) -> bool: return self.base.is_allocated() if self._base is not None else hasattr(self, '_buf') # check if the underlying buffer is allocated, possibly from the base object
+  def ensure_allocated(self) -> Buffer: return self.allocate() if not self.is_initialized() else self 
+  def allocate(self, opaque=None, external_ptr=None) -> Buffer:
+    assert not self.is_initialized(), "can't allocate already allocated buffer"
+    if DEBUG >= 7: print(f"buffer: allocate {self.nbytes} bytes on {self.device}")
+    if not self.device.startswith("NULL") and self.size > MAX_BUFFER_SIZE > 0: raise RuntimeError(f"buffer of size {self.size/1e6:.2f}M is too large")
+    self.allocator:Allocator = Device[self.device].allocator
+
+    if external_ptr is not None:
+      self.options = replace(self.options, external_ptr=external_ptr) if self.options else BufferSpec(external_ptr=external_ptr)
+    if self._base is not None:
+      self._base.ensure_allocated()
+      self._base.allocated_views += 1
+      assert hasattr(self.allocator, "_offset"), "offset function required for view"
+      self._buf: Any = self.allocator._offset(self.base._buf, self.nbytes, self.offset) # <-------------------------- ...
+    else:
+      self._buf = opaque if opaque is not None else self.allocator.alloc(self.nbytes, self.options)
+      #if not self.device.startswith("DISK"): GlobalCounters.mem_used += self.nbytes
+      #if PROFILE: Buffer.profile_events.append(ProfilePointEvent(self.device, "alloc", self.trace_num, {"dtype":self.dtype, "sz":self.size}))
+    return self
+  
+  def copyin(self, mv:memoryview):
+    mv = flat_mv(mv)
+    assert len(mv) == self.nbytes, f"size mismatch, {len(mv)=} != {self.dtype=} {self.size=}"
+    assert self.is_initialized(), "can't copyin to unallocated buffer"
+    self.allocator._copyin(self._buf, mv) # <---------------------------------------------- ...
+    return self
+  def copyout(self, mv:memoryview) -> memoryview:
+    mv = flat_mv(mv)
+    assert len(mv) == self.nbytes, f"size mismatch, {len(mv)=} != {self.dtype=} {self.size=}"
+    assert self.is_initialized(), "can't copyout unallocated buffer"
+    self.allocator._copyout(mv, self._buf) # <------------------------------------ ...
+    return mv
+
 sint = int # |Op MOOSE
-
-class PatternMatcher:
-  def __init__(): raise NotImplementedError
-
-class Pattern:
-  def __init__(): raise NotImplementedError
-
 class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses
   def __str__(self): return Enum.__str__(
         self)
@@ -143,71 +204,40 @@ class Op: # (ComputeMixin): # MovementMixin, metaclass=OpMetaClass
   @property
   def is_realized(self) -> bool:
     return all(x.base.realized is not None for x in self.base.src) if self.base.op is OpCode.MULTI else self.base.realized is not None
-
-# **************** Python/C Foreign Function Helpers  ****************
-def from_mv(mv:memoryview, to_type:type[ctypes._SimpleCData]=ctypes.c_char) -> ctypes.Array:
-  return ctypes.cast(ctypes.addressof(to_type.from_buffer(mv)), ctypes.POINTER(to_type * len(mv))).contents
-def to_mv(ptr:int, sz:int) -> memoryview: return memoryview((ctypes.c_uint8 * sz).from_address(ptr)).cast("B")
-def mv_address(mv): return ctypes.addressof(ctypes.c_char.from_buffer(mv))
-def flat_mv(mv:memoryview): return mv if len(mv) == 0 else mv.cast("B", shape=(mv.nbytes,))
-
-class Buffer:
-  """
-  Buffer provides an on-device handle of a Tensor's backing storage with a Runtime's Allocator
-  """
-  def __init__(self,
-               device:str, size:int, dtype:DType,
-               opaque:Any=None, options:BufferSpec|None=None, initial_value:bytes|None=None,
-               Op_refcount=0, base:Buffer|None=None, offset:int=0, preallocate=False):
-    assert isinstance(dtype, DType) and not isinstance(dtype, PtrDType)
-    self.device, self.size, self.dtype, self.options, self.offset, self.allocated_views = device, size, dtype, options, offset, 0
-
-    if base is None:
-      assert offset == 0, "base buffers can't have offset"
-      self._base = None
-      self._Op_refcount = Op_refcount
-
-      if opaque is not None: self.allocate(opaque)
-      if initial_value is not None:
-        self.allocate()
-        self.copyin(memoryview(initial_value))
-    else:
-      assert base._base is None, "base can't have a base"
-      assert device == base.device, "base must have the same device"
-      self._base = base
-    if preallocate: self.allocate()
   
-  def is_initialized(self) -> bool: return self.is_allocated() and hasattr(self, '_buf') # check if the underlying buffer is allocated and the current buffer/view is initialized
-  def is_allocated(self) -> bool: return self.base.is_allocated() if self._base is not None else hasattr(self, '_buf') # check if the underlying buffer is allocated, possibly from the base object
-  def ensure_allocated(self) -> Buffer: return self.allocate() if not self.is_initialized() else self 
-  def allocate(self, opaque=None, external_ptr=None) -> Buffer:
-    assert not self.is_initialized(), "can't allocate already allocated buffer"
-    if DEBUG >= 7: print(f"buffer: allocate {self.nbytes} bytes on {self.device}")
-    if not self.device.startswith("NULL") and self.size > MAX_BUFFER_SIZE > 0: raise RuntimeError(f"buffer of size {self.size/1e6:.2f}M is too large")
-    self.allocator:Allocator = Device[self.device].allocator
+class PatternMatcher:
+  def __init__(): raise NotImplementedError
 
-    if external_ptr is not None:
-      self.options = replace(self.options, external_ptr=external_ptr) if self.options else BufferSpec(external_ptr=external_ptr)
-    if self._base is not None:
-      self._base.ensure_allocated()
-      self._base.allocated_views += 1
-      assert hasattr(self.allocator, "_offset"), "offset function required for view"
-      self._buf: Any = self.allocator._offset(self.base._buf, self.nbytes, self.offset) # <-------------------------- ...
-    else:
-      self._buf = opaque if opaque is not None else self.allocator.alloc(self.nbytes, self.options)
-      #if not self.device.startswith("DISK"): GlobalCounters.mem_used += self.nbytes
-      #if PROFILE: Buffer.profile_events.append(ProfilePointEvent(self.device, "alloc", self.trace_num, {"dtype":self.dtype, "sz":self.size}))
-    return self
-  
-  def copyin(self, mv:memoryview):
-    mv = flat_mv(mv)
-    assert len(mv) == self.nbytes, f"size mismatch, {len(mv)=} != {self.dtype=} {self.size=}"
-    assert self.is_initialized(), "can't copyin to unallocated buffer"
-    self.allocator._copyin(self._buf, mv) # <---------------------------------------------- ...
-    return self
-  def copyout(self, mv:memoryview) -> memoryview:
-    mv = flat_mv(mv)
-    assert len(mv) == self.nbytes, f"size mismatch, {len(mv)=} != {self.dtype=} {self.size=}"
-    assert self.is_initialized(), "can't copyout unallocated buffer"
-    self.allocator._copyout(mv, self._buf) # <------------------------------------ ...
-    return mv
+class Pattern:
+  def __init__(): raise NotImplementedError
+chain_rules = PatternMatcher([
+  # (Pat(OpCode.CAST, name="ret"), lambda ctx, ret: (ctx.cast(ret.src[0].dtype),)),
+  (Pattern(OpCode.RECIPROCAL, name="input"), lambda output_grad, input: (-output_grad * input * input,)),
+  (Pattern(OpCode.SIN, name="input"), lambda output_grad, input: ((math.pi/2 - input.src[0]).sin() * output_grad,)),
+  (Pattern(OpCode.LOG2, name="input"), lambda output_grad, input: (output_grad / (input.src[0] * math.log(2)),)),
+  (Pattern(OpCode.EXP2, name="input"), lambda output_grad, input: (input * output_grad * math.log(2),)),
+  (Pattern(OpCode.SQRT, name="input"), lambda output_grad, input: (output_grad / (input*2),)),
+  # (Pat((OpCode.CMPLT, OpCode.CMPNE)), lambda: (None, None)),
+  (Pattern(OpCode.ADD), lambda output_grad: (1.0*output_grad, 1.0*output_grad)),
+  # (Pat(OpCode.POW, name="input", src=(Pat.var("b"), Pat.var("e"))), lambda output_grad, input, b, e:
+  #   (output_grad * (b.eq(0)&e.eq(0)).where(e, e*b.pow(e-1)), output_grad * b.eq(0).where((e<0).where(input.const_like(-math.inf), 0), input*b.log2()*math.log(2.0)))),
+  # (Pat(OpCode.MAX, src=(Pat.var("x"), Pat.var("y"))), lambda output_grad, x, y:
+  #   ((x>y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)), (x<y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)))),
+  (Pattern(OpCode.MUL, name="input"), lambda output_grad, input: (input.src[1]*output_grad, input.src[0]*output_grad)),
+  # (Patttern(OpCode.WHERE, name="input"), lambda output_grad, input: (None, input.src[0].where(output_grad, output_grad.const_like(0)), input.src[0].where(output_grad.const_like(0), output_grad))),
+  # (Patttern(OpCode.REDUCE_AXIS, name="input"), reduce_gradient),
+  # (Patttern(OpCode.CONTIGUOUS), lambda output_grad: (output_grad,)),
+  # (Patttern(OpCode.CONTIGUOUS_BACKWARD), lambda output_grad: (output_grad.contiguous(),)),
+  # (Patttern(OpCode.RESHAPE, name="input"), lambda output_grad, input: (output_grad.reshape(input.src[0].shape), None)),
+  # (Patttern(OpCode.EXPAND, name="input"), lambda output_grad, input: (output_grad.r(OpCode.ADD,tuple(i for i,(s,n) in enumerate(zip(input.src[0].shape, input.shape)) if s!=n)), None)),
+  # (Patttern(OpCode.PAD, name="input"), lambda output_grad, input: (output_grad.shrink(tuple([(p[0], s+p[0]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
+  # (Patttern(OpCode.SHRINK, name="input"), lambda output_grad, input: (output_grad.pad(tuple([(p[0], s-p[1]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
+  # (Patttern(OpCode.PERMUTE, name="input"), lambda output_grad, input: (output_grad.permute(argsort(input.marg)),)),
+  # (Patttern(OpCode.FLIP, name="input"), lambda output_grad, input: (output_grad.flip(input.marg),)),
+  # (Patttern(OpCode.MULTI, name="input"), lambda output_grad, input: output_grad.shard(input.device, input.axis).src),
+  # # NOTE: this is only correct when the KERNEL has a single output
+  # (Patttern(OpCode.AFTER), lambda output_grad: (output_grad, output_grad)),
+  # (Patttern(OpCode.KERNEL, name="k"), lambda output_grad, k: k.arg.grad_fxn(output_grad, k)),
+  # # there's no gradient for bitcast
+  # (Patttern(OpCode.BITCAST), lambda: (None,)),
+])
