@@ -4,6 +4,7 @@ from typing import overload
 DEBUG = 0 # ContextVar("DEBUG", 0)
 OSX, WIN = platform.system() == "Darwin", sys.platform == "win32"
 LRU = 1 # ContextVar("LRU", 1)
+ALLOW_DEVICE_USAGE, MAX_BUFFER_SIZE = 1, 1 #ContextVar("ALLOW_DEVICE_USAGE", 1), ContextVar("MAX_BUFFER_SIZE", 0)
 
 @overload
 def getenv(key:str) -> int: ...

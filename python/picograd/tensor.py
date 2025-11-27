@@ -1,15 +1,17 @@
 # inspired by https://github.com/karpathy/micrograd/blob/master/micrograd/engine.py
+#         and https://github.com/tinygrad/tinygrad/blob/master/tinygrad/tensor.py
 from __future__ import annotations
-import math, os, weakref
 from typing import Callable, cast
-from picograd.dtype import ConstType, DType, DTypeLike
-from picograd.engine import evaluator
+import math, os, weakref
+from picograd.dtype import DType
 from picograd.op import sint, Op, OpCode, Pattern, PatternMatcher
+from picograd.device import Device
+from picograd.engine import evaluator
+from picograd.helpers import DEBUG
 # from picograd.mixins import ComputeMixin
 # from . import _pgrs
 
 all_tensors: dict[weakref.ref[Tensor], None] = {}
-
 chain_rules = PatternMatcher([
   # (Pat(OpCode.CAST, name="ret"), lambda ctx, ret: (ctx.cast(ret.src[0].dtype),)),
   (Pattern(OpCode.RECIPROCAL, name="input"), lambda output_grad, input: (-output_grad * input * input,)),
@@ -54,7 +56,6 @@ class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMix
   def __init__(self):
     # MOOOSE: allocate *data* for evaluator to *operate* on
     self.shape, self.stride = [], []
-
 
   # ************ Tensor Data ************
   def data(self): raise NotImplementedError("todo")
