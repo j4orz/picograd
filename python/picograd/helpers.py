@@ -14,14 +14,6 @@ def getenv(key:str, default:Any=0): return type(default)(os.getenv(key, default)
 
 def unwrap_class_type(cls_t): return cls_t.func if isinstance(cls_t, functools.partial) else cls_t
 
-
-def select_first_inited(candidates:Sequence[Callable[...,T]|Sequence[Callable[...,T]]], err_msg: str) -> tuple[T,...]|T:
-  excs = []
-  for typ in candidates:
-    try: return tuple([cast(Callable, t)() for t in typ]) if isinstance(typ, Sequence) else cast(Callable, typ)()
-    except Exception as e: excs.append(e)
-  raise ExceptionGroup(err_msg, excs)
-
 def suppress_finalizing(func):
   def wrapper(*args, **kwargs):
     try: return func(*args, **kwargs)

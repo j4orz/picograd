@@ -21,7 +21,6 @@ def init_c_struct_t(fields: tuple[tuple[str, type[ctypes._SimpleCData]], ...]):
     _pack_, _fields_ = 1, fields
   return CStruct
 
-
 # **************** Runtime: Host Allocators + Device Compilers ****************
 class HIPDevice(Runtime):
   """
@@ -40,18 +39,17 @@ class HIPDevice(Runtime):
       b. hipcc source https://github.com/ROCm/llvm-project/tree/amd-staging/amd/hipcc
   """
   def __init__(self, device:str=""):
-    self.device_id = int(device.split(":")[1]) if ":" in device else 0
-    if DEBUG >= 1: print("initializing hipdevice(runtime) for device", self.device_id)
-    self.arch = f_by_ref(hip.hipDeviceProp_t(), lambda x: check(hip.hipGetDeviceProperties(x, self.device_id))).gcnArchName.decode()
     # TODO (picograd profiling) self.time_event_st, self.time_event_en = [init_c_var(hip.hipEvent_t(), lambda x: hip.hipEventCreate(ctypes.byref(x), 0)) for _ in range(2)]
-
-    compilers = [(functools.partial(HIPRenderer, self.arch), functools.partial(HIPCCCompiler, self.arch))] # MOOSE: renderer, fusion compiler pipeline
+    self.device_id = int(device.split(":")[1]) if ":" in device else 0
+    self.arch = f_by_ref(hip.hipDeviceProp_t(), lambda x: check(hip.hipGetDeviceProperties(x, self.device_id))).gcnArchName.decode()
+    compilers = [(functools.partial(HIPRenderer, self.arch), functools.partial(HIPCCCompiler, self.arch))]
     super().__init__(device, HIPAllocator(self), compilers, functools.partial(HIPKernel, self))
+    if DEBUG >= 1: print("initialized hipdevice(runtime) for device", self.device_id)
 
   def synchronize(self):
-    if DEBUG >= 1: print("synchronizing device", self.device_id)
     check(hip.hipSetDevice(self.device_id))
     check(hip.hipDeviceSynchronize())
+    if DEBUG >= 1: print("synchronized device", self.device_id)
 
 # **************** Host Memory Allocation ****************
 class HIPAllocator(Allocator[HIPDevice]):

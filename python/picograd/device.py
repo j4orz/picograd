@@ -10,68 +10,24 @@ from picograd.helpers import DEBUG, LRU, getenv, select_first_inited
 ALL_DEVICES = ["CPU", "HIP", "CUDA"]
 DeviceType = TypeVar('DeviceType', bound='Runtime')
 
+# picograd to tinygrad bridge
+# - for memory: removed lruallocator, bufferspec
+# - for compute: removed llvmcompiler (requires llvmlite or ffi-llvmctypes)
+
 # **************** Runtime: Host Allocators + Device Compilers ****************
 class Runtime:
   """
   the Runtime base class is the heterogenous runtime dual to the domain specific ndarray language of the Tensor object
-  picograd's runtime implementations will subclass Runtime to provide memory and compute management used by both interpreter(pt1) and compiler(pt2) pipelines
-  - Buffer Allocator
-  - Kernel Compiler
-
-  python/c ffi
-  - differences for the same language feature
-  - differences in semantic level
+  which wires up a Buffer Allocator, Kernels, and Compilers for picograd's interpreter and compiler pipelines
   """
   # TODO (picograd profiling): profile_events:list[ProfileEvent] = [ProfileDeviceEvent("CPU")] # NOTE: CPU is the default device.
-
-  def _get_compiler_envvar(self, c):
-    compiler_name = f"{unwrap_class_type(c).__name__.upper().removesuffix('COMPILER').removeprefix(devname:=self.device.split(':')[0].upper())}"
-    return f"{devname}_{compiler_name if len(compiler_name) > 0 else unwrap_class_type(c).__name__.upper()}"
-
   def __init__(self, device:str, allocator:Allocator, compilers:Sequence[CompilerPairT]|None, kernel, graph=None, group_id=None):
     self.device, self.allocator, self.kernel, self.graph, self.group_id = device, allocator, kernel, graph, group_id
-    self.compilers = cast(list[CompilerPairT], compilers or [(Renderer, Compiler)])
-
-    envnames = [self._get_compiler_envvar(c) for r,c in self.compilers]
-    enable_comps = set((en, comp_pair) for en, comp_pair in zip(envnames, self.compilers) if en is not None and getenv(en, -1) == 1)
-    disable_comps = set((en, comp_pair) for en, comp_pair in zip(envnames, self.compilers) if en is not None and getenv(en, -1) == 0)
-
-    if len(enable_comps) > 1: raise RuntimeError(f"{self.device}: multiple compilers set in env {enable_comps}")
-    for _, comp_pair in disable_comps: self.compilers.remove(comp_pair)
-
-    self.renderer, self.compiler = select_first_inited([list(enable_comps)[0][1]] if len(enable_comps) == 1 else self.compilers,
-                                                       f"No compiler for {self.device} is available")
-
+    self.renderer, self.compiler = compilers
     if DEBUG >= 1: print(f"{self.device}: using {self.compiler.__class__.__name__}")
-
-  def synchronize(self):
-    """
-    Synchronize all pending operations on the device.
-
-    This method ensures that all previously queued operations on the device have been completed before proceeding.
-    """
-    # override this in your device implementation
-  def _at_profile_finalize(self):
-    """
-    Called at the end of profiling to allow the device to finalize any profiling.
-    """
-    # override this in your device implementation
-  def finalize(self):
-    """
-    Called at the end of process lifetime to allow the device to finalize.
-    """
-    # override this in your device implementation
+  def synchronize(self): raise NotImplementedError("need synchronize")
 
 # **************** Host Memory Allocation ****************
-@dataclass(frozen=True, eq=True)
-class BufferSpec:
-  # TODO: move device, size, dtype here?
-  uncached: bool = False
-  cpu_access: bool = False
-  host: bool = False
-  nolru: bool = False
-  external_ptr: int|None = None
-
 class Buffer:
   """
   ...
@@ -117,18 +73,12 @@ class Allocator(Generic[DeviceType]):
   def _copyin(self, dest, src:memoryview): raise NotImplementedError("need copyin")
   def _copyout(self, dest:memoryview, src): raise NotImplementedError("need copyout")
 
-# TODO: picograd lru buffer cache
-# class LRUAllocator(Allocator, Generic[DeviceType]):
-
 # **************** Device Compute Compilation ****************
 
 class Compiler:
   def __init__(self): None # TODO (picograd jit compile cache): cachekey:str|None=None): # self.cachekey = None if DISABLE_COMPILER_CACHE else cachekey
   def compile(self, src:str) -> bytes: return src.encode()   # NOTE: empty compiler is the default
   def disassemble(self, lib:bytes): pass
-
-# TODO (picograd amdllvmcompiler)
-# class LLVMCompiler(Compiler):
 
 class CompileError(Exception): pass
 CompilerPairT = tuple[functools.partial|type[Renderer], functools.partial|type[Compiler]]
