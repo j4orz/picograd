@@ -13,6 +13,7 @@ DeviceType = TypeVar('DeviceType', bound='Runtime')
 # picograd to tinygrad bridge
 # - for memory: removed lruallocator, bufferspec
 # - for compute: removed llvmcompiler (requires llvmlite or ffi-llvmctypes)
+# - for dtype: removed imagedtype
 
 # **************** Runtime: Host Allocators + Device Compilers ****************
 class Runtime:
@@ -28,30 +29,6 @@ class Runtime:
   def synchronize(self): raise NotImplementedError("need synchronize")
 
 # **************** Host Memory Allocation ****************
-class Buffer:
-  """
-  ...
-  """
-  def __init__(self, device:str, size:int, dtype:DType, opaque:Any=None, options:BufferSpec|None=None, initial_value:bytes|None=None,
-               uop_refcount=0, base:Buffer|None=None, offset:int=0, preallocate=False):
-    # if isinstance(dtype, ImageDType): options = BufferSpec(image=dtype) # TODO: image hack shouldn't be here. where should it be?
-    # else:
-    assert isinstance(dtype, DType) and not isinstance(dtype, PtrDType)
-    self.device, self.size, self.dtype, self.options, self.offset, self.allocated_views = device, size, dtype, options, offset, 0
-    if base is None:
-      assert offset == 0, "base buffers can't have offset"
-      self._base = None
-      self._uop_refcount = uop_refcount
-      if opaque is not None: self.allocate(opaque)
-      if initial_value is not None:
-        self.allocate()
-        self.copyin(memoryview(initial_value))
-    else:
-      assert base._base is None, "base can't have a base"
-      assert device == base.device, "base must have the same device"
-      self._base = base
-    if preallocate: self.allocate()
-
 # TODO: size, dest, src are the same type. can we enforce this?
 class Allocator(Generic[DeviceType]):
   """
@@ -72,6 +49,71 @@ class Allocator(Generic[DeviceType]):
   def _free(self, opaque, options:BufferSpec): pass  # if opaque is a Python object, you don't need a free
   def _copyin(self, dest, src:memoryview): raise NotImplementedError("need copyin")
   def _copyout(self, dest:memoryview, src): raise NotImplementedError("need copyout")
+
+def from_mv(mv:memoryview, to_type:type[ctypes._SimpleCData]=ctypes.c_char) -> ctypes.Array:
+  return ctypes.cast(ctypes.addressof(to_type.from_buffer(mv)), ctypes.POINTER(to_type * len(mv))).contents
+def to_mv(ptr:int, sz:int) -> memoryview: return memoryview((ctypes.c_uint8 * sz).from_address(ptr)).cast("B")
+def mv_address(mv): return ctypes.addressof(ctypes.c_char.from_buffer(mv))
+def flat_mv(mv:memoryview): return mv if len(mv) == 0 else mv.cast("B", shape=(mv.nbytes,))
+
+class Buffer:
+  """
+  Buffer provides the backing storage (which is a handle to on-deivce allocation) to a Tensor
+  by following the cpp/numpy model where tensors that are constructed by views are non-allocating (i.e std::iterator ~ torch.Tensor)
+  """
+  def __init__(self,
+               device:str, size:int, dtype:DType,
+               opaque:Any=None, options:BufferSpec|None=None, initial_value:bytes|None=None,
+               uop_refcount=0, base:Buffer|None=None, offset:int=0, preallocate=False):
+    assert isinstance(dtype, DType) and not isinstance(dtype, PtrDType)
+    self.device, self.size, self.dtype, self.options, self.offset, self.allocated_views = device, size, dtype, options, offset, 0
+
+    if base is None:
+      assert offset == 0, "base buffers can't have offset"
+      self._base = None
+      self._uop_refcount = uop_refcount
+
+      if opaque is not None: self.allocate(opaque)
+      if initial_value is not None:
+        self.allocate()
+        self.copyin(memoryview(initial_value))
+    else:
+      assert base._base is None, "base can't have a base"
+      assert device == base.device, "base must have the same device"
+      self._base = base
+    if preallocate: self.allocate()
+  
+  def allocate(self, opaque=None, external_ptr=None) -> Buffer:
+    assert not self.is_initialized(), "can't allocate already allocated buffer"
+    if DEBUG >= 7: print(f"buffer: allocate {self.nbytes} bytes on {self.device}")
+    if not self.device.startswith("NULL") and self.size > MAX_BUFFER_SIZE > 0: raise RuntimeError(f"buffer of size {self.size/1e6:.2f}M is too large")
+    self.allocator:Allocator = Device[self.device].allocator
+
+    if external_ptr is not None:
+      self.options = replace(self.options, external_ptr=external_ptr) if self.options else BufferSpec(external_ptr=external_ptr)
+    if self._base is not None:
+      self._base.ensure_allocated()
+      self._base.allocated_views += 1
+      assert hasattr(self.allocator, "_offset"), "offset function required for view"
+      self._buf: Any = self.allocator._offset(self.base._buf, self.nbytes, self.offset) # <-------------------------- ...
+    else:
+      self._buf = opaque if opaque is not None else self.allocator.alloc(self.nbytes, self.options)
+      if not self.device.startswith("DISK"): GlobalCounters.mem_used += self.nbytes
+      if PROFILE: Buffer.profile_events.append(ProfilePointEvent(self.device, "alloc", self.trace_num, {"dtype":self.dtype, "sz":self.size}))
+    return self
+  
+  def copyin(self, mv:memoryview):
+    mv = flat_mv(mv)
+    assert len(mv) == self.nbytes, f"size mismatch, {len(mv)=} != {self.dtype=} {self.size=}"
+    assert self.is_initialized(), "can't copyin to unallocated buffer"
+    self.allocator._copyin(self._buf, mv) # <---------------------------------------------- ...
+    return self
+  def copyout(self, mv:memoryview) -> memoryview:
+    mv = flat_mv(mv)
+    assert len(mv) == self.nbytes, f"size mismatch, {len(mv)=} != {self.dtype=} {self.size=}"
+    assert self.is_initialized(), "can't copyout unallocated buffer"
+    self.allocator._copyout(mv, self._buf) # <------------------------------------ ...
+    return mv
 
 # **************** Device Compute Compilation ****************
 

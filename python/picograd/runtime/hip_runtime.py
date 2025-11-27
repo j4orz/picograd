@@ -14,7 +14,6 @@ and functions calls whose arguments need to be passed by reference are wrapped w
 def check(status):
   if status != 0: raise RuntimeError(f"HIP Error {status}, {ctypes.string_at(hip.hipGetErrorString(status)).decode()}")
 def f_by_ref(ref, f): return (f(ref), ref)[1]
-def mv_address(mv): return ctypes.addressof(ctypes.c_char.from_buffer(mv))
 
 def init_c_struct_t(fields: tuple[tuple[str, type[ctypes._SimpleCData]], ...]):
   class CStruct(ctypes.Structure):
