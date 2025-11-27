@@ -5,9 +5,7 @@ from typing import Callable, cast
 import math, os, weakref
 from picograd.dtype import DType
 from picograd.op import sint, Op, OpCode, Pattern, PatternMatcher
-from picograd.device import Device
 from picograd.engine import evaluator
-from picograd.helpers import DEBUG
 # from picograd.mixins import ComputeMixin
 # from . import _pgrs
 
@@ -21,21 +19,7 @@ class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMix
     - with GRAPH=1, ._forward() will lazily build up the graph and user's must initiate computation with a .realize() barrier (like torch_xla.sync())
   """
 
-  __slots__ = "uop", "requires_grad", "grad"
-  def __init__(self):
-    # MOOOSE: allocate *data* for evaluator to *operate* on
-    self.shape, self.stride = [], []
-
   # ************ Tensor Data ************
-  def data(self): raise NotImplementedError("todo")
-  def item(self): raise NotImplementedError("todo")
-  def to(self, device:str|tuple[str, ...]|None) -> Tensor: raise NotImplementedError("todo")
-  def numel(self) -> sint: raise NotImplementedError("TODO")
-  def element_size(self) -> int: raise NotImplementedError("TODO")
-  def nbytes(self) -> int: raise NotImplementedError("TODO")
-  def is_floating_point(self) -> bool: raise NotImplementedError("TODO")
-  def size(self, dim:int|None=None) -> sint|tuple[sint, ...]: raise NotImplementedError("TODO")
-
   # runtime data like device, shape, and dtype are deleted to uop, not tensor
   @property
   def device(self) -> str|tuple[str, ...]: return self.uop.device
@@ -45,8 +29,19 @@ class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMix
   def dtype(self) -> DType: return self.uop.dtype
   @property
   def ndim(self) -> int: raise NotImplementedError("TODO")
+  def data(self): raise NotImplementedError("todo")
+  def item(self): raise NotImplementedError("todo")
+  def to(self, device:str|tuple[str, ...]|None) -> Tensor: raise NotImplementedError("todo")
+  def numel(self) -> sint: raise NotImplementedError("TODO")
+  def element_size(self) -> int: raise NotImplementedError("TODO")
+  def nbytes(self) -> int: raise NotImplementedError("TODO")
+  def is_floating_point(self) -> bool: raise NotImplementedError("TODO")
+  def size(self, dim:int|None=None) -> sint|tuple[sint, ...]: raise NotImplementedError("TODO")
+  __slots__ = "uop", "requires_grad", "grad"
 
-  
+  # ************ Tensor Constructors ************
+  def __init__(self):
+    self.shape, self.stride = [], []
   # --high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
   # --low level:
   @staticmethod
@@ -67,10 +62,7 @@ class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMix
   @staticmethod
   def eye(n:int, m:int|None=None, **kwargs) -> Tensor: raise NotImplementedError("TODO")
 
-
-
-
-  # ************ Tensor Forward and Backward ************
+  # ************ Tensor Operations ************
   def backward(self, grad:Tensor|None=None) -> Tensor:
     """
     backward performs by collecting tensors, computing gradients with automatic differentiation, and updating said tensors.
@@ -146,11 +138,7 @@ class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMix
       # -kernelize: graph rewrites
       # -schedule_with_vars: feeds graph to scheduler and memory planner
       # -realize: hands schedule to run_schedule
-      
 
-
-
-  # ************ Tensor Operations ************
   def fa(self) -> Tensor: return self._forward(Op.FA)
   def mm(self) -> Tensor: return self._forward(Op.MM)
   # --activation
