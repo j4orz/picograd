@@ -10,16 +10,16 @@ def check(status):
 # **************** Runtime: Host Allocators + Device Compilers ****************
 class HIPDevice(Runtime):
   """
-  picograd's hip runtime is a thin shim (this file is ~100loc) over vendor provided and implemented
+  picograd's HIPDevice(Runtime) is a thin shim (this file is ~100loc) over vendor provided and implemented hip runtime api and hipcc compiler.
+  HIPDevice wires up hip's runtime and compiler into the HIPAllocator and HIPCCCompiler abstractions
+  
   1. hip runtime api (accessed through tinygrad/gpuctypes, generated via trolldbois/ctypeslib)
-      tinygrad/gpuctypes: https://github.com/tinygrad/gpuctypes
-      trolldbois/ctypeslib: https://github.com/trolldbois/ctypeslib
-
       see:
-      a. hip runtime api reference https://rocm.docs.amd.com/projects/HIP/en/latest/reference/hip_runtime_api_reference.html
-      b. hip runtime api header https://github.com/ROCm/rocm-systems/blob/develop/projects/hip/include/hip/hip_runtime_api.h
-      c. hip runtime source ("compute language runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/clr 
-      d. hsa runtime (driven by kernel drivers "rocr runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/rocr-runtime
+      a. tinygrad gpuctypes tinygrad/gpuctypes: https://github.com/tinygrad/gpuctypes
+      b. hip runtime api reference https://rocm.docs.amd.com/projects/HIP/en/latest/reference/hip_runtime_api_reference.html
+      c. hip runtime api header https://github.com/ROCm/rocm-systems/blob/develop/projects/hip/include/hip/hip_runtime_api.h
+      d. hip runtime source ("compute language runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/clr 
+      e. hsa runtime (driven by kernel drivers "rocr runtime") https://github.com/ROCm/rocm-systems/tree/develop/projects/rocr-runtime
   2. the hipcc compiler driver (which in turn, calls clang or nvcc)
       see:
       a. hipcc documentation https://rocm.docs.amd.com/projects/HIPCC/en/latest/index.html

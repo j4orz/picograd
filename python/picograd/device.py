@@ -15,13 +15,14 @@ DeviceType = TypeVar('DeviceType', bound='Runtime')
 class Runtime:
   """
   the Runtime base class is the heterogenous runtime dual to the domain specific ndarray language of the Tensor object
-  picograd's runtime implementations will subclass Runtime to provide memory and compute with a Buffer Allocator and Kernel Compiler
-  used by both interpreter and compiler engines
+  picograd's runtime implementations will subclass Runtime to provide memory and compute management used by both interpreter(pt1) and compiler(pt2) pipelines
+  - Buffer Allocator
+  - Kernel Compiler
   """
   # TODO (picograd profiling): profile_events:list[ProfileEvent] = [ProfileDeviceEvent("CPU")] # NOTE: CPU is the default device.
 
-  def __init__(self, device:str, allocator:Allocator, compilers:Sequence[CompilerPairT]|None, runtime, graph=None, group_id=None):
-    self.device, self.allocator, self.runtime, self.graph, self.group_id = device, allocator, runtime, graph, group_id
+  def __init__(self, device:str, allocator:Allocator, compilers:Sequence[CompilerPairT]|None, kernel, graph=None, group_id=None):
+    self.device, self.allocator, self.kernel, self.graph, self.group_id = device, allocator, kernel, graph, group_id
     self.compilers = cast(list[CompilerPairT], compilers or [(Renderer, Compiler)])
 
     envnames = [self._get_compiler_envvar(c) for r,c in self.compilers]

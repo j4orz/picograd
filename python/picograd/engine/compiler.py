@@ -15,6 +15,12 @@ class TensorCore: # D = A * B + C, A is (M x K), B is (K x N), C and D are (M x 
   swizzle: tuple[tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]], tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]]
 
 class Renderer:
+  """
+  picograd follows tinygrad (and torch/xla and swift for tensorflow) with lazy graph capture, see (Suhan et al. https://arxiv.org/abs/2102.13267)
+  and modifying the semantics of the programming model where users must explicitly materialize data with .realize(),
+  as opposed to pt2 which maintains the eager programming model surface via graph capture at the host-language level (python bytecode interception)
+  see (Ansel et al. https://docs.pytorch.org/assets/pytorch2-2.pdf)
+  """
   device: str = ""
   suffix: str = ""
   # TODO: make this generic with a list of supported types

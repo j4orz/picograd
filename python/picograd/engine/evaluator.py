@@ -6,13 +6,6 @@ from picograd.op import OpCode
 if TYPE_CHECKING: from picograd.tensor import Tensor
 from math import exp, sin
 
-def f(x,y):
-  a = exp(x)\
-  b = sin(y)
-  c = b*y
-  d = a*c
-  return a*d
-
 def eval_uop(inputs, opcode) -> Tensor:
   """
   the eager evaluator is an embedded interpreter which override the semantics of the host language
