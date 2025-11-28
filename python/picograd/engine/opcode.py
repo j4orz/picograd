@@ -2,8 +2,10 @@ from __future__ import annotations
 from typing import Self
 from enum import Enum, IntEnum, auto
 
-# **************** Intermediate Representation ****************
 sint = int # |Op MOOSE
+ConstType = float|int|bool
+
+# **************** Intermediate Representation ****************
 class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses
   def __str__(self): return Enum.__str__(self)
   @staticmethod
@@ -34,7 +36,6 @@ class OpCode(FastEnum): # the order of these OpCode controls the order of the to
   # vconst, const, custom, customi
 
 # **************** Compute and Movement Mixins ****************
-ConstType = float|int|bool
 
 class ComputeMixin:
   # required

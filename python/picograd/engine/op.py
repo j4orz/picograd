@@ -10,105 +10,32 @@ from picograd.runtime.device import Allocator
 from picograd.dtype import DType, dtypes
 
 # **************** Expression Graph ****************
-@dataclass(eq=False, slots=True)
-class Op: # (ComputeMixin): # MovementMixin, metaclass=OpMetaClass
+@dataclass(eq=False, slots=True) # NOTE: this should be frozen, but frozen is slower
+class Op(OpMixin):
   """
-  Op class is are vertices which form a expression graph G=(V,E)
-  where V is a Set<Op> and E is a Set<(Op,Op)> which Tensor desugars into
-  and is where *state* is kept for
-    1. the specified compute (OpCode)
-    2. the allocated memory (Buffer)
-  and *functionality* is implemented for
-    1. automatic differentiation f'(x): implemented with .toposort() and the chain rule PatternMatcher
-    2. gpu acceleration: implemented with eager kernel evaluator and just-in-time fusion compiler
-  is the *core* of the deep learning framework
+  Op structs (which Tensor's deusugar into) are vertices which form an expression graph G=(V,E) where V is a Set<Op> and E is a Set<(Op,Op)>
+  the name of the struct "Op" is somewhat of a misnomer because the structs store
+  *state* for both the a. specified compute (OpCode) and b. the allocated memory (Buffer)
+  so it's more accurate to conceptualize the struct of Op as both the function type f: _ -> _ and the evaluation of said function f(.)
+  produced by the *functionality* of the dynamically "eager" interpreter and the just-in-time lazy "graph" compiler.
+
+  the derivative f'(x) is the sum of path products on the expression graph, where factors in the product are local derivatives.
+  selecting the optimal order to evaluate such path products is NP-hard.
+  since the functions f(x) that need to be differentiated in the field of machine learning are loss functions of the form f: R^n -> R which fan-out,
+  the reverse direction is heuristically used with a reverse topological sort.
   """
   inputs:tuple[Op, ...] = tuple()
   function: OpCode
   dtype:DType = dtypes.void
+  storage: Buffer
 
-  # arg:Any = None; tag:Any = None
   @property
   def device(self) -> str|tuple[str, ...]: raise NotImplementedError("todo")
   @property
   def shape(self) -> tuple[sint, ...]: raise NotImplementedError("todo")
+  @property
+  def size(self) -> int: return prod([int(x.vmax) if isinstance(x, Op) else x for x in self.shape])
 
-  # ************ Backward f'(x) ************  
-  def toposort(self, gate:Callable|None=None) -> dict[Op, None]:
-    visited: dict[Op, None] = {}
-    stack: list[tuple[Op, bool]] = [(self, False)] # each stack entry is (node, visited_flag)
-
-    while stack:
-      node, visited = stack.pop()
-      if node in visited: continue
-      if not visited:
-        if gate is None or gate(node): # MOOSE gate?
-          stack.append((node, True))  # push node back on stack to process after its srcs
-          for s in reversed(node.inputs): stack.append((s, False)) # push srcs on the stack
-      else: visited[node] = None # second time i'm seeing this node, add it to returned toposort
-    return visited
-
-  # ************ Forward f(x) ************  
-  def eval_uop(inputs, opcode) -> Tensor:
-    """
-    the eager evaluator is an embedded interpreter which override the semantics of the host language
-    since inputs are values they need to be dynamically destructured
-    TODO: dispatcher, registry?
-
-    householder convention:
-    scalars: α,β ∈ F
-    vectors: x,y,z ∈ V
-    matrices: A,B,C ∈ (V1 -> V2)
-
-    MOOSE: basically abstractions.py needs to go in here
-    """
-    match opcode:
-      case OpCode.NEG: raise NotImplementedError("todo")
-      case OpCode.ADD: launch_add(inputs[0], inputs[1])
-      case OpCode.MUL: launch_mul(inputs[0], inputs[1])
-      case OpCode.MM: launch_mm(inputs[0], inputs[1])
-      case OpCode.RECIPROCAL: raise NotImplementedError("todo")
-      case OpCode.EXP2: raise NotImplementedError("todo")
-      case OpCode.LOG2: raise NotImplementedError("todo")
-      case OpCode.SIN: raise NotImplementedError("todo")
-      case _: raise NotImplementedError(f"unsupported opcode {opcode!r}")
-
-  def launch_add(x: Tensor, y: Tensor):
-    raise NotImplementedError("")
-    # out = cpu.allocator.alloc(4)
-    # run_kernel("void kernel(int *out, int *a, int *b){ out[0]=a[0]+b[0]; }",
-    #                   out, self.buf, other.buf)
-    # raise NotImplementedError("")
-
-  def launch_mul(A: Tensor, B: Tensor): raise NotImplementedError("")
-  def launch_mm(A: Tensor, B: Tensor): raise NotImplementedError("")
-    # if os.getenv("EAGER_NAIVE") == 1: # allocate/synchronize per op (no views)
-    #   assert A.dtype == np.float32 and B.dtype == np.float32, "supports f32 only"
-    #   assert A.ndim == 2 and B.ndim == 2, "expected 2D inputs"
-    #   (M, K),  (K2, N) = (A.shape, B.shape)
-    #   assert K == K2, f"shape mismatch: {A.shape} x {B.shape}"
-    #   allocator = Allocator()
-
-    #   _check(hip.hipSetDevice(0))
-    #   bufA, bufB, bufC = allocator.alloc(A.nbytes), allocator.alloc(B.nbytes), allocator.alloc(M*N*4)
-    #   allocator.to_device(bufA, A), allocator.to_device(bufB, B)
-
-    #   grid, block  = ((N + 15)//16, (M + 15)//16, 1), (16, 16, 1)
-    #   prog  = get_or_build_matmul()
-    #   prog.launch([bufA, bufB, bufC], [M, N, K], grid, block)
-
-    #   out = np.empty((M, N), dtype=np.float32)
-
-    #   allocator.to_host(out, bufC)
-    #   allocator.free(bufC); allocator.free(bufB); allocator.free(bufA)
-    #   return out
-    # elif os.getenv("EAGER_RUNTIME") == 1: # eager interpretation with runtime
-    #   in_bufs = [input._buffer for input in (self,)+other] # 1. gather input bufs
-    #   out_shp, out_dtype = out_tensor.shape, out_tensor.dtype.base
-    #   out_uop = UOp.new_buffer(dev, prod(out_shp), out_dtype).reshape(out_shp) # 2. allocate output bufs
-    #   out_buf = cast(Buffer, out_uop.base.buffer).allocate()
-    #   eval_uop() # 2. dispatch op to eager interpreter
-    #   return out_tensor
   
   @staticmethod
   def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, num=None):
@@ -156,18 +83,18 @@ class Op: # (ComputeMixin): # MovementMixin, metaclass=OpMetaClass
       case _: raise RuntimeError(f"buf_target called on non load/index/store {self.op}")
 
   @property
-  def buffer(self) -> Buffer|MultiBuffer:
+  def storage(self) -> Buffer|MultiBuffer:
     from tinygrad.device import Buffer, MultiBuffer
     if self is not self.base:
       assert self.op is OpCode.RESHAPE, f"can only be RESHAPE {self}"
-      return self.inputs[0].buffer
+      return self.inputs[0].storage
     if self.op is OpCode.MSELECT:
-      ret = self.inputs[0].buffer
+      ret = self.inputs[0].storage
       assert isinstance(ret, MultiBuffer)
       return ret.bufs[self.arg]
     if self.op is OpCode.MSTACK:
       ret = MultiBuffer.__new__(MultiBuffer)
-      ret.bufs = [cast(Buffer, x.buffer) for x in self.inputs]
+      ret.bufs = [cast(Buffer, x.storage) for x in self.inputs]
       assert all_same([x.size for x in ret.bufs]) and all_same([x.dtype for x in ret.bufs]), "multibuffers mismatch buffers"
       return ret
     assert self.op is OpCode.BUFFER, f"must be BUFFER {self.op}"
@@ -180,7 +107,7 @@ class Op: # (ComputeMixin): # MovementMixin, metaclass=OpMetaClass
   @property
   def realized(self) -> Buffer|MultiBuffer|None:
     # NOTE: this is used by the JIT to determine which inputs we capture
-    return self.buffer if self.op in {OpCode.BUFFER, OpCode.MSTACK} and self.buffer.is_allocated() else None
+    return self.storage if self.op in {OpCode.BUFFER, OpCode.MSTACK} and self.storage.is_allocated() else None
   @property
   def is_realized(self) -> bool:
     return all(x.base.realized is not None for x in self.base.src) if self.base.op is OpCode.MULTI else self.base.realized is not None

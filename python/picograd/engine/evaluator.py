@@ -3,13 +3,11 @@ import os
 from typing import TYPE_CHECKING
 # from picograd.device import Allocator
 if TYPE_CHECKING: from picograd.sugar.tensor import Tensor
-from picograd.engine.compiler import Pattern, PatternMatcher
-from picograd.engine.op import OpCode
+from picograd.engine import Op, OpCode, Pattern, PatternMatcher
 # from . import _pgrs
 
-
-# ************ Forward f(x) ************  
-def eval_uop(inputs, opcode) -> Tensor:
+# ************ f(x) ************  
+def eval_uop(inputs:tuple[Op, ...], opcode: OpCode) -> Op:
   """
   the eager evaluator is an embedded interpreter which override the semantics of the host language
   since inputs are values they need to be dynamically destructured
@@ -19,8 +17,6 @@ def eval_uop(inputs, opcode) -> Tensor:
   scalars: α,β ∈ F
   vectors: x,y,z ∈ V
   matrices: A,B,C ∈ (V1 -> V2)
-
-  MOOSE: basically abstractions.py needs to go in here
   """
   match opcode:
     case OpCode.NEG: raise NotImplementedError("todo")
@@ -70,7 +66,7 @@ def launch_mm(A: Tensor, B: Tensor): raise NotImplementedError("")
   #   eval_uop() # 2. dispatch op to eager interpreter
   #   return out_tensor
 
-# ************ Backward f'(x) ************  
+# ************ f'(x) ************  
 chain_rules = PatternMatcher([
   # (Pat(OpCode.CAST, name="ret"), lambda ctx, ret: (ctx.cast(ret.src[0].dtype),)),
   (Pattern(OpCode.RECIPROCAL, name="input"), lambda output_grad, input: (-output_grad * input * input,)),
