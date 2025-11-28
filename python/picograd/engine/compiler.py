@@ -2,6 +2,22 @@ from dataclasses import dataclass
 from picograd.dtype import DType
 from picograd.engine.op import Op, OpCode, PatternMatcher
 
+# -kernelize: graph rewrites
+# -schedule_with_vars: feeds graph to scheduler and memory planner
+# -realize: hands schedule to run_schedule
+
+class PatternMatcher:
+  """
+  ...
+  """
+  def __init__(): raise NotImplementedError
+
+class Pattern:
+  """
+  ...
+  """
+  def __init__(): raise NotImplementedError
+
 @dataclass(frozen=True)
 class TensorCore: # D = A * B + C, A is (M x K), B is (K x N), C and D are (M x N)
   dims: tuple[int,int,int] # N, M, K
