@@ -3,85 +3,11 @@ from typing import Callable
 import ctypes
 from dataclasses import dataclass
 from enum import auto, IntEnum, Enum
+
+from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
+from picograd.engine.opcode import OpCode, OpMixin
 from picograd.runtime.device import Allocator
 from picograd.dtype import DType, dtypes
-from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
-
-# **************** Intermediate Representation ****************
-sint = int # |Op MOOSE
-class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses
-  def __str__(self): return Enum.__str__(
-        self)
-  @staticmethod
-  def _generate_next_value_(_, __, ___, last_values): return 1 + max([0, *last_values, *[max(c) for c in FastEnum.__subclasses__()]])
-
-class OpCode(FastEnum): # the order of these OpCode controls the order of the toposort
-  """
-  ...
-  """
-  # ops that aren't rendered: noop, sink, unique, device, kernel, precast, rewrite_error, sentinel, after, group
-  # buffer ops: copy, buffer, buffer_view, mselect, mstack, bufferize, contiguous, contiguous_backward
-  # movement ops: these only exist in the tensor graph reshape, permute, expand, pad, shrink, flip, multi
-  # def_global, def_local, def_reg, def_var, bind, special(range)
-  # reduce_axis, reduce, allreduce
-  # unroll, contract, gep, vectorize, cat, ptrcat
-  CAST = auto(); BITCAST = auto(); EXP2 = auto(); LOG2 = auto(); SIN = auto(); SQRT = auto(); RECIPROCAL = auto(); NEG = auto(); TRUNC = auto() # unaryops
-  # laod, store, assign, wmma, index
-
-  # binaryops
-  MM = auto(); FA = auto() # TODO: order??
-  ADD = auto(); MUL = auto(); SHL = auto(); SHR = auto(); IDIV = auto(); MAX = auto(); MOD = auto()
-  CMPLT = auto(); CMPNE = auto(); CMPEQ = auto()
-  XOR = auto(); OR = auto(); AND = auto()
-  THREEFRY = auto(); SUB = auto(); FDIV = auto(); POW = auto()
-
-  # where, mulacc
-  # barrier, range, if, end, endif
-  # vconst, const, custom, customi
-
-class PatternMatcher:
-  """
-  ...
-  """
-  def __init__(): raise NotImplementedError
-
-class Pattern:
-  """
-  ...
-  """
-  def __init__(): raise NotImplementedError
-
-chain_rules = PatternMatcher([
-  # (Pat(OpCode.CAST, name="ret"), lambda ctx, ret: (ctx.cast(ret.src[0].dtype),)),
-  (Pattern(OpCode.RECIPROCAL, name="input"), lambda output_grad, input: (-output_grad * input * input,)),
-  (Pattern(OpCode.SIN, name="input"), lambda output_grad, input: ((math.pi/2 - input.src[0]).sin() * output_grad,)),
-  (Pattern(OpCode.LOG2, name="input"), lambda output_grad, input: (output_grad / (input.src[0] * math.log(2)),)),
-  (Pattern(OpCode.EXP2, name="input"), lambda output_grad, input: (input * output_grad * math.log(2),)),
-  (Pattern(OpCode.SQRT, name="input"), lambda output_grad, input: (output_grad / (input*2),)),
-  # (Pat((OpCode.CMPLT, OpCode.CMPNE)), lambda: (None, None)),
-  (Pattern(OpCode.ADD), lambda output_grad: (1.0*output_grad, 1.0*output_grad)),
-  # (Pat(OpCode.POW, name="input", src=(Pat.var("b"), Pat.var("e"))), lambda output_grad, input, b, e:
-  #   (output_grad * (b.eq(0)&e.eq(0)).where(e, e*b.pow(e-1)), output_grad * b.eq(0).where((e<0).where(input.const_like(-math.inf), 0), input*b.log2()*math.log(2.0)))),
-  # (Pat(OpCode.MAX, src=(Pat.var("x"), Pat.var("y"))), lambda output_grad, x, y:
-  #   ((x>y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)), (x<y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)))),
-  (Pattern(OpCode.MUL, name="input"), lambda output_grad, input: (input.src[1]*output_grad, input.src[0]*output_grad)),
-  # (Patttern(OpCode.WHERE, name="input"), lambda output_grad, input: (None, input.src[0].where(output_grad, output_grad.const_like(0)), input.src[0].where(output_grad.const_like(0), output_grad))),
-  # (Patttern(OpCode.REDUCE_AXIS, name="input"), reduce_gradient),
-  # (Patttern(OpCode.CONTIGUOUS), lambda output_grad: (output_grad,)),
-  # (Patttern(OpCode.CONTIGUOUS_BACKWARD), lambda output_grad: (output_grad.contiguous(),)),
-  # (Patttern(OpCode.RESHAPE, name="input"), lambda output_grad, input: (output_grad.reshape(input.src[0].shape), None)),
-  # (Patttern(OpCode.EXPAND, name="input"), lambda output_grad, input: (output_grad.r(OpCode.ADD,tuple(i for i,(s,n) in enumerate(zip(input.src[0].shape, input.shape)) if s!=n)), None)),
-  # (Patttern(OpCode.PAD, name="input"), lambda output_grad, input: (output_grad.shrink(tuple([(p[0], s+p[0]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
-  # (Patttern(OpCode.SHRINK, name="input"), lambda output_grad, input: (output_grad.pad(tuple([(p[0], s-p[1]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
-  # (Patttern(OpCode.PERMUTE, name="input"), lambda output_grad, input: (output_grad.permute(argsort(input.marg)),)),
-  # (Patttern(OpCode.FLIP, name="input"), lambda output_grad, input: (output_grad.flip(input.marg),)),
-  # (Patttern(OpCode.MULTI, name="input"), lambda output_grad, input: output_grad.shard(input.device, input.axis).src),
-  # # NOTE: this is only correct when the KERNEL has a single output
-  # (Patttern(OpCode.AFTER), lambda output_grad: (output_grad, output_grad)),
-  # (Patttern(OpCode.KERNEL, name="k"), lambda output_grad, k: k.arg.grad_fxn(output_grad, k)),
-  # # there's no gradient for bitcast
-  # (Patttern(OpCode.BITCAST), lambda: (None,)),
-])
 
 # **************** Expression Graph ****************
 @dataclass(eq=False, slots=True)
@@ -93,8 +19,8 @@ class Op: # (ComputeMixin): # MovementMixin, metaclass=OpMetaClass
     1. the specified compute (OpCode)
     2. the allocated memory (Buffer)
   and *functionality* is implemented for
-    1. automatic differentiation: implemented via .toposort() and the chain rule PatternMatcher
-    2. gpu acceleration: implemented via interpreter's .eval() and compiler's .compile() pipelines
+    1. automatic differentiation f'(x): implemented with .toposort() and the chain rule PatternMatcher
+    2. gpu acceleration: implemented with eager kernel evaluator and just-in-time fusion compiler
   is the *core* of the deep learning framework
   """
   inputs:tuple[Op, ...] = tuple()
