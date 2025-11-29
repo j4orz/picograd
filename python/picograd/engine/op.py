@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Callable
+from typing import Optional, Self
 import ctypes
 from dataclasses import dataclass
 from enum import auto, IntEnum, Enum
@@ -7,7 +7,13 @@ from enum import auto, IntEnum, Enum
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
 from picograd.engine.opcode import OpCode, OpMixin
 from picograd.runtime.device import Allocator
-from picograd.dtype import DType, dtypes
+from picograd.dtype import ConstLike, DType, dtypes
+
+# picograd to tinygrad bridge
+# - removed buf_op and as_buf used by haldie/tvm schedule/rangify to map high level ops back to buffers
+# - removed buf_target
+# - rename OpMixin.alu() -> OpMixin.eval()
+# - retrofit an eager interpreter in OpMixin.eval()
 
 # **************** Expression Graph ****************
 @dataclass(eq=False, slots=True) # NOTE: this should be frozen, but frozen is slower
@@ -24,18 +30,31 @@ class Op(OpMixin):
   since the functions f(x) that need to be differentiated in the field of machine learning are loss functions of the form f: R^n -> R which fan-out,
   the reverse direction is heuristically used with a reverse topological sort.
   """
-  inputs:tuple[Op, ...] = tuple()
-  function: OpCode
-  dtype:DType = dtypes.void
-  storage: Buffer
+  inputs: tuple[Op, ...] = tuple()
+  ftype: OpCode
+  dtype: DType = dtypes.void
+  storage: Buffer # make this Optional when adding the compiler pipeline
 
-  @property
-  def device(self) -> str|tuple[str, ...]: raise NotImplementedError("todo")
-  @property
-  def shape(self) -> tuple[sint, ...]: raise NotImplementedError("todo")
-  @property
-  def size(self) -> int: return prod([int(x.vmax) if isinstance(x, Op) else x for x in self.shape])
-
+  def const_like(self, b:ConstLike):
+    return Op.const(self.dtype, b, device=self._device, shape=self._shape) # constants can optionally have a DEVICE source
+  
+  def eval(self, ftype: OpCode, *inputs:Op) -> Self: # required method by OpMixin
+    """
+    the eager evaluator is an embedded interpreter which override the semantics of the host language
+    """
+    out_dtype = (self, *inputs)[-1].dtype
+    # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
+    # return Op((self,)+inputs, ftype, out_dtype,)
+    match ftype:
+      case OpCode.NEG: launch_neg(*inputs)
+      case OpCode.ADD: launch_add(*inputs)
+      case OpCode.MUL: launch_mul(*inputs)
+      case OpCode.MM: launch_mm(*inputs)
+      case OpCode.RECIP: launch_recip(*inputs)
+      case OpCode.EXP2: launch_exp2(*inputs)
+      case OpCode.LOG2: launch_log2(*inputs)
+      case OpCode.SIN: launch_sin(*inputs)
+      case _: raise NotImplementedError(f"unsupported opcode {ftype!r}")
   
   @staticmethod
   def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, num=None):
@@ -43,8 +62,7 @@ class Op(OpMixin):
   
   @property
   def device(self) -> str|tuple[str, ...]: return unwrap(self._device)
-  @recursive_property
-  def _device(self) -> str|tuple[str, ...]|None:
+  def _device(self) -> str|tuple[str, ...]|None: # @recursive_property
     if self.op is OpCode.DEVICE: return self.arg
     if self.op is OpCode.BUFFERIZE: return self.arg.device
     if self.op is OpCode.AFTER: return self.inputs[0]._device
@@ -56,31 +74,6 @@ class Op(OpMixin):
     for x in self.inputs:
       if x._device is not None: return x._device
     return None
-  @property
-  def buf_Op(self) -> Op:
-    if self.op is OpCode.BUFFER: return self
-    if self.op is OpCode.MSELECT: return self.inputs[0].buf_Op.mselect(self.arg)
-    if self.op is OpCode.MSTACK: return Op(OpCode.MSTACK, self.dtype, inputs=tuple(x.buf_Op for x in self.inputs))
-    assert self.base.op is OpCode.AFTER, f"must be AFTER {self.base.op}"
-    return self.base.src[0].buf_Op.base
-
-  def as_buf(self) -> Op:
-    if self.op is OpCode.MSELECT: return self.inputs[0].as_buf().mselect(self.arg)
-    if self.op is OpCode.MSTACK: return Op(OpCode.MSTACK, self.dtype, inputs=tuple(x.as_buf() for x in self.inputs))
-    # TODO: this should be the only one of these. this is the one RANGEIFY uses
-    s = self
-    while len(s.inputs) and s.op not in {OpCode.BUFFER, OpCode.BUFFERIZE, OpCode.MSTACK}: s = s.inputs[0]
-    return s
-
-  def buf_target(self) -> Op:
-    # the buffer that's being loaded from or store to
-    match self.op:
-      case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG: return self
-      case OpCode.AFTER | OpCode.INDEX | OpCode.STORE | OpCode.LOAD: return self.inputs[0].buf_target()
-      case OpCode.VECTORIZE:
-        assert all_same(self.inputs)
-        return self.inputs[0].buf_target()
-      case _: raise RuntimeError(f"buf_target called on non load/index/store {self.op}")
 
   @property
   def storage(self) -> Buffer|MultiBuffer:
@@ -104,13 +97,9 @@ class Op(OpMixin):
     else: ret = Buffer(self.device, self.size, rdtype).ref(1)
     buffers[self] = ret
     return ret
+  
   @property
-  def realized(self) -> Buffer|MultiBuffer|None:
-    # NOTE: this is used by the JIT to determine which inputs we capture
-    return self.storage if self.op in {OpCode.BUFFER, OpCode.MSTACK} and self.storage.is_allocated() else None
-  @property
-  def is_realized(self) -> bool:
-    return all(x.base.realized is not None for x in self.base.src) if self.base.op is OpCode.MULTI else self.base.realized is not None
+  def size(self) -> int: return prod([int(x.vmax) if isinstance(x, Op) else x for x in self.shape])
   
 # **************** Python/C Foreign Function Helpers  ****************
 def from_mv(mv:memoryview, to_type:type[ctypes._SimpleCData]=ctypes.c_char) -> ctypes.Array:

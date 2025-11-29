@@ -7,28 +7,6 @@ from picograd.engine import Op, OpCode, Pattern, PatternMatcher
 # from . import _pgrs
 
 # ************ f(x) ************  
-def eval_uop(inputs:tuple[Op, ...], opcode: OpCode) -> Op:
-  """
-  the eager evaluator is an embedded interpreter which override the semantics of the host language
-  since inputs are values they need to be dynamically destructured
-  TODO: dispatcher, registry?
-
-  householder convention:
-  scalars: α,β ∈ F
-  vectors: x,y,z ∈ V
-  matrices: A,B,C ∈ (V1 -> V2)
-  """
-  match opcode:
-    case OpCode.NEG: raise NotImplementedError("todo")
-    case OpCode.ADD: launch_add(inputs[0], inputs[1])
-    case OpCode.MUL: launch_mul(inputs[0], inputs[1])
-    case OpCode.MM: launch_mm(inputs[0], inputs[1])
-    case OpCode.RECIPROCAL: raise NotImplementedError("todo")
-    case OpCode.EXP2: raise NotImplementedError("todo")
-    case OpCode.LOG2: raise NotImplementedError("todo")
-    case OpCode.SIN: raise NotImplementedError("todo")
-    case _: raise NotImplementedError(f"unsupported opcode {opcode!r}")
-
 def launch_add(x: Tensor, y: Tensor):
   raise NotImplementedError("")
   # out = cpu.allocator.alloc(4)
@@ -69,7 +47,7 @@ def launch_mm(A: Tensor, B: Tensor): raise NotImplementedError("")
 # ************ f'(x) ************  
 chain_rules = PatternMatcher([
   # (Pat(OpCode.CAST, name="ret"), lambda ctx, ret: (ctx.cast(ret.src[0].dtype),)),
-  (Pattern(OpCode.RECIPROCAL, name="input"), lambda output_grad, input: (-output_grad * input * input,)),
+  (Pattern(OpCode.RECIP, name="input"), lambda output_grad, input: (-output_grad * input * input,)),
   (Pattern(OpCode.SIN, name="input"), lambda output_grad, input: ((math.pi/2 - input.src[0]).sin() * output_grad,)),
   (Pattern(OpCode.LOG2, name="input"), lambda output_grad, input: (output_grad / (input.src[0] * math.log(2)),)),
   (Pattern(OpCode.EXP2, name="input"), lambda output_grad, input: (input * output_grad * math.log(2),)),

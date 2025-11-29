@@ -3,6 +3,10 @@ from typing import Final, Literal
 from dataclasses import dataclass
 from enum import Enum, auto
 
+sint = int
+ConstType = float|int|bool
+ConstLike = ConstType|InvalidType|Variable|tuple[ConstType|InvalidType, ...]
+
 class AddrSpace(Enum):
   def __repr__(self): return str(self)
   GLOBAL = auto(); LOCAL = auto(); REG = auto()  # noqa: E702
