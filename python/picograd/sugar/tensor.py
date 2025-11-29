@@ -120,12 +120,12 @@ class Tensor(OpMixin):
   def forward(self, f:Callable, *other:Tensor) -> Self:
     """
     .forward() is the method in which all evaluations funnel through, regardless of whether the operation is either
-      - sugar: directly calls .forward()
+      - sugar: directly calls .forward() or
       - primitive: indirectly calls .forward() by _binop override
-    in which case, .forward() evaluates f(x) by calling f, implemented by Op.eval(), which in turn, launches device kernels.
+    in either case, .forward() evaluates f(x) by calling f, implemented by Op.eval(), which in turn, launches device kernels.
     .forward() then wraps the new output Op in the expression graph with a Tensor handle
     """
-    output_op: Op = f(*[t.uop for t in (self,)+other]) # <----------------------------------------------- compiler pipeline: if EAGER ... elif GRAPH ... else ...
+    output_op: Op = f(*[t.uop for t in (self,)+other]) # <------------ compiler pipeline: if EAGER ... elif GRAPH ... else ...
     needs_input_grad = [t.requires_grad for t in (self,)+other]
     requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
     output_tensor = Tensor(output_op, device=output_op.device, requires_grad=requires_grad)

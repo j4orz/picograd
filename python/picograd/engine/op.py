@@ -5,8 +5,8 @@ import ctypes
 from dataclasses import dataclass
 from enum import auto, IntEnum, Enum
 
-from picograd.engine.compiler import PatternMatcher
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
+from picograd.engine.compiler import PatternMatcher
 from picograd.engine.irparser import OpCode, OpMixin
 from picograd.runtime.device import Allocator
 from picograd.dtype import ConstLike, DType, dtypes
@@ -88,7 +88,9 @@ class Op(OpMixin):
   
   def eval(self, ftype: OpCode, *inputs:Op) -> Self: # required method by OpMixin
     """
-    the eager evaluator is an embedded interpreter which override the semantics of the host language
+    the evaluator overrides* the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
+    called by OpMixin.eval() which acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode intermediate representation
+    *: note that .eval is not a static method, that self is the Op that the OpCode ftype is operating on, to produce a new Self
     """
     out_dtype = (self, *inputs)[-1].dtype
     # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
@@ -101,10 +103,8 @@ class Op(OpMixin):
         a, b, c = [device.allocator.alloc(4), device.allocator.alloc(4), device.allocator.alloc(4)]
         device.allocator._copyin(a, memoryview(bytearray([2,0,0,0])))
         device.allocator._copyin(b, memoryview(bytearray([3,0,0,0])))
-
         # 2. compute: compile a kernel to a binary
         kernel = HIPCCCompiler().compile("__global__ void add(int *a, int *b, int *c) { int id = blockDim.x * blockIdx.x + threadIdx.x; if(id < N) c[id] = a[id] + b[id]; }")
-
         # 3. launch
         f = device.kernel("add", kernel)
         f(a, b, c) # HIPKernel
