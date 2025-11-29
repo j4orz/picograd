@@ -1,9 +1,11 @@
 from __future__ import annotations
+from re import Pattern
 from typing import Optional, Self
 import ctypes
 from dataclasses import dataclass
 from enum import auto, IntEnum, Enum
 
+from picograd.engine.compiler import PatternMatcher
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
 from picograd.engine.opcode import OpCode, OpMixin
 from picograd.runtime.device import Allocator
@@ -14,6 +16,52 @@ from picograd.dtype import ConstLike, DType, dtypes
 # - removed buf_target
 # - rename OpMixin.alu() -> OpMixin.eval()
 # - retrofit an eager interpreter in OpMixin.eval()
+
+chain_rules = PatternMatcher([
+  # (Pat(OpCode.CAST, name="ret"), lambda ctx, ret: (ctx.cast(ret.src[0].dtype),)),
+  (Pattern(OpCode.RECIP, name="input"), lambda output_grad, input: (-output_grad * input * input,)),
+  (Pattern(OpCode.SIN, name="input"), lambda output_grad, input: ((math.pi/2 - input.src[0]).sin() * output_grad,)),
+  (Pattern(OpCode.LOG2, name="input"), lambda output_grad, input: (output_grad / (input.src[0] * math.log(2)),)),
+  (Pattern(OpCode.EXP2, name="input"), lambda output_grad, input: (input * output_grad * math.log(2),)),
+  (Pattern(OpCode.SQRT, name="input"), lambda output_grad, input: (output_grad / (input*2),)),
+  # (Pat((OpCode.CMPLT, OpCode.CMPNE)), lambda: (None, None)),
+  (Pattern(OpCode.ADD), lambda output_grad: (1.0*output_grad, 1.0*output_grad)),
+  # (Pat(OpCode.POW, name="input", src=(Pat.var("b"), Pat.var("e"))), lambda output_grad, input, b, e:
+  #   (output_grad * (b.eq(0)&e.eq(0)).where(e, e*b.pow(e-1)), output_grad * b.eq(0).where((e<0).where(input.const_like(-math.inf), 0), input*b.log2()*math.log(2.0)))),
+  # (Pat(OpCode.MAX, src=(Pat.var("x"), Pat.var("y"))), lambda output_grad, x, y:
+  #   ((x>y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)), (x<y).where(output_grad, (x.eq(y)).where(output_grad * 0.5, 0)))),
+  (Pattern(OpCode.MUL, name="input"), lambda output_grad, input: (input.src[1]*output_grad, input.src[0]*output_grad)),
+  # (Patttern(OpCode.WHERE, name="input"), lambda output_grad, input: (None, input.src[0].where(output_grad, output_grad.const_like(0)), input.src[0].where(output_grad.const_like(0), output_grad))),
+  # (Patttern(OpCode.REDUCE_AXIS, name="input"), reduce_gradient),
+  # (Patttern(OpCode.CONTIGUOUS), lambda output_grad: (output_grad,)),
+  # (Patttern(OpCode.CONTIGUOUS_BACKWARD), lambda output_grad: (output_grad.contiguous(),)),
+  # (Patttern(OpCode.RESHAPE, name="input"), lambda output_grad, input: (output_grad.reshape(input.src[0].shape), None)),
+  # (Patttern(OpCode.EXPAND, name="input"), lambda output_grad, input: (output_grad.r(OpCode.ADD,tuple(i for i,(s,n) in enumerate(zip(input.src[0].shape, input.shape)) if s!=n)), None)),
+  # (Patttern(OpCode.PAD, name="input"), lambda output_grad, input: (output_grad.shrink(tuple([(p[0], s+p[0]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
+  # (Patttern(OpCode.SHRINK, name="input"), lambda output_grad, input: (output_grad.pad(tuple([(p[0], s-p[1]) for s,p in zip(input.src[0].shape, input.marg)])), None, None)),
+  # (Patttern(OpCode.PERMUTE, name="input"), lambda output_grad, input: (output_grad.permute(argsort(input.marg)),)),
+  # (Patttern(OpCode.FLIP, name="input"), lambda output_grad, input: (output_grad.flip(input.marg),)),
+  # (Patttern(OpCode.MULTI, name="input"), lambda output_grad, input: output_grad.shard(input.device, input.axis).src),
+  # # NOTE: this is only correct when the KERNEL has a single output
+  # (Patttern(OpCode.AFTER), lambda output_grad: (output_grad, output_grad)),
+  # (Patttern(OpCode.KERNEL, name="k"), lambda output_grad, k: k.arg.grad_fxn(output_grad, k)),
+  # # there's no gradient for bitcast
+  # (Patttern(OpCode.BITCAST), lambda: (None,)),
+])
+
+def toposort(gate:Callable|None=None) -> dict[Op, None]:
+  visited: dict[Op, None] = {}
+  stack: list[tuple[Op, bool]] = [(self, False)] # each stack entry is (node, visited_flag)
+
+  while stack:
+    node, visited = stack.pop()
+    if node in visited: continue
+    if not visited:
+      if gate is None or gate(node): # MOOSE gate?
+        stack.append((node, True))  # push node back on stack to process after its srcs
+        for s in reversed(node.inputs): stack.append((s, False)) # push srcs on the stack
+    else: visited[node] = None # second time i'm seeing this node, add it to returned toposort
+  return visited
 
 # **************** Expression Graph ****************
 @dataclass(eq=False, slots=True) # NOTE: this should be frozen, but frozen is slower
@@ -47,7 +95,22 @@ class Op(OpMixin):
     # return Op((self,)+inputs, ftype, out_dtype,)
     match ftype:
       case OpCode.NEG: launch_neg(*inputs)
-      case OpCode.ADD: launch_add(*inputs)
+      case OpCode.ADD:
+        # 1. memory: allocate and memcpy on device
+        device = HIPDevice()
+        a, b, c = [device.allocator.alloc(4), device.allocator.alloc(4), device.allocator.alloc(4)]
+        device.allocator._copyin(a, memoryview(bytearray([2,0,0,0])))
+        device.allocator._copyin(b, memoryview(bytearray([3,0,0,0])))
+
+        # 2. compute: compile a kernel to a binary
+        kernel = HIPCCCompiler().compile("__global__ void add(int *a, int *b, int *c) { int id = blockDim.x * blockIdx.x + threadIdx.x; if(id < N) c[id] = a[id] + b[id]; }")
+
+        # 3. launch
+        f = device.kernel("add", kernel)
+        f(a, b, c) # HIPKernel
+
+        print(val := device.allocator._as_buffer(c).cast("I").tolist()[0])
+        assert val == 5 # check the data out
       case OpCode.MUL: launch_mul(*inputs)
       case OpCode.MM: launch_mm(*inputs)
       case OpCode.RECIP: launch_recip(*inputs)
