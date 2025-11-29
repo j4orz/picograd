@@ -1,6 +1,7 @@
 import functools, platform, sys, os, time, ctypes, subprocess
 from typing import overload
 
+EAGER, GRAPH = 1, 0 
 DEBUG = 0 # ContextVar("DEBUG", 0)
 OSX, WIN = platform.system() == "Darwin", sys.platform == "win32"
 LRU = 1 # ContextVar("LRU", 1)

@@ -18,11 +18,10 @@ for more details on the usage of each layer of abstraction, see examples/abstrac
 """
 
 print("picograd: a bridge from micrograd to tinygrad")
-from .frontend import optim
-from .frontend import nn
-from .frontend.tensor import Tensor
-from .runtime.device import Runtime
-__all__ = ["Runtime", "Tensor", "nn", "optim"]
+from . import dtype
+from .sugar import nn, optim
+from .sugar.tensor import Tensor
+__all__ = ["dtype", "Tensor", "nn", "optim"]
 
 from importlib import import_module as _import_module
 _pgrs = _import_module("picograd._pgrs")
