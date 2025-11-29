@@ -2,8 +2,7 @@ from __future__ import annotations
 from typing import Self
 from enum import Enum, IntEnum, auto
 
-sint = int # |Op MOOSE
-ConstType = float|int|bool
+from picograd.dtype import ConstType
 
 # **************** Intermediate Representation ****************
 class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses
@@ -11,9 +10,10 @@ class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ an
   @staticmethod
   def _generate_next_value_(_, __, ___, last_values): return 1 + max([0, *last_values, *[max(c) for c in FastEnum.__subclasses__()]])
 
-class OpCode(FastEnum): # the order of these OpCode controls the order of the toposort
+class OpCode(FastEnum):
   """
   ...
+  the order of these OpCode controls the order of the toposort
   """
   # ops that aren't rendered: noop, sink, unique, device, kernel, precast, rewrite_error, sentinel, after, group
   # buffer ops: copy, buffer, buffer_view, mselect, mstack, bufferize, contiguous, contiguous_backward
@@ -21,30 +21,39 @@ class OpCode(FastEnum): # the order of these OpCode controls the order of the to
   # def_global, def_local, def_reg, def_var, bind, special(range)
   # reduce_axis, reduce, allreduce
   # unroll, contract, gep, vectorize, cat, ptrcat
-  CAST = auto(); BITCAST = auto(); EXP2 = auto(); LOG2 = auto(); SIN = auto(); SQRT = auto(); RECIPROCAL = auto(); NEG = auto(); TRUNC = auto() # unaryops
+
+  # CAST = auto(); BITCAST = auto();
+  # unaryops
+  EXP2 = auto(); LOG2 = auto(); SIN = auto(); SQRT = auto(); RECIP = auto(); NEG = auto(); TRUNC = auto()
   # laod, store, assign, wmma, index
 
-  # binaryops
   MM = auto(); FA = auto() # TODO: order??
+  # binary ops
   ADD = auto(); MUL = auto(); SHL = auto(); SHR = auto(); IDIV = auto(); MAX = auto(); MOD = auto()
-  CMPLT = auto(); CMPNE = auto(); CMPEQ = auto()
-  XOR = auto(); OR = auto(); AND = auto()
-  THREEFRY = auto(); SUB = auto(); FDIV = auto(); POW = auto()
 
+  # CMPLT = auto(); CMPNE = auto(); CMPEQ = auto()
+  # XOR = auto(); OR = auto(); AND = auto()
+  # THREEFRY = auto(); SUB = auto(); FDIV = auto(); POW = auto()
   # where, mulacc
   # barrier, range, if, end, endif
   # vconst, const, custom, customi
 
-# **************** Compute and Movement Mixins ****************
+# **************** OpMixin: ComputeMixin * MovementMixin ****************
+"""
+OpMixin (at the bottom of the file) is a ComputeMixin and MovementMixin provide
+dunder builtins that call their non-dunder equivalents whom are coupled and aware of the corresponding OpCode.
+these OpCodes are applied in their corresponding context (sugared Tensors, desugared Ops) by implementor-provided .alu() and .const_like().
+this abstraction effectively removes the repetition happening between sugared and desugared Tensor/Op.
+"""
 
 class ComputeMixin:
   # required
-  def alu(self, op: OpCode, *src: Self) -> Self: raise NotImplementedError
+  def eval(self, ftype: OpCode, *inputs: Self) -> Self: raise NotImplementedError
   def const_like(self, b: ConstType) -> Self: raise NotImplementedError
 
   # provided
   def _binop(self, op: OpCode, x: Self | ConstType, reverse: bool) -> Self:
-    return self.ufix(x).alu(op, self) if reverse else self.alu(op, self.ufix(x))
+    return self.ufix(x).eval(op, self) if reverse else self.eval(op, self.ufix(x))
   def ufix(self, x: Self | ConstType) -> Self:
     return self.const_like(x) if not isinstance(x, ComputeMixin) else x
 
@@ -53,21 +62,21 @@ class ComputeMixin:
       raise TypeError(f"MathTraits __neg__ requires a dtype, {self=}")
     return self.logical_not() if dtype.scalar() == dtypes.bool else self * (-1)
   def add(self, x: Self | ConstType, reverse: bool = False): return self._binop(OpCode.ADD, x, reverse)
-  def sub(self, x: Self | ConstType, reverse: bool = False): return self.ufix(x).alu(OpCode.ADD, -self) if reverse else self.alu(OpCode.ADD, self.ufix(-x))
+  def sub(self, x: Self | ConstType, reverse: bool = False): return self.ufix(x).eval(OpCode.ADD, -self) if reverse else self.eval(OpCode.ADD, self.ufix(-x))
   def mul(self, x: Self | ConstType, reverse: bool = False): return self._binop(OpCode.MUL, x, reverse)
   def idiv(self, x: Self | ConstType, reverse: bool = False): return self._binop(OpCode.IDIV, x, reverse)
   def mod(self, x: Self | ConstType, reverse: bool = False): return self._binop(OpCode.MOD, x, reverse)
-  def div(self, x: Self | ConstType, reverse: bool = False): return (self.ufix(x) * self.alu(OpCode.RECIPROCAL)) if reverse else (self * self.ufix(x).alu(OpCode.RECIPROCAL))
-  def reciprocal(self): return self.alu(OpCode.RECIPROCAL)
-  def trunc(self): return self.alu(OpCode.TRUNC)
-  def sqrt(self): return self.alu(OpCode.SQRT)
-  def sin(self): return self.alu(OpCode.SIN)
-  def log2(self): return self.alu(OpCode.LOG2)
-  def exp2(self): return self.alu(OpCode.EXP2)
-  def pow(self, x: Self | ConstType): return self.alu(OpCode.POW, self.ufix(x))
-  def maximum(self, x: Self | ConstType): return self.alu(OpCode.MAX, self.ufix(x))
+  def div(self, x: Self | ConstType, reverse: bool = False): return (self.ufix(x) * self.eval(OpCode.RECIP)) if reverse else (self * self.ufix(x).eval(OpCode.RECIP))
+  def reciprocal(self): return self.eval(OpCode.RECIP)
+  def trunc(self): return self.eval(OpCode.TRUNC)
+  def sqrt(self): return self.eval(OpCode.SQRT)
+  def sin(self): return self.eval(OpCode.SIN)
+  def log2(self): return self.eval(OpCode.LOG2)
+  def exp2(self): return self.eval(OpCode.EXP2)
+  def pow(self, x: Self | ConstType): return self.eval(OpCode.POW, self.ufix(x))
+  def maximum(self, x: Self | ConstType): return self.eval(OpCode.MAX, self.ufix(x))
   def minimum(self, x: Self | ConstType): return -(-self).maximum(-x)
-  def threefry(self, seed: Self): return self.alu(OpCode.THREEFRY, seed)
+  def threefry(self, seed: Self): return self.eval(OpCode.THREEFRY, seed)
   def bitwise_and(self, x: Self | ConstType, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.AND, x, reverse)
   def bitwise_or(self, x: Self | ConstType, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.OR, x, reverse)
   def bitwise_xor(self, x: Self | ConstType, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.XOR, x, reverse)
@@ -75,9 +84,9 @@ class ComputeMixin:
   def rshift(self, x: Self | int, reverse: bool = False): return self._binop(OpCode.SHR, x, reverse)
   def where(self, x: Self | ConstType, y: Self | ConstType):
     if isinstance(x, type(self)):
-      return self.alu(OpCode.WHERE, x, x.ufix(y))
+      return self.eval(OpCode.WHERE, x, x.ufix(y))
     if isinstance(y, type(self)):
-      return self.alu(OpCode.WHERE, y.ufix(x), y)
+      return self.eval(OpCode.WHERE, y.ufix(x), y)
     raise RuntimeError("where needs at least one UOp arg")
   def logical_not(self): return self.ne(True)
   
@@ -96,11 +105,11 @@ class ComputeMixin:
   def __mod__(self, x: Self | ConstType): return self.mod(x)
   def __rmod__(self, x: Self | ConstType): return self.mod(x, True)
   
-  def __lt__(self, x: Self | ConstType): return self.alu(OpCode.CMPLT, self.ufix(x))
-  def __gt__(self, x: Self | ConstType): return self.ufix(x).alu(OpCode.CMPLT, self)
+  def __lt__(self, x: Self | ConstType): return self.eval(OpCode.CMPLT, self.ufix(x))
+  def __gt__(self, x: Self | ConstType): return self.ufix(x).eval(OpCode.CMPLT, self)
   def __ge__(self, x: Self | ConstType): return (self < x).logical_not()
   def __le__(self, x: Self | ConstType): return (self > x).logical_not()
-  def ne(self, x: Self | ConstType): return self.alu(OpCode.CMPNE, self.ufix(x))
+  def ne(self, x: Self | ConstType): return self.eval(OpCode.CMPNE, self.ufix(x))
   def eq(self, x: Self | ConstType): return self.ne(x).logical_not()
   def __ne__(self, x: Self | ConstType): return self.ne(x)  # type: ignore[override]
   # NOTE: __eq__ isn't overridden, and means the same thing as is b default
