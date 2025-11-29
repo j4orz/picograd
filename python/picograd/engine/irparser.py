@@ -40,10 +40,10 @@ class OpCode(FastEnum):
 
 # **************** OpMixin: ComputeMixin * MovementMixin ****************
 """
-OpMixin (at the bottom of the file) is a ComputeMixin and MovementMixin provide
-dunder builtins that call their non-dunder equivalents whom are coupled and aware of the corresponding OpCode.
-these OpCodes are applied in their corresponding context (sugared Tensors, desugared Ops) by implementor-provided .alu() and .const_like().
-this abstraction effectively removes the repetition happening between sugared and desugared Tensor/Op.
+OpMixin (at the bottom of the file) is a ComputeMixin and MovementMixin which effectively
+1. removes the repetition between sugared and desugared Tensor/Op
+2. acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode intermediate representation
+the dunders call the provided mixins' methods, which in turn call .eval(), which is implemented by subclasses.
 """
 
 class ComputeMixin:

@@ -7,7 +7,7 @@ from enum import auto, IntEnum, Enum
 
 from picograd.engine.compiler import PatternMatcher
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
-from picograd.engine.opcode import OpCode, OpMixin
+from picograd.engine.irparser import OpCode, OpMixin
 from picograd.runtime.device import Allocator
 from picograd.dtype import ConstLike, DType, dtypes
 

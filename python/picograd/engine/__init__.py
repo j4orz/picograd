@@ -1,4 +1,4 @@
-from .opcode import sint, OpCode, OpMixin
+from .irparser import sint, OpCode, OpMixin
 from .op import Op
 from .compiler import Pattern, PatternMatcher
 from . import evaluator
