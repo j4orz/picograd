@@ -1,17 +1,16 @@
 # inspired by https://github.com/karpathy/micrograd/blob/master/micrograd/engine.py
 #         and https://github.com/tinygrad/tinygrad/blob/master/tinygrad/tensor.py
 from __future__ import annotations
-from typing import Callable, cast
-import math, os, weakref
-from picograd.dtype import DType
-from picograd.engine.op import sint, Op, OpCode, Pattern, PatternMatcher
-from picograd.engine import evaluator
-# from picograd.mixins import ComputeMixin
-# from . import _pgrs
+from typing import Callable, Self, cast
+import math, weakref
+
+from picograd.dtype import ConstType, DType
+from picograd.engine import sint, Op, OpCode, OpMixin, evaluator
+from picograd.helpers import EAGER, GRAPH
 
 all_tensors: dict[weakref.ref[Tensor], None] = {}
 
-class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMixin):
+class Tensor(OpMixin):
   """
   the Tensor class is ndarray domain specific language dual to the heterogenous Runtime
   all tensor methods funnel through ._forward(), whose semantics depend on whether eager mode or graph mode is respectively set with EAGER=1 or GRAPH=1
@@ -19,56 +18,55 @@ class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMix
     - with GRAPH=1, ._forward() will lazily build up the graph and user's must initiate computation with a .realize() barrier (like torch_xla.sync())
   """
 
-  # ************ Tensor Data ************
-  # runtime data like device, shape, and dtype are deleted to uop, not tensor
+  # ************ Tensor Data + Constructors ************
+  __slots__ = "op", "requires_grad", "grad"
   @property
-  def device(self) -> str|tuple[str, ...]: return self.uop.device
+  def device(self) -> str|tuple[str, ...]: return self.op.device
   @property
-  def shape(self) -> tuple[sint, ...]: return self.uop.shape
+  def shape(self) -> tuple[sint, ...]: return self.op.shape
   @property
-  def dtype(self) -> DType: return self.uop.dtype
+  def dtype(self) -> DType: return self.op.dtype
   @property
   def ndim(self) -> int: raise NotImplementedError("TODO")
   def data(self): raise NotImplementedError("todo")
   def item(self): raise NotImplementedError("todo")
-  def to(self, device:str|tuple[str, ...]|None) -> Tensor: raise NotImplementedError("todo")
+  def to(self, device:str|tuple[str, ...]|None) -> Self: raise NotImplementedError("todo")
   def numel(self) -> sint: raise NotImplementedError("TODO")
   def element_size(self) -> int: raise NotImplementedError("TODO")
   def nbytes(self) -> int: raise NotImplementedError("TODO")
   def is_floating_point(self) -> bool: raise NotImplementedError("TODO")
   def size(self, dim:int|None=None) -> sint|tuple[sint, ...]: raise NotImplementedError("TODO")
-  __slots__ = "uop", "requires_grad", "grad"
 
-  # ************ Tensor Constructors ************
   def __init__(self):
     self.shape, self.stride = [], []
   # --high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
   # --low level:
   @staticmethod
-  def empty(*shape, device:str|tuple[str, ...]|None=None, dtype:DTypeLike|None=None, **kwargs) -> Tensor: raise NotImplementedError("TODO")
-  def empty_like(self, **kwargs) -> Tensor: return Tensor.empty(self.shape, dtype=kwargs.pop("dtype", self.dtype), device=kwargs.pop("device", self.device), **kwargs)
+  def empty(*shape, device:str|tuple[str, ...]|None=None, dtype:DTypeLike|None=None, **kwargs) -> Self: raise NotImplementedError("TODO")
+  def empty_like(self, **kwargs) -> Self: return Tensor.empty(self.shape, dtype=kwargs.pop("dtype", self.dtype), device=kwargs.pop("device", self.device), **kwargs)
   @staticmethod
-  def rand(*shape, device:str|None=None, dtype:DTypeLike|None=None, contiguous:bool=True, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  def rand(*shape, device:str|None=None, dtype:DTypeLike|None=None, contiguous:bool=True, **kwargs) -> Self: raise NotImplementedError("TODO")
   @staticmethod
-  def full(shape:tuple[sint, ...], fill_value:ConstType, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  def full(shape:tuple[sint, ...], fill_value:ConstType, **kwargs) -> Self: raise NotImplementedError("TODO")
   @staticmethod
-  def zeros(*shape, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  def zeros(*shape, **kwargs) -> Self: raise NotImplementedError("TODO")
   @staticmethod
-  def ones(*shape, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  def ones(*shape, **kwargs) -> Self: raise NotImplementedError("TODO")
   @staticmethod
-  def arange(start, stop=None, step=1, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  def arange(start, stop=None, step=1, **kwargs) -> Self: raise NotImplementedError("TODO")
   @staticmethod
-  def linspace(start:int|float, stop:int|float, steps:int, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  def linspace(start:int|float, stop:int|float, steps:int, **kwargs) -> Self: raise NotImplementedError("TODO")
   @staticmethod
-  def eye(n:int, m:int|None=None, **kwargs) -> Tensor: raise NotImplementedError("TODO")
+  def eye(n:int, m:int|None=None, **kwargs) -> Self: raise NotImplementedError("TODO")
 
   # ************ Tensor Operations ************
-  def backward(self, grad:Tensor|None=None) -> Tensor:
+  # f'(x) backward
+  def backward(self, grad:Tensor|None=None) -> Self:
     """
     backward performs by collecting tensors, computing gradients with automatic differentiation, and updating said tensors.
     """
     # 1. collect all tensors that requires grad by topologically sorting the graph of uops and filter
-    all_uops = self.uop.toposort()
+    all_uops = self.op.toposort()
     tensors_require_grad: list[Tensor] = [t for tref in all_tensors if (t:=tref()) is not None and t.uop in all_uops and t.requires_grad]
     uops_require_grad = [t.uop for t in tensors_require_grad]
     assert grad is not None or self.shape == tuple(), "when no gradient is provided, backward must be called on a scalar tensor"
@@ -76,7 +74,7 @@ class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMix
     
     # 2. compute the gradient with a map of tensors to partials
     if grad is None: grad = Tensor(1.0, dtype=self.dtype, device=self.device, requires_grad=False) # base case is 1.0
-    tens2grads = Tensor._automatically_differentiate(self.uop, grad.uop, set(uops_require_grad)) # skipping materializing zerod grads for now
+    tens2grads = Tensor._automatically_differentiate(self.op, grad.uop, set(uops_require_grad)) # skipping materializing zerod grads for now
     grads = [Tensor(g, device=t.device) for t,g in zip(tens2grads.keys, tens2grads.values)] # initialize tensor grads on device
     
     # 3. update the tensors that require grad with the gradient's partials
@@ -84,7 +82,7 @@ class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMix
       assert g.shape == t.shape, f"grad shape must match tensor shape, {g.shape!r} != {t.shape!r}"
       t.grad = g if t.grad is None else (t.grad + g) # accumulate if t.grad exists
     return self
-  
+    
   @staticmethod
   def _automatically_differentiate(root:Op, root_grad:Op, targets:set[Op]) -> dict[Op, Op]:
     """
@@ -118,34 +116,35 @@ class Tensor(): # todo: compute/movement mixins #(ComputeMixin): # , MovementMix
         #     all_metadata[bw_uop] = all_metadata.get(bw_uop, ())+backward_metadata
 
     return tens2grads
-
+  
+  def forward(self, f:Callable, *other:Tensor) -> Self:
+    """
+    .forward() is the method in which all evaluations funnel through, regardless of whether the operation is either
+      - sugar: directly calls .forward()
+      - primitive: indirectly calls .forward() by _binop override
+    in which case, .forward() evaluates f(x) by calling f, implemented by Op.eval(), which in turn, launches device kernels.
+    .forward() then wraps the new output Op in the expression graph with a Tensor handle
+    """
+    output_op: Op = f(*[t.uop for t in (self,)+other]) # <----------------------------------------------- compiler pipeline: if EAGER ... elif GRAPH ... else ...
+    needs_input_grad = [t.requires_grad for t in (self,)+other]
+    requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
+    output_tensor = Tensor(output_op, device=output_op.device, requires_grad=requires_grad)
+    return output_tensor
+  
+  def recip(self) -> Self: return self.forward(Op.recip)
+  def sigmoid(self) -> Self: return (1 + (self * (-1/math.log(2))).exp2()).recip()
+  def tanh(self) -> Self: return 2.0 * ((2.0 * self).sigmoid()) - 1.0
+  def exp2(self) -> Self: return self.forward(Op.exp2)
+  def log2(self) -> Self: return self.forward(Op.log2)
+  def fa(self) -> Self: raise NotImplementedError("todo")
+  def mm(self) -> Self: raise NotImplementedError("todo")
+  # the builtin primitives (i.e add) which do not need to be desugared will call provided OpMixin._binop() to __________
+  # which is overrided to ____________
   def _binop(self, op, x, reverse):
     return self._apply_broadcasted_uop(lambda *u: Op.alu(u[0], op, *u[1:]), x, reverse) # _binop is used by MathTrait
-  def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|ConstType, reverse=False) -> Tensor:
+  def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|ConstType, reverse=False) -> Self:
     lhs,rhs = self._broadcasted(x, reverse)
-    return lhs._apply_uop(fxn, rhs)
-  def _forward(self, f:Callable, *other:Tensor) -> Tensor: #extra_args=(), **kwargs)
-    if os.getenv("EAGER") == 1:
-      out_tensor = evaluator.eval_uop([self, other], out_uop)
-      return out_tensor
-    elif os.getenv("GRAPH") == 1: # lazy compilation: build the graph for .realize()
-      out_uop: Op = f(*[t.uop for t in (self,)+other])#, *extra_args, **kwargs)
-      # if (metadata:=_METADATA.get()) is not None: all_metadata[out_uop] = (metadata,)
-      needs_input_grad = [t.requires_grad for t in (self,)+other]
-      return Tensor(out_uop, device=out_uop.device, requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False)
-    
-      # defer execution and build up graph of ops for compilation later on .realize()
-      # -kernelize: graph rewrites
-      # -schedule_with_vars: feeds graph to scheduler and memory planner
-      # -realize: hands schedule to run_schedule
-
-  def fa(self) -> Tensor: return self._forward(Op.FA)
-  def mm(self) -> Tensor: return self._forward(Op.MM)
-  # --activation
-  def tanh(self) -> Tensor: return 2.0 * ((2.0 * self).sigmoid()) - 1.0
-  def sigmoid(self) -> Tensor: return (1 + (self * (-1/math.log(2))).exp2()).reciprocal()
-  # --unary
-  def exp2(self) -> Tensor: return self._forward(Op.exp2) # self.cast(least_upper_float(self.dtype))._apply_uop(UOp.exp2)
+    return lhs.forward(fxn, rhs)
 
   # reduce ops
   # movement ops

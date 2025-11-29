@@ -67,7 +67,7 @@ class ComputeMixin:
   def idiv(self, x: Self | ConstType, reverse: bool = False): return self._binop(OpCode.IDIV, x, reverse)
   def mod(self, x: Self | ConstType, reverse: bool = False): return self._binop(OpCode.MOD, x, reverse)
   def div(self, x: Self | ConstType, reverse: bool = False): return (self.ufix(x) * self.eval(OpCode.RECIP)) if reverse else (self * self.ufix(x).eval(OpCode.RECIP))
-  def reciprocal(self): return self.eval(OpCode.RECIP)
+  def recip(self): return self.eval(OpCode.RECIP)
   def trunc(self): return self.eval(OpCode.TRUNC)
   def sqrt(self): return self.eval(OpCode.SQRT)
   def sin(self): return self.eval(OpCode.SIN)

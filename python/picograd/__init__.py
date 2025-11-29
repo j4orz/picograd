@@ -1,7 +1,7 @@
 """
 picograd is a teaching deep learning framework that bridges micograd to tinygrad which consists of a
-1. domain specific ndarray language (python `Tensor`) that provides automatic differentiation, optimizers, and neural network layers
-2. an interpreter and compiler pipeline for an abstract compute language (python `Op`) that the tensor frontend desugars/lowers to,
+1. sugar: domain specific ndarray language (python `Tensor`) that provides automatic differentiation, optimizers, and neural network layers
+2. engine: an interpreter and compiler pipeline for an abstract compute language (python `Op`) that the tensor frontend desugars/lowers to,
     which uses heterogenous runtimes (c/c++ `Device(Runtime)`)
     the exact decomposition and intermediate representation is taken directly from tinygrad's RISC-y opset of element ops, reduce ops, and movement ops.
 
@@ -11,7 +11,9 @@ picograd is a teaching deep learning framework that bridges micograd to tinygrad
     b. compiler pipeline "pt2's age of scaling":
       which modifies the language implementation strategy from eager interpretation to just-in-time/lazy compilation
       in order to obtain a global view of the computational graph, and to apply optimizations; the primary one being fusion.
-3. gpu accelerated kernels (cuda c/hip c)
+    
+    gpu accelerated kernels (cuda c/hip c)
+3. runtime: ...
 for more details on the usage of each layer of abstraction, see examples/abstractions.py
 """
 
