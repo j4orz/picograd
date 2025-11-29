@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Callable, Self, cast
 import math, weakref
 
-from picograd.dtype import ConstType, DType
+from picograd.dtype import ConstType, DType, dtypes
 from picograd.engine import sint, Op, OpCode, OpMixin, evaluator
 from picograd.helpers import EAGER, GRAPH
 
@@ -19,7 +19,7 @@ class Tensor(OpMixin):
   """
 
   # ************ Tensor Data + Constructors ************
-  __slots__ = "op", "requires_grad", "grad"
+  __slots__ = "op", "grad", "requires_grad", 
   @property
   def device(self) -> str|tuple[str, ...]: return self.op.device
   @property
@@ -28,36 +28,73 @@ class Tensor(OpMixin):
   def dtype(self) -> DType: return self.op.dtype
   @property
   def ndim(self) -> int: raise NotImplementedError("TODO")
-  def data(self): raise NotImplementedError("todo")
-  def item(self): raise NotImplementedError("todo")
-  def to(self, device:str|tuple[str, ...]|None) -> Self: raise NotImplementedError("todo")
-  def numel(self) -> sint: raise NotImplementedError("TODO")
-  def element_size(self) -> int: raise NotImplementedError("TODO")
-  def nbytes(self) -> int: raise NotImplementedError("TODO")
-  def is_floating_point(self) -> bool: raise NotImplementedError("TODO")
-  def size(self, dim:int|None=None) -> sint|tuple[sint, ...]: raise NotImplementedError("TODO")
 
-  def __init__(self):
-    self.shape, self.stride = [], []
-  # --high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
-  # --low level:
+  def data(self) -> memoryview:
+    if 0 in self.shape: return memoryview(bytearray(0)).cast(self.dtype.base.fmt)
+    assert all_int(self.shape), f"no data if shape is symbolic, {self.shape=}"
+    return self._buffer().as_typed_buffer(self.shape)
+
+  def item(self) -> ConstType:
+    assert self.numel() == 1, "must have one element for item"
+    return self.data()[(0,) * len(self.shape)]
+  
+  def __init__(self,
+               op:ConstType|bytes|list|tuple|UOp|'np.ndarray'|pathlib.Path|None,  # type: ignore [name-defined] # noqa: F821
+               device:str|tuple|list|None=None,
+               dtype:DTypeLike|None=None,
+               requires_grad:bool|None=None,
+               _force_unique:bool=False
+              ):
+    """
+
+    """
+    if device is None and isinstance(op, pathlib.Path): device = f"DISK:{op.resolve()}"  # keep it on the disk if device is None
+    _dtype:DType|None = to_dtype(dtype) if dtype is not None else None
+    _device:str|tuple[str, ...] = tuple(canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else canonicalize_device(device)
+    del device, dtype
+
+    self.grad:Tensor|None = None # tensors can have gradients if you have called .backward
+    self.requires_grad:bool|None = requires_grad # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
+    op = Tensor._construct_op(op) # create an Op
+    if isinstance(_device, str): self.op: Op = op if op.device == _device else op.copy_to_device(_device) # data might be on a different device
+    # elif isinstance(op.device, str): self.op = Tensor(op).shard(_device).uop # if device is a tuple, we should have/construct a MultiLazyBuffer
+    # else: assert op.device == _device, f"MultiLazyBuffer device mismatch, {op.device} != {_device}"; self.op = op
+    all_tensors[weakref.ref(self)] = None # add to all_tensors after construction succeeds
+
   @staticmethod
-  def empty(*shape, device:str|tuple[str, ...]|None=None, dtype:DTypeLike|None=None, **kwargs) -> Self: raise NotImplementedError("TODO")
-  def empty_like(self, **kwargs) -> Self: return Tensor.empty(self.shape, dtype=kwargs.pop("dtype", self.dtype), device=kwargs.pop("device", self.device), **kwargs)
+  def _construct_op(data, _device) -> Op: # removed support for numpy and pathlib.PATH (DISK)
+    if isinstance(data, Op):
+      assert _dtype is None or _dtype==data.dtype, f"dtype doesn't match ({_dtype} vs {data.dtype}), and casting isn't supported"
+      # if data is dtype.index that means that this is a symbolic int and we need to lower it to something we can make a Tensor out of
+      if data.dtype==dtypes.index: data = _index_to_concrete_int(data)
+      if data.op is Ops.BIND:  # type: ignore  # mypy type narrowing is bugged here
+        var, val = data.unbind()  # type: ignore
+        # give the bound constant a device
+        const = Op.const(var.dtype, val, _device, ())
+        data = data.replace(src=(var.replace(src=const.src), const))  # type: ignore
+    elif data is None: data = Op.const(_dtype or dtypes.default_float, 0, _device, (), unique=_force_unique)                             # None       =>
+    elif isinstance(data, get_args(ConstType)): data = Op.const(_dtype or dtypes.from_py(data), data, _device, (), unique=_force_unique) # const_type =>
+    elif isinstance(data, bytes): data = _frompy(data, dtypes.uint8 if _dtype is None else _dtype)                                       # bytes      =>
+    elif isinstance(data, (list, tuple)):                                                                                                # list/tuple =>
+      if _dtype is None:
+        if (d := fully_flatten(data)) and all(isinstance(s, bool) for s in d): _dtype = dtypes.bool
+        else: _dtype = dtypes.default_int if d and all_int(d) else dtypes.default_float  # NOTE: this works because all_int([True, False]) is True
+      if _dtype in [dtypes.bfloat16, *dtypes.fp8s]: data = Tensor(_frompy(data, dtypes.float32), device=_device).cast(_dtype).uop
+      else: data = _frompy(data, _dtype)
+
+    if not isinstance(data, Op): raise RuntimeError(f"can't create Tensor from {data!r} with type {type(data)}") # by this point, it has to be a UOp
+
+    return data
+
   @staticmethod
-  def rand(*shape, device:str|None=None, dtype:DTypeLike|None=None, contiguous:bool=True, **kwargs) -> Self: raise NotImplementedError("TODO")
+  def full(shape:tuple[sint, ...], fill_value:ConstType, **kwargs) -> Self:
+    return Tensor(fill_value, _force_unique=True, **kwargs).reshape((1, )*len(new_shape := argfix(shape))).expand(new_shape)
   @staticmethod
-  def full(shape:tuple[sint, ...], fill_value:ConstType, **kwargs) -> Self: raise NotImplementedError("TODO")
+  def zeros(*shape, **kwargs) -> Self: return Tensor.full(argfix(*shape), 0.0, **kwargs)
   @staticmethod
-  def zeros(*shape, **kwargs) -> Self: raise NotImplementedError("TODO")
-  @staticmethod
-  def ones(*shape, **kwargs) -> Self: raise NotImplementedError("TODO")
-  @staticmethod
-  def arange(start, stop=None, step=1, **kwargs) -> Self: raise NotImplementedError("TODO")
-  @staticmethod
-  def linspace(start:int|float, stop:int|float, steps:int, **kwargs) -> Self: raise NotImplementedError("TODO")
-  @staticmethod
-  def eye(n:int, m:int|None=None, **kwargs) -> Self: raise NotImplementedError("TODO")
+  def ones(*shape, **kwargs) -> Self: return Tensor.full(argfix(*shape), 1.0, **kwargs)
+
+  # < ------------------------------------------------- --high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial 
 
   # ************ Tensor Operations ************
   # f'(x) backward
@@ -67,14 +104,14 @@ class Tensor(OpMixin):
     """
     # 1. collect all tensors that requires grad by topologically sorting the graph of uops and filter
     all_uops = self.op.toposort()
-    tensors_require_grad: list[Tensor] = [t for tref in all_tensors if (t:=tref()) is not None and t.uop in all_uops and t.requires_grad]
-    uops_require_grad = [t.uop for t in tensors_require_grad]
+    tensors_require_grad: list[Tensor] = [t for tref in all_tensors if (t:=tref()) is not None and t.op in all_uops and t.requires_grad]
+    uops_require_grad = [t.op for t in tensors_require_grad]
     assert grad is not None or self.shape == tuple(), "when no gradient is provided, backward must be called on a scalar tensor"
     if not (self.is_floating_point() and all(t.is_floating_point() for t in tensors_require_grad)): raise RuntimeError("only float Tensors have gradient")
     
     # 2. compute the gradient with a map of tensors to partials
     if grad is None: grad = Tensor(1.0, dtype=self.dtype, device=self.device, requires_grad=False) # base case is 1.0
-    tens2grads = Tensor._automatically_differentiate(self.op, grad.uop, set(uops_require_grad)) # skipping materializing zerod grads for now
+    tens2grads = Tensor._automatically_differentiate(self.op, grad.op, set(uops_require_grad)) # skipping materializing zerod grads for now
     grads = [Tensor(g, device=t.device) for t,g in zip(tens2grads.keys, tens2grads.values)] # initialize tensor grads on device
     
     # 3. update the tensors that require grad with the gradient's partials
@@ -125,7 +162,7 @@ class Tensor(OpMixin):
     in either case, .forward() evaluates f(x) by calling f, implemented by Op.eval(), which in turn, launches device kernels.
     .forward() then wraps the new output Op in the expression graph with a Tensor handle
     """
-    output_op: Op = f(*[t.uop for t in (self,)+other]) # <------------ compiler pipeline: if EAGER ... elif GRAPH ... else ...
+    output_op: Op = f(*[t.op for t in (self,)+other]) # <------------ compiler pipeline: if EAGER ... elif GRAPH ... else ...
     needs_input_grad = [t.requires_grad for t in (self,)+other]
     requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
     output_tensor = Tensor(output_op, device=output_op.device, requires_grad=requires_grad)
