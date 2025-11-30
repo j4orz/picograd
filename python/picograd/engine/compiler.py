@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from picograd.dtype import DType
-from picograd.engine.op import Op, OpCode, PatternMatcher
+from picograd.engine.opnode import OpNode, OpCode, PatternMatcher
 
 # -kernelize: graph rewrites
 # -schedule_with_vars: feeds graph to scheduler and memory planner
@@ -54,4 +54,4 @@ class Renderer:
   code_for_op: dict[OpCode, Callable] = {}
 
   def __reduce__(self): return self.__class__, ()
-  def render(self, uops:list[Op]) -> str: raise NotImplementedError("needs a renderer")
+  def render(self, uops:list[OpNode]) -> str: raise NotImplementedError("needs a renderer")

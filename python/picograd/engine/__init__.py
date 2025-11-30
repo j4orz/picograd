@@ -1,6 +1,6 @@
 from .irparser import sint, OpCode, OpMixin
-from .op import Op
+from .opnode import OpNode
 from .compiler import Pattern, PatternMatcher
 from . import evaluator
 
-__all__ = ["sint", "OpCode", "OpMixin", "Op", "Pattern", "PatternMatcher", "evaluator"]
+__all__ = ["sint", "OpCode", "OpMixin", "OpNode", "Pattern", "PatternMatcher", "evaluator"]
