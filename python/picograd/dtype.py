@@ -3,10 +3,6 @@ from typing import Final, Literal
 from dataclasses import dataclass
 from enum import Enum, auto
 
-sint = int
-ConstType = float|int|bool
-ConstLike = ConstType|InvalidType|Variable|tuple[ConstType|InvalidType, ...]
-
 # all DTypes should only be created once
 class DTypeMetaClass(type):
   dcache: dict[tuple, DType] = {}
@@ -23,6 +19,11 @@ class DType(metaclass=DTypeMetaClass):
   fmt: FmtStr|None
   count: int
   _scalar: DType|None
+
+sint = int
+ConstType = float|int|bool
+ConstLike = ConstType|InvalidType|Variable|tuple[ConstType|InvalidType, ...]
+DTypeLike = str|DType
 
 class AddrSpace(Enum):
   def __repr__(self): return str(self)
@@ -54,3 +55,12 @@ class dtypes:
   bfloat16: Final[DType] = DType.new(12, 2, "__bf16", None)
   float32: Final[DType] = DType.new(13, 4, "float", 'f')
   float64: Final[DType] = DType.new(14, 8, "double", 'd')
+
+truncate: dict[DType, Callable] = {dtypes.bool: bool,
+  dtypes.float16: float_to_fp16, dtypes.bfloat16: lambda x: float_to_bf16(float(x)),
+  **{fp8: (lambda x, dtype=fp8: fp8_to_float(float_to_fp8(x, dtype), dtype)) for fp8 in dtypes.fp8s},
+  dtypes.float32: lambda x: ctypes.c_float(x).value, dtypes.float64: lambda x: ctypes.c_double(x).value,
+  dtypes.uint8: lambda x: ctypes.c_uint8(x).value, dtypes.uint16: lambda x: ctypes.c_uint16(x).value,
+  dtypes.uint32: lambda x: ctypes.c_uint32(x).value, dtypes.uint64: lambda x: ctypes.c_uint64(x).value,
+  dtypes.int8: lambda x: ctypes.c_int8(x).value, dtypes.int16: lambda x: ctypes.c_int16(x).value, dtypes.int32: lambda x: ctypes.c_int32(x).value,
+  dtypes.int64: lambda x: ctypes.c_int64(x).value}

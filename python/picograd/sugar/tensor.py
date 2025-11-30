@@ -1,15 +1,38 @@
 # inspired by https://github.com/karpathy/micrograd/blob/master/micrograd/engine.py
 #         and https://github.com/tinygrad/tinygrad/blob/master/tinygrad/tensor.py
 from __future__ import annotations
-from typing import Callable, Self, cast
-import math, weakref, struct
+from typing import Callable, Self, cast, get_args
+import math, weakref, struct, pathlib
 
-from picograd.dtype import ConstType, DType, dtypes
 from picograd.engine import sint, OpNode, OpCode, OpMixin, evaluator
 from picograd.helpers import EAGER, GRAPH
-from picograd.runtime.device import Device
+from picograd.runtime import Device
+from picograd.dtype import ConstType, DType, DTypeLike, dtypes, truncate
+
 
 all_tensors: dict[weakref.ref[Tensor], None] = {}
+def fully_flatten(l):
+  if hasattr(l, "__len__") and hasattr(l, "__getitem__") and not isinstance(l, str):
+    if hasattr(l, "shape") and l.shape == (): return [l[()]]
+    flattened = []
+    for li in l: flattened.extend(fully_flatten(li))
+    return flattened
+  return [l]
+
+def get_shape(x) -> tuple[int, ...]:
+  # NOTE: str is special because __getitem__ on a str is still a str
+  if not hasattr(x, "__len__") or not hasattr(x, "__getitem__") or isinstance(x, str) or (hasattr(x, "shape") and x.shape == ()): return ()
+  if not all_same(subs:=[get_shape(xi) for xi in x]): raise ValueError(f"inhomogeneous shape from {x}")
+  return (len(subs),) + (subs[0] if subs else ())
+
+# NOTE: it returns int 1 if x is empty regardless of the type of x
+def prod(x:Iterable[T]) -> T|int: return functools.reduce(operator.mul, x, 1)
+
+def argfix(*x):
+  if x and x[0].__class__ in (tuple, list):
+    if len(x) != 1: raise ValueError(f"bad arg {x}")
+    return tuple(x[0])
+  return x
 
 class Tensor(OpMixin):
   """
@@ -39,37 +62,46 @@ class Tensor(OpMixin):
     return self.data()[(0,) * len(self.shape)]
   
   @staticmethod
-  def zeros(*shape, **kwargs) -> Self: return Tensor.full(argfix(*shape), 0.0, **kwargs)
+  def zeros(*shape, **kwargs) -> Self: return Tensor.full(argfix(*shape), 0.0)
   @staticmethod
-  def ones(*shape, **kwargs) -> Self: return Tensor.full(argfix(*shape), 1.0, **kwargs)
+  def ones(*shape, **kwargs) -> Self: return Tensor.full(argfix(*shape), 1.0)
   @staticmethod
-  def full(shape:tuple[sint, ...], fill_value:ConstType, **kwargs) -> Self:
-    return Tensor(fill_value, _force_unique=True, **kwargs).reshape((1, )*len(new_shape := argfix(shape))).expand(new_shape)
+  def full(shape:tuple[sint, ...], fill_value: ConstType) -> Self:
+    """
+    full 
+    """
+    new_shape = (1, )*len(argfix(shape))
+    return Tensor(fill_value, _force_unique=True).reshape(new_shape).expand(new_shape)
+  
   def __init__(self,
                input:ConstType|bytes|list|tuple|OpNode|None,  # removed support for 'np.ndarray'|pathlib.Path|
                device:str|tuple|list|None=None, dtype:DTypeLike|None=None, requires_grad:bool|None=None, _force_unique:bool=False):
+    """
+    Tensor.__init__() constructs the OpNode for the Tensor's given device and dtype
+    OpNode.const      symbolic const? ==> actually realize
+    OpNode.buffer     fake realize  ==> actually realize
+    """
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
     _dtype: DType|None = to_dtype(dtype) if dtype is not None else None
-    _device: str|tuple[str, ...] = tuple(canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else canonicalize_device(device)
+    _device: str|tuple[str, ...] = tuple(Device.canonicalize(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize(device)
     del device, dtype
     self.grad: Tensor|None = None                                 # tensors can have gradients if you have called .backward
     self.requires_grad: bool|None = requires_grad                 # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
 
-    if isinstance(input, OpNode):                raise NotImplementedError("todo")
-    elif input is None:                          opnode = OpNode.const(_dtype or dtypes.default_float, 0, _device, (), unique=_force_unique)       # <= None
-    elif isinstance(input, get_args(ConstType)): opnode = OpNode.const(_dtype or dtypes.from_py(input), input, _device, (), unique=_force_unique)  # <= const_type
-    elif isinstance(input, bytes):               raise NotImplementedError("todo") # data = Tensor._frompy(data, dtypes.uint8 if _dtype is None else _dtype)     # <= bytes     
-    elif isinstance(input, (list, tuple)):                                                                                                         # <= list/tuple
+    if isinstance(input, OpNode):                   raise NotImplementedError("todo")
+    elif input is None:                             opnode = OpNode.const(_dtype or dtypes.default_float, 0, _device, (), unique=_force_unique)                   # <= None
+    elif isinstance(input, get_args(ConstType)):    opnode = OpNode.const(_dtype or dtypes.from_py(input), input, _device, (), unique=_force_unique)              # <= const_type
+    elif isinstance(input, bytes):                  raise NotImplementedError("todo") # data = Tensor._frompy(data, dtypes.uint8 if _dtype is None else _dtype)   # <= bytes     
+    elif isinstance(input, (list, tuple)):                                                                                                                        # <= list/tuple
       if _dtype is None:
         if (d := fully_flatten(input)) and all(isinstance(s, bool) for s in d): _dtype = dtypes.bool
-        else: _dtype = dtypes.default_int if d and all_int(d) else dtypes.default_float # NOTE: this works because all_int([True, False]) is True
+        else:                                                                   _dtype = dtypes.default_int if d and all_int(d) else dtypes.default_float # NOTE: this works because all_int([True, False]) is True
 
       if _dtype in [dtypes.bfloat16, *dtypes.fp8s]: opnode = Tensor(Tensor._frompy(input, dtypes.float32), device=_device).cast(_dtype).uop
       else:                                         opnode = Tensor._frompy(input, _dtype)
-    if not isinstance(input, OpNode): raise RuntimeError(f"can't create Tensor from {input!r} with type {type(input)}") # by this point it has to be a UOp
-    
 
-    if isinstance(_device, str): self.op: OpNode = opnode if input.device == _device else input.copy_to_device(_device) # data might be on a different device
+    if not isinstance(input, OpNode): raise RuntimeError(f"can't create Tensor from {input!r} with type {type(input)}") # by this point it has to be a UOp
+    if isinstance(_device, str): self.op: OpNode = opnode if input.device == _device else input.copy_to_device(_device) # data might be on a different device <---------- Tensor.op = opnode assignment
     all_tensors[weakref.ref(self)] = None                                                                               # add to all_tensors after construction succeeds
     return
   

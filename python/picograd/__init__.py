@@ -14,7 +14,12 @@ picograd is a teaching deep learning framework that bridges micograd to tinygrad
     
     gpu accelerated kernels (cuda c/hip c)
 3. runtime: ...
-for more details on the usage of each layer of abstraction, see examples/abstractions.py
+
+NOTE: a lot of the complexity (and thus lines of code) are actually located in the Tensor and Runtimes,
+      which reflect the M:N problem whose responsibility is behooved on language implementations to solve.
+      these lines of code aren't core "business/application logic" (have nothing to do with automatic differentiation nor accelerated kernels),
+      but are necessary "infrastructure/framework" logic i.e infrastructure, tools, tests.
+      i.e Tensor construction logic has to support all device/dtype configurations, and Runtime has to interface with CUDA/HIP Runtimes and Compilers
 """
 
 print("picograd: a bridge from micrograd to tinygrad")

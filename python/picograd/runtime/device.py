@@ -10,7 +10,7 @@ from picograd.helpers import ALLOW_DEVICE_USAGE, DEBUG, LRU, getenv
 # - removed llvmcompiler (requires llvmlite or ffi-llvmctypes)
 # - removed imagedtype (no need to support imagedtypes for now)
 
-ALL_DEVICES = ["CPU", "CL", "HIP", "CUDA"]
+ALL_DEVICES = ["HIP", "CUDA"] # "CPU", "CL", "MOJO"
 DeviceType = TypeVar('DeviceType', bound='Runtime')
 
 class _Device:
