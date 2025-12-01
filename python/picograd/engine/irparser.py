@@ -12,31 +12,49 @@ class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ an
 
 class OpCode(FastEnum):
   """
-  ...
   the order of these OpCode controls the order of the toposort
   """
-  # ops that aren't rendered: noop, sink, unique, device, kernel, precast, rewrite_error, sentinel, after, group
-  # buffer ops: copy, buffer, buffer_view, mselect, mstack, bufferize, contiguous, contiguous_backward
-  # movement ops: these only exist in the tensor graph reshape, permute, expand, pad, shrink, flip, multi
-  # def_global, def_local, def_reg, def_var, bind, special(range)
-  # reduce_axis, reduce, allreduce
-  # unroll, contract, gep, vectorize, cat, ptrcat
+  # ** 1 -- defines/special **
+  DEFINE_GLOBAL = auto(); DEFINE_VAR = auto(); BIND = auto()                                                  # define GLOBAL/VAR are ptrs to outside the Kernel
+  SPECIAL = auto()                                                                                            # this is a RANGE for GPU dimensions, similar to symbolic shapes but not exactly
+  DEFINE_LOCAL = auto(); DEFINE_REG = auto()                                                                  # define LOCAL/REG allocate things
 
-  # CAST = auto(); BITCAST = auto();
-  # unaryops
-  EXP2 = auto(); LOG2 = auto(); SIN = auto(); SQRT = auto(); RECIP = auto(); NEG = auto(); TRUNC = auto()
-  # laod, store, assign, wmma, index
+  # ** 2 -- non op uops **
+  NOOP = auto(); REWRITE_ERROR = auto()                                                                       # uops that aren't rendered
+  SINK = auto(); AFTER = auto(); GROUP = auto()                                                               # AFTER passes src[0] through and promises in the toposort that any consumers of the AFTER run after src[1:]
+                                                                                                              # GROUP is a NOOP that just merges things together
+  GEP = auto(); VECTORIZE = auto()                                                                            # vector creation / item selection
 
-  MM = auto(); FA = auto() # TODO: order??
-  # binary ops
-  ADD = auto(); MUL = auto(); SHL = auto(); SHR = auto(); IDIV = auto(); MAX = auto(); MOD = auto()
+  # ** 3 -- MEMORY **
+  INDEX = auto()                                                                                              # INDEX is a BinaryOp similar to ADD, but it operates on pointers
+  LOAD = auto(); STORE = auto()                                                                               # load/store before math
 
-  # CMPLT = auto(); CMPNE = auto(); CMPEQ = auto()
-  # XOR = auto(); OR = auto(); AND = auto()
-  # THREEFRY = auto(); SUB = auto(); FDIV = auto(); POW = auto()
-  # where, mulacc
-  # barrier, range, if, end, endif
-  # vconst, const, custom, customi
+  # ** 4 -- COMPUTE **
+  WMMA = auto()                                                                                               # tensor core math op, not elementwise
+
+  CAST = auto(); BITCAST = auto(); EXP2 = auto(); LOG2 = auto(); SIN = auto()                                 # UnaryOps
+  SQRT = auto(); RECIPROCAL = auto(); NEG = auto(); TRUNC = auto()
+
+  ADD = auto(); MUL = auto(); SHL = auto(); SHR = auto(); IDIV = auto(); MAX = auto(); MOD = auto()           # BinaryOps
+  CMPLT = auto(); CMPNE = auto(); CMPEQ = auto()
+  XOR = auto(); OR = auto(); AND = auto()
+  THREEFRY = auto(); SUB = auto(); FDIV = auto(); POW = auto()
+
+  WHERE = auto(); MULACC = auto()                                                                             # TernaryOps
+
+  # ** 5 -- control flow / consts / custom **
+  BARRIER = auto(); RANGE = auto(); IF = auto(); END = auto(); ENDIF = auto()                                 # control flow ops
+  VCONST = auto(); CONST = auto()                                                                             # consts. VCONST is a vectorized const
+  CUSTOM = auto(); CUSTOMI = auto()                                                                           # CUSTOM/CUSTOMI are used to output strings into codegen. the I makes the string inline
+
+  # ** 6 -- ops that don't exist in programs **
+  UNIQUE = auto(); DEVICE = auto(); KERNEL = auto(); ASSIGN = auto()                                          # tensor graph ops
+  CONTIGUOUS = auto(); CONTIGUOUS_BACKWARD = auto(); DETACH = auto()                                          # ops that adjust the behavior of the scheduler
+  BUFFERIZE = auto(); COPY = auto(); BUFFER = auto(); BUFFER_VIEW = auto(); MSELECT = auto(); MSTACK = auto() # buffer ops
+  RESHAPE = auto(); PERMUTE = auto(); EXPAND = auto(); PAD = auto(); SHRINK = auto(); FLIP = auto()           # the core 6 movement ops! these only exist in the tensor graph
+  MULTI = auto()                                                                                              # MULTI is really a movement op
+  REDUCE_AXIS = auto(); REDUCE = auto(); ALLREDUCE = auto()                                                   # reduce
+  UNROLL = auto(); CONTRACT = auto(); CAT = auto(); PTRCAT = auto()                                           # expander ops
 
 # **************** OpMixin: ComputeMixin * MovementMixin ****************
 """
