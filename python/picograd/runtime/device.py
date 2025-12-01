@@ -1,12 +1,12 @@
 from __future__ import annotations
 from typing import Any, Generic, Self, Sequence, Iterator, TypeVar, cast
-import functools, re, pathlib, contextlib, inspect, os, atexit, ctypes
+import functools,  atexit, re, pathlib, contextlib, importlib, inspect, os, ctypes
 from picograd.dtype import DType, PtrDType
 from picograd.engine.compiler import Renderer
 from picograd.helpers import ALLOW_DEVICE_USAGE, DEBUG, LRU, getenv
 
 # picograd to tinygrad bridge
-# - removed deviceregistry (picograd's M:N support is limited to cuda and hip)
+# - removed Device.Default
 # - removed lruallocator and bufferspec (no need to support advanced allocation options for now)
 # - removed llvmcompiler (requires llvmlite or ffi-llvmctypes)
 # - removed imagedtype (no need to support imagedtypes for now)
@@ -21,42 +21,18 @@ class _Device:
   def __init__(self) -> None:
     self._devices = [x.stem[len("ops_"):].upper() for x in (pathlib.Path(__file__).parent).iterdir() if x.stem.endswith("runtime.py")]
     self._opened_devices:set[str] = set()
-
-  def __getitem__(self, ix:str) -> Runtime: return self.__get_canonicalized_item(self.canonicalize(ix))
-  @functools.cache  # this class is a singleton, pylint: disable=method-cache-max-size-none
-  def __get_canonicalized_item(self, ix:str) -> Runtime:
+  def __getitem__(self, ix:str) -> Runtime: return self.canonicalized_runtime(self.canonicalize_device(ix))
+  def canonicalize_device(self, device:str) -> str: return re.sub(r":0$", "", (d:=device.split(":", 1)[0].upper()) + device[len(d):])
+  def canonicalized_runtime(self, ix:str) -> Runtime:
     assert ALLOW_DEVICE_USAGE or ix.split(":")[0] in ["DISK", "TINYFS", "NPY", "PYTHON"], f"usage of device {ix} disallowed"
     base = (__package__ or __name__).split('.')[0]  # tinygrad
     x = ix.split(":")[0].lower()
-    ret = [cls for cname, cls in inspect.getmembers(importlib.import_module(f'{base}.runtime.ops_{x}')) \
-           if (cname.lower() == x + "device")][0](ix)
+    output = [cls for cname, cls in inspect.getmembers(importlib.import_module(f'{base}.runtime.ops_{x}')) if (cname.lower() == x + "device")][0](ix)
     if DEBUG >= 1: print(f"opened device {ix} from pid:{os.getpid()}")
     self._opened_devices.add(ix)
-    return ret
-  
-  def canonicalize(self, device:str|None) -> str: return self._canonicalize(device if device is not None else Device.DEFAULT) # NOTE: you can't cache canonicalize in case Device.DEFAULT changes
-  @functools.cache  # this class is a singleton, pylint: disable=method-cache-max-size-none
-  def _canonicalize(self, device:str) -> str: return re.sub(r":0$", "", (d:=device.split(":", 1)[0].upper()) + device[len(d):])
+    return output
 
-  @property
-  def default(self) -> Runtime: return self[self.DEFAULT]
-  def get_available_devices(self) -> Iterator[str]:
-    for device in ALL_DEVICES:
-      with contextlib.suppress(Exception): yield self[device].device
-
-  @functools.cached_property
-  def DEFAULT(self) -> str:
-    dev = [dev] if (dev:=getenv("DEV", "").upper()) else []
-    from_env = dedup(dev + [d for d in self._devices if d not in ["DISK", "TINYFS", "NPY"] and getenv(d) == 1])
-    assert len(from_env) < 2, f"multiple devices set in env: {from_env}"
-    if len(from_env) == 1: return from_env[0]
-    try:
-      device = next(self.get_available_devices())
-      os.environ[device] = "1"   # we set this in environment for spawned children
-      return device
-    except StopIteration as exc: raise RuntimeError("no usable devices") from exc
-
-Device: _Device = _Device()
+Device = _Device()
 atexit.register(lambda: [Device[dn].finalize() for dn in Device._opened_devices])
 
 # **************** Runtime: Host Allocators + Device Compilers ****************

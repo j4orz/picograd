@@ -3,13 +3,14 @@
 from __future__ import annotations
 import functools
 import operator
-from typing import Callable, Iterable, Self, TypeVar, cast, get_args
+from typing import Any, Callable, Iterable, Self, Sequence, TypeGuard, TypeVar, cast, get_args
 import math, weakref, struct, pathlib
 
 from picograd.engine import OpNode, OpMixin
 from picograd.helpers import EAGER, GRAPH
 from picograd.runtime import Device
-from picograd.dtype import ConstType, DType, DTypeLike, dtypes, truncate
+from picograd.dtype import ConstType, DType, DTypeLike, dtypes
+import picograd.dtype
 
 all_tensors: dict[weakref.ref[Tensor], None] = {}
 def fully_flatten(l):
@@ -35,6 +36,8 @@ def argfix(*x):
     if len(x) != 1: raise ValueError(f"bad arg {x}")
     return tuple(x[0])
   return x
+
+def all_int(t: Sequence[Any]) -> TypeGuard[tuple[int, ...]]: return all(isinstance(s, int) for s in t)
 
 class Tensor(OpMixin):
   """
@@ -77,35 +80,40 @@ class Tensor(OpMixin):
   
   def __init__(self,
                input:ConstType|bytes|list|tuple|OpNode|None,  # removed support for 'np.ndarray'|pathlib.Path|
-               device:str|tuple|list|None=None, dtype:DTypeLike|None=None, requires_grad:bool|None=None, _force_unique:bool=False):
+               device:str|tuple|list|None=None, dtype:DTypeLike|None=None, requires_grad:bool|None=None, force_unique:bool=False):
     """
     Tensor.__init__() constructs the OpNode for the Tensor's given device and dtype
     OpNode.const      symbolic const? ==> actually realize
     OpNode.buffer     fake realize  ==> actually realize
     """
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
-    _dtype: DType|None = to_dtype(dtype) if dtype is not None else None
-    _device: str|tuple[str, ...] = tuple(Device.canonicalize(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize(device)
-    del device, dtype
-    self.grad: Tensor|None = None                                 # tensors can have gradients if you have called .backward
-    self.requires_grad: bool|None = requires_grad                 # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
-
-    if isinstance(input, OpNode):                   raise NotImplementedError("todo")
-    elif input is None:                             opnode = OpNode.const(_dtype or dtypes.default_float, 0, _device, (), unique=_force_unique)                   # <= None
-    elif isinstance(input, get_args(ConstType)):    opnode = OpNode.const(_dtype or dtypes.from_py(input), input, _device, (), unique=_force_unique)              # <= const_type
-    elif isinstance(input, bytes):                  raise NotImplementedError("todo") # data = Tensor._frompy(data, dtypes.uint8 if _dtype is None else _dtype)   # <= bytes     
-    elif isinstance(input, (list, tuple)):                                                                                                                        # <= list/tuple
-      if _dtype is None:
-        if (d := fully_flatten(input)) and all(isinstance(s, bool) for s in d): _dtype = dtypes.bool
-        else:                                                                   _dtype = dtypes.default_int if d and all_int(d) else dtypes.default_float # NOTE: this works because all_int([True, False]) is True
-
-      if _dtype in [dtypes.bfloat16, *dtypes.fp8s]: opnode = Tensor(Tensor._frompy(input, dtypes.float32), device=_device).cast(_dtype).uop
-      else:                                         opnode = Tensor._frompy(input, _dtype)
-
-    if not isinstance(input, OpNode): raise RuntimeError(f"can't create Tensor from {input!r} with type {type(input)}") # by this point it has to be a UOp
-    if isinstance(_device, str): self.op: OpNode = opnode if input.device == _device else input.copy_to_device(_device) # data might be on a different device <---------- Tensor.op = opnode assignment
+    dtype: DType|None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
+    device: str|tuple[str, ...] = tuple(Device.canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize_device(device)
+    print("moose", dtype, device)
+    self.grad: Tensor|None = None                   # tensors can have gradients if you have called .backward
+    self.requires_grad: bool|None = requires_grad   # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
+    opnode = Tensor._input_to_opnode(input, device, dtype, force_unique)
+  
+    if isinstance(device, str): self.op: OpNode = opnode if input.device == device else input.copy_to_device(device)    # data might be on a different device
     all_tensors[weakref.ref(self)] = None                                                                               # add to all_tensors after construction succeeds
     return
+  
+  @staticmethod
+  def _input_to_opnode(input:ConstType|bytes|list|tuple|OpNode|None, device:str|tuple[str, ...], dtype: DType|None, force_unique) -> OpNode:
+    if isinstance(input, OpNode):                                               raise NotImplementedError("todo")
+    elif input is None:                                                         opnode = OpNode.const(dtype or dtypes.default_float, 0, device, (), unique=force_unique)
+    elif isinstance(input, get_args(ConstType)):                                opnode = OpNode.const(dtype or dtypes.from_py(input), input, device, (), unique=force_unique)
+    elif isinstance(input, bytes):                                              opnode = Tensor._frompy(input, dtypes.uint8 if dtype is None else dtype)
+    elif isinstance(input, (list, tuple)):
+      if dtype is None:
+        if (d := fully_flatten(input)) and all(isinstance(s, bool) for s in d): dtype = dtypes.bool
+        else:                                                                   dtype = dtypes.default_int if d and all_int(d) else dtypes.default_float # NOTE: this works because all_int([True, False]) is True
+
+      if dtype in [dtypes.bfloat16, *dtypes.fp8s]:                              opnode = Tensor(Tensor._frompy(input, dtypes.float32), device=device).cast(dtype).uop
+      else:                                                                     opnode = Tensor._frompy(input, dtype)
+
+    if not isinstance(opnode, OpNode): raise RuntimeError(f"can't create Tensor from {input!r} with type {type(input)}") # by this point it has to be a UOp
+    return opnode
   
   @staticmethod
   def _frompy(x:list|tuple|bytes, dtype:DType) -> OpNode:
@@ -114,7 +122,7 @@ class Tensor(OpMixin):
     # else:
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
     output_opnode = OpNode.new_buffer("PYTHON", prod(shape:=get_shape(x)), dtype).reshape(shape)
-    truncate_function = truncate[dtype]
+    truncate_function = picograd.dtype.truncate[dtype]
     data = struct.pack(f"{output_opnode.size}{dtype.fmt}", *[truncate_function(dtypes.as_const(xi, dtype)) for xi in fully_flatten(x)])
     mv = memoryview(data if Device.DEFAULT != "PYTHON" else bytearray(data))
     output_opnode.storage.allocate(mv) # fake realize

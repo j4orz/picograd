@@ -2,7 +2,7 @@ from __future__ import annotations
 import ctypes
 import math
 import struct
-from typing import Callable, Final, Literal
+from typing import Callable, ClassVar, Final, Literal
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -50,8 +50,9 @@ class DType(metaclass=DTypeMetaClass):
   def new(priority:int, itemsize:int, name:str, fmt:FmtStr|None): return DType(priority, itemsize, name, fmt, 1, None)
 ConstLike = ConstType|InvalidType|tuple[ConstType|InvalidType, ...] # Variable
 DTypeLike = str|DType
+def to_dtype(dtype:DTypeLike) -> DType: return dtype if isinstance(dtype, DType) else getattr(dtypes, dtype.lower())
 
-class dtypes:
+class dtypes:  
   void: Final[DType] = DType.new(-1, 0, "void", None)
   index: Final[DType] = DType.new(-1,100, "index", None)
   bool: Final[DType] = DType.new(0, 1, "bool", '?')
@@ -71,6 +72,10 @@ class dtypes:
   float32: Final[DType] = DType.new(13, 4, "float", 'f')
   float64: Final[DType] = DType.new(14, 8, "double", 'd')
   fp8s = (fp8e4m3, fp8e5m2)
+
+  default_float: ClassVar[DType] = float32
+  default_int: ClassVar[DType] = int32
+
   floats = fp8s + (float16, bfloat16, float32, float64)
   uints = (uint8, uint16, uint32, uint64)
   sints = (int8, int16, int32, int64)
