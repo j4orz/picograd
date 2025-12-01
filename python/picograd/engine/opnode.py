@@ -1,8 +1,7 @@
 from __future__ import annotations
-import ctypes
+from typing import TYPE_CHECKING, Any
 from dataclasses import dataclass
-from re import Pattern
-from typing import TYPE_CHECKING
+import itertools
 
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
 from picograd.engine.irparser import OpCode, OpMixin
@@ -32,19 +31,26 @@ class OpNode(OpMixin):
   the reverse direction is heuristically used with a reverse topological sort given that the time complexity is proportional to the number of outputs m which in this case is 1
   for many deeplearning workloads that are a series of matrix-matrix multiplications with a final matrix-vector multiplication, multiplying in the reverse direction results in [(v,e)->(v,e)^2]
   """
-  inputs: tuple[OpNode, ...]
   ftype: OpCode
-  dtype: DType = dtypes.void
-  storage: Buffer # make this Optional when adding the compiler pipeline
+  inputs: tuple[OpNode, ...]
+  dtype: DType
+  # storage: Buffer
+  payload: Any
 
   @property
   def device(self) -> str|tuple[str, ...]: return unwrap(self._device)
   @property
   def size(self) -> int: return prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
 
+  unique_num = itertools.count(0)
+  @staticmethod
+  def unique(paylaod:int|None=None):
+    return OpNode(OpCode.UNIQUE, tuple(), dtypes.void, next(OpNode.unique_num) if paylaod is None else paylaod)
+
   @staticmethod
   def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, num=None):
-    return OpNode(OpCode.BUFFER, dtype, (OpNode.unique(num), OpNode(OpCode.DEVICE, arg=device)), size) # <--- for now, picograd's retrofitted eager semantics mean all opnodes have their buffers eagerly materialized
+    # for now, picograd's retrofitted eager semantics mean all opnodes have their buffers eagerly materialized
+    return OpNode(OpCode.BUFFER, (OpNode.unique(num), OpNode(OpCode.DEVICE, tuple(), dtypes.void, payload=device)), dtype, size)
 
   def const_like(self, b:ConstLike):
     return OpNode.const(self.dtype, b, device=self._device, shape=self._shape) # constants can optionally have a DEVICE source

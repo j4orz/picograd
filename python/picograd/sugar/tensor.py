@@ -13,6 +13,9 @@ from picograd.dtype import ConstType, DType, DTypeLike, dtypes
 import picograd.dtype
 
 all_tensors: dict[weakref.ref[Tensor], None] = {}
+def all_same(items:tuple[T, ...]|list[T]): return all(x == items[0] for x in items)
+def all_int(t: Sequence[Any]) -> TypeGuard[tuple[int, ...]]: return all(isinstance(s, int) for s in t)
+
 def fully_flatten(l):
   if hasattr(l, "__len__") and hasattr(l, "__getitem__") and not isinstance(l, str):
     if hasattr(l, "shape") and l.shape == (): return [l[()]]
@@ -36,8 +39,6 @@ def argfix(*x):
     if len(x) != 1: raise ValueError(f"bad arg {x}")
     return tuple(x[0])
   return x
-
-def all_int(t: Sequence[Any]) -> TypeGuard[tuple[int, ...]]: return all(isinstance(s, int) for s in t)
 
 class Tensor(OpMixin):
   """
@@ -116,16 +117,14 @@ class Tensor(OpMixin):
     return opnode
   
   @staticmethod
-  def _frompy(x:list|tuple|bytes, dtype:DType) -> OpNode:
-    # if isinstance(x, bytes):
-    #   output_opnode, data = OpNode.new_buffer("PYTHON", len(x)//dtype.itemsize, dtype), x
-    # else:
+  def _frompy(input:list|tuple|bytes, dtype:DType) -> OpNode:
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
-    output_opnode = OpNode.new_buffer("PYTHON", prod(shape:=get_shape(x)), dtype).reshape(shape)
+    output_opnode = OpNode.new_buffer("PYTHON", prod(shape:=get_shape(input)), dtype)
+    print("moose", output_opnode)
+    output_opnode = output_opnode.reshape(shape)
     truncate_function = picograd.dtype.truncate[dtype]
-    data = struct.pack(f"{output_opnode.size}{dtype.fmt}", *[truncate_function(dtypes.as_const(xi, dtype)) for xi in fully_flatten(x)])
-    mv = memoryview(data if Device.DEFAULT != "PYTHON" else bytearray(data))
-    output_opnode.storage.allocate(mv) # fake realize
+    data = struct.pack(f"{output_opnode.size}{dtype.fmt}", *[truncate_function(dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)])
+    output_opnode.storage.allocate(memoryview(data)) # fake realize
     return output_opnode
 
 
