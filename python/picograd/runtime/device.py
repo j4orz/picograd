@@ -71,7 +71,7 @@ class Runtime:
     if DEBUG >= 1: print(f"{self.device}: using {self.compiler.__class__.__name__}")
   def synchronize(self): raise NotImplementedError("need synchronize")
 
-# **************** Memory ****************
+# **************** A Buffer from an Allocator ****************
 def from_mv(mv:memoryview, to_type:type[ctypes._SimpleCData]=ctypes.c_char) -> ctypes.Array:
   return ctypes.cast(ctypes.addressof(to_type.from_buffer(mv)), ctypes.POINTER(to_type * len(mv))).contents
 def to_mv(ptr:int, sz:int) -> memoryview: return memoryview((ctypes.c_uint8 * sz).from_address(ptr)).cast("B")
@@ -164,6 +164,7 @@ class Allocator(Generic[DeviceType]):
   def _copyin(self, dest, src:memoryview): raise NotImplementedError("need copyin")
   def _copyout(self, dest:memoryview, src): raise NotImplementedError("need copyout")
 
+# **************** Kernels from a Compiler ****************
 class Compiler:
   def __init__(self): None # TODO (picograd jit compile cache): cachekey:str|None=None): # self.cachekey = None if DISABLE_COMPILER_CACHE else cachekey
   def compile(self, src:str) -> bytes: return src.encode()   # NOTE: empty compiler is the default

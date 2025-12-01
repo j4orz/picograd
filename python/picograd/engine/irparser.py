@@ -134,19 +134,19 @@ class ComputeMixin:
         raise RuntimeError(f"{dtype} is not supported")
 
 class MovementMixin:
-  def expand(): raise NotImplementedError("todo")
-  def reshape(): raise NotImplementedError("todo")
-  def shrink(): raise NotImplementedError("todo")
-  def permute(): raise NotImplementedError("todo")
-  def flip(): raise NotImplementedError("todo")
+  def expand(self) -> Self: raise NotImplementedError("todo")
+  def reshape(self, shape) -> Self: raise NotImplementedError("todo")
+  def shrink(self) -> Self: raise NotImplementedError("todo")
+  def permute(self) -> Self: raise NotImplementedError("todo")
+  def flip(self) -> Self: raise NotImplementedError("todo")
 
-  def view(): raise NotImplementedError("todo")
-  def squeeze(): raise NotImplementedError("todo")
-  def unsqueeze(): raise NotImplementedError("todo")
+  def view(self) -> Self: raise NotImplementedError("todo")
+  def squeeze(self) -> Self: raise NotImplementedError("todo")
+  def unsqueeze(self) -> Self: raise NotImplementedError("todo")
 
-  def transpose(): raise NotImplementedError("todo")
-  def flatten(): raise NotImplementedError("todo")
-  def unflatten(): raise NotImplementedError("todo")
+  def transpose(self) -> Self: raise NotImplementedError("todo")
+  def flatten(self) -> Self: raise NotImplementedError("todo")
+  def unflatten(self) -> Self: raise NotImplementedError("todo")
 
 class OpMixin(ComputeMixin, MovementMixin):
   pass

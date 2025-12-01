@@ -1,14 +1,15 @@
 # inspired by https://github.com/karpathy/micrograd/blob/master/micrograd/engine.py
 #         and https://github.com/tinygrad/tinygrad/blob/master/tinygrad/tensor.py
 from __future__ import annotations
-from typing import Callable, Self, cast, get_args
+import functools
+import operator
+from typing import Callable, Iterable, Self, TypeVar, cast, get_args
 import math, weakref, struct, pathlib
 
 from picograd.engine import sint, OpNode, OpCode, OpMixin, evaluator
 from picograd.helpers import EAGER, GRAPH
 from picograd.runtime import Device
 from picograd.dtype import ConstType, DType, DTypeLike, dtypes, truncate
-
 
 all_tensors: dict[weakref.ref[Tensor], None] = {}
 def fully_flatten(l):
@@ -25,8 +26,9 @@ def get_shape(x) -> tuple[int, ...]:
   if not all_same(subs:=[get_shape(xi) for xi in x]): raise ValueError(f"inhomogeneous shape from {x}")
   return (len(subs),) + (subs[0] if subs else ())
 
-# NOTE: it returns int 1 if x is empty regardless of the type of x
-def prod(x:Iterable[T]) -> T|int: return functools.reduce(operator.mul, x, 1)
+T = TypeVar("T")
+U = TypeVar("U")
+def prod(x:Iterable[T]) -> T|int: return functools.reduce(operator.mul, x, 1) # NOTE: it returns int 1 if x is empty regardless of the type of x
 
 def argfix(*x):
   if x and x[0].__class__ in (tuple, list):
@@ -36,9 +38,9 @@ def argfix(*x):
 
 class Tensor(OpMixin):
   """
-  the Tensor class is the *handle* to expression graph of vertices V=Set<OpNode> and edges = Set<(OpNode,OpNode)>,
-  which represents picograd's primitive understanding (intermediate representation) of the specified expression.
-  most data and functionality you expect to live on Tensor actually lives in OpNode — the Tensor class is mostly high level sugar
+  the Tensor class is a *sugared handle* to the expression graph of vertices V=Set<OpNode> and edges = Set<(OpNode,OpNode)>,
+  which represents picograd's primitive understanding (intermediate representation) of the specified expression f(x)
+  the data and functionality you expect to live on Tensor actually lives in OpNode because the Tensor class is actually a sugared handle
   """
 
   # ************ Tensor Data + Constructors ************

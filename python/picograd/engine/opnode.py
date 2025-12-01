@@ -89,9 +89,8 @@ class OpNode(OpMixin):
   def size(self) -> int: return prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
 
   @staticmethod
-  def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, num=None) -> Self:
-    # return OpNode(OpCode.BUFFER, dtype, (OpNode.unique(num), OpNode(OpCode.DEVICE, arg=device)), size) <--- for now, picograd's retrofitted eager semantics mean all opnodes have their buffers eagerly materialized
-    return Self()
+  def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, num=None):
+    return OpNode(OpCode.BUFFER, dtype, (OpNode.unique(num), OpNode(OpCode.DEVICE, arg=device)), size) # <--- for now, picograd's retrofitted eager semantics mean all opnodes have their buffers eagerly materialized
 
   def const_like(self, b:ConstLike):
     return OpNode.const(self.dtype, b, device=self._device, shape=self._shape) # constants can optionally have a DEVICE source
@@ -102,6 +101,8 @@ class OpNode(OpMixin):
     the evaluator overrides* the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
     called by OpMixin.eval() which acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode intermediate representation
     *: note that .eval is not a static method, that self is the Op that the OpCode ftype is operating on, to produce a new Self
+    the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .eval() returning an OpNode,
+    similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
     """
     out_dtype = (self, *inputs)[-1].dtype
     # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool

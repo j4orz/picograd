@@ -1,27 +1,28 @@
 # inspired by https://github.com/tinygrad/tinygrad/blob/master/docs/abstractions2.py
 print("******** first, the runtime with it's memory and compute management  ***********")
-from picograd.runtime.hip_runtime import HIPDevice, HIPCCCompiler, HIPKernel
-device = HIPDevice()
+# from picograd.runtime.hip_runtime import HIPDevice, HIPCCCompiler, HIPKernel
+# device = HIPDevice()
 
-# 1. memory: allocate and memcpy on device
-a, b, c = [device.allocator.alloc(4), device.allocator.alloc(4), device.allocator.alloc(4)]
-device.allocator._copyin(a, memoryview(bytearray([2,0,0,0])))
-device.allocator._copyin(b, memoryview(bytearray([3,0,0,0])))
+# # 1. memory: allocate and memcpy on device
+# a, b, c = [device.allocator.alloc(4), device.allocator.alloc(4), device.allocator.alloc(4)]
+# device.allocator._copyin(a, memoryview(bytearray([2,0,0,0])))
+# device.allocator._copyin(b, memoryview(bytearray([3,0,0,0])))
 
-# 2. compute: compile a kernel to a binary
-kernel = HIPCCCompiler().compile("__global__ void add(int *a, int *b, int *c) { int id = blockDim.x * blockIdx.x + threadIdx.x; if(id < N) c[id] = a[id] + b[id]; }")
+# # 2. compute: compile a kernel to a binary
+# kernel = HIPCCCompiler().compile("__global__ void add(int *a, int *b, int *c) { int id = blockDim.x * blockIdx.x + threadIdx.x; if(id < N) c[id] = a[id] + b[id]; }")
 
- # 3. launch
-f = device.kernel("add", kernel)
-f(a, b, c) # HIPKernel
+#  # 3. launch
+# f = device.kernel("add", kernel)
+# f(a, b, c) # HIPKernel
 
-print(val := device.allocator._as_buffer(c).cast("I").tolist()[0])
-assert val == 5 # check the data out
+# print(val := device.allocator._as_buffer(c).cast("I").tolist()[0])
+# assert val == 5 # check the data out
 
-print("******** second, the expression graph  ***********")
+print("******** second, the expression graph ***********")
 DEVICE = "HIP"
+# OpNodes are produced by the runtime's compute(kernel compiler) and memory(buffer allocator) 
 
-print("******** third, a sugared tensor  ***********")
+print("******** third, a tensor which is a sugared hanlde to the expression graph  ***********")
 
 from picograd import Tensor
 from picograd.dtype import dtypes
