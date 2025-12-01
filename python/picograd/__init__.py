@@ -1,5 +1,5 @@
 """
-picograd is a teaching deep learning framework that bridges micograd to tinygrad which consists of a
+teenygrad is a teaching deep learning framework that bridges micograd to tinygrad which consists of a
 1. sugar: domain specific ndarray language (python `Tensor`) that provides automatic differentiation, optimizers, and neural network layers
 2. engine: an interpreter and compiler pipeline for an abstract compute language (python `Op`) that the tensor frontend desugars/lowers to,
     which uses heterogenous runtimes (c/c++ `Device(Runtime)`)
@@ -24,7 +24,7 @@ NOTE: a lot of the complexity (and thus lines of code) are actually located in t
 
 print("""
       ⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️
-      importing picograd: the bridge from micrograd to tinygrad
+      importing teenygrad: the bridge from micrograd to tinygrad
       ⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️
       """)
 from .sugar import nn, optim

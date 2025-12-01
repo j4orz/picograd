@@ -19,7 +19,7 @@ class _Device:
   device registry which maps device strings to device Runtimes
   """
   def __init__(self) -> None:
-    self._devices = [x.stem[len("ops_"):].upper() for x in (pathlib.Path(__file__).parent/"runtime").iterdir() if x.stem.startswith("ops_")]
+    self._devices = [x.stem[len("ops_"):].upper() for x in (pathlib.Path(__file__).parent).iterdir() if x.stem.endswith("runtime.py")]
     self._opened_devices:set[str] = set()
 
   def __getitem__(self, ix:str) -> Runtime: return self.__get_canonicalized_item(self.canonicalize(ix))
