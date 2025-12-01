@@ -1,14 +1,13 @@
 from __future__ import annotations
-from re import Pattern
-from typing import Self
 import ctypes
 from dataclasses import dataclass
+from re import Pattern
 
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
 from picograd.engine.compiler import PatternMatcher
 from picograd.engine.irparser import OpCode, OpMixin
 from picograd.runtime.device import Buffer, Device
-from picograd.dtype import ConstLike, DType, dtypes
+from picograd.dtype import DType, dtypes
 
 # picograd to tinygrad bridge
 # - removed buf_op and as_buf used by haldie/tvm schedule/rangify to map high level ops back to buffers

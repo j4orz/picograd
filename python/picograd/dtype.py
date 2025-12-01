@@ -6,10 +6,10 @@ from typing import Callable, Final, Literal
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from picograd.engine.opnode import OpNode
+# from picograd.engine.opnode import OpNode
 
 sint = int
-Variable = OpNode
+# Variable = OpNode
 ConstType = float|int|bool
 FmtStr = Literal['?', 'b', 'B', 'h', 'H', 'i', 'I', 'q', 'Q', 'e', 'f', 'd']
 
@@ -46,7 +46,9 @@ class DType(metaclass=DTypeMetaClass):
   fmt: FmtStr|None
   count: int
   _scalar: DType|None
-ConstLike = ConstType|InvalidType|Variable|tuple[ConstType|InvalidType, ...]
+  @staticmethod
+  def new(priority:int, itemsize:int, name:str, fmt:FmtStr|None): return DType(priority, itemsize, name, fmt, 1, None)
+ConstLike = ConstType|InvalidType|tuple[ConstType|InvalidType, ...] # Variable
 DTypeLike = str|DType
 
 class dtypes:
@@ -68,6 +70,12 @@ class dtypes:
   bfloat16: Final[DType] = DType.new(12, 2, "__bf16", None)
   float32: Final[DType] = DType.new(13, 4, "float", 'f')
   float64: Final[DType] = DType.new(14, 8, "double", 'd')
+  fp8s = (fp8e4m3, fp8e5m2)
+  floats = fp8s + (float16, bfloat16, float32, float64)
+  uints = (uint8, uint16, uint32, uint64)
+  sints = (int8, int16, int32, int64)
+  ints = uints + sints
+  all = floats + ints + (bool, index) # noqa: A003
 
 def float_to_fp16(x):
   try: return struct.unpack('e', struct.pack('e', float(x)))[0]

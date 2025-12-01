@@ -22,7 +22,11 @@ NOTE: a lot of the complexity (and thus lines of code) are actually located in t
       i.e Tensor construction logic has to support all device/dtype configurations, and Runtime has to interface with CUDA/HIP Runtimes and Compilers
 """
 
-print("picograd: a bridge from micrograd to tinygrad")
+print("""
+      ⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️
+      importing picograd: the bridge from micrograd to tinygrad
+      ⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️
+      """)
 from . import dtype
 from .sugar import nn, optim
 from .sugar.tensor import Tensor
