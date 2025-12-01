@@ -27,10 +27,9 @@ print("""
       importing picograd: the bridge from micrograd to tinygrad
       ⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️⛩️
       """)
-from . import dtype
 from .sugar import nn, optim
 from .sugar.tensor import Tensor
-__all__ = ["dtype", "Tensor", "nn", "optim"]
+__all__ = ["Tensor"]
 
 from importlib import import_module as _import_module
 _pgrs = _import_module("picograd._pgrs")

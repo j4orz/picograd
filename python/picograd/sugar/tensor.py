@@ -6,7 +6,7 @@ import operator
 from typing import Callable, Iterable, Self, TypeVar, cast, get_args
 import math, weakref, struct, pathlib
 
-from picograd.engine import sint, OpNode, OpCode, OpMixin, evaluator
+from picograd.engine import OpNode, OpMixin
 from picograd.helpers import EAGER, GRAPH
 from picograd.runtime import Device
 from picograd.dtype import ConstType, DType, DTypeLike, dtypes, truncate
