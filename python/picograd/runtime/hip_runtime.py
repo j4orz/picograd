@@ -26,7 +26,7 @@ class HIPDevice(Runtime):
   picograd's HIPDevice(Runtime) is a thin python/c foreign function shim (this file is ~100loc)
   over vendor provided and implemented `hipamd` runtime and `hipcc` compiler.
   picograd's hip runtime stands in contrast to custom implemented tinygrad hardware command queue runtimes
-  enabling features like egpu over usb, a valuable feature to applications such as openpilot.
+  enabling features like egpu over usb, a valuable feature to applications such as openpilot on comma hardware
 
   1. hip runtime api (accessed through tinygrad/gpuctypes, generated via trolldbois/ctypeslib)
       a. hip runtime documentation https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/hip_runtime_api.html
