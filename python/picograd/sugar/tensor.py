@@ -60,13 +60,9 @@ class Tensor(OpMixin):
   @staticmethod
   def zeros(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 0.0)._evaluate()
   @staticmethod
-  def ones(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 1.0)._evaluate()
-  
+  def ones(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 1.0)._evaluate()  
   @staticmethod
   def full(shape: tuple[int, ...], fill: Const) -> Self:
-    """
-    full follows np.full and torch.full which constructs a Tensor with the provided shape and value
-    """
     new_shape = (1, )*len(helpers.normalize_shape(shape))
     return Tensor(fill, force_unique=True).reshape(new_shape).expand(new_shape)._evaluate()
   

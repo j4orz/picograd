@@ -1,3 +1,11 @@
+"""
+this irparser includes teenygrad's intermediate representation and "parser".
+since teenygrad is an domain specific language embedded within the host language of python,
+the term "parser" is overloaded since teenygrad overrides the semantics of the host language with the OpMixin (there is no lexing, parsing, and typechecking),
+a composition of ComputeMixin and MovementMixin which map operations to their ir opcodes.
+the provided methods implemented on these two mixins are used by the sugared Tensor handle's graph/ir-builder logic.
+"""
+
 from __future__ import annotations
 from typing import Self
 from enum import Enum, IntEnum, auto
@@ -12,9 +20,6 @@ class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ an
   def _generate_next_value_(_, __, ___, last_values): return 1 + max([0, *last_values, *[max(c) for c in FastEnum.__subclasses__()]])
 
 class OpCode(FastEnum):
-  """
-  the order of these OpCode controls the order of the toposort
-  """
   # ** 1 -- defines/special **
   DEFINE_GLOBAL = auto(); DEFINE_VAR = auto(); BIND = auto()                                                  # define GLOBAL/VAR are ptrs to outside the Kernel
   SPECIAL = auto()                                                                                            # this is a RANGE for GPU dimensions, similar to symbolic shapes but not exactly
@@ -61,8 +66,7 @@ class OpCode(FastEnum):
 """
 OpMixin (at the bottom of the file) is a ComputeMixin and MovementMixin which effectively
 1. removes the repetition between sugared and desugared Tensor/Op
-2. acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode intermediate representation
-the dunders call the provided mixins' methods, which in turn call .eval(), which is implemented by subclasses.
+2. acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode ir
 """
 
 class ComputeMixin:
@@ -155,16 +159,15 @@ class ComputeMixin:
 class MovementMixin:
   def expand(self) -> Self: raise NotImplementedError("todo")
   def reshape(self, shape) -> Self:
-    new_shape = tuple([s if s is not None else self.shape[i] for i, s in enumerate(helpers.normalize_shape(shape, *args))]) # resolve None and args
+    output_shape = tuple([s if s is not None else self.shape[i] for i, s in enumerate(helpers.normalize_shape(shape))]) # resolve None and args
 
-    if (c := new_shape.count(-1)) > 1:
-      raise RuntimeError(f"only one dimension can be inferred using -1, getting {new_shape}")
-    if c:
-      new_shape = tuple([-helpers.prod(self.shape) // helpers.prod(new_shape) if s == -1 else s for s in new_shape])
-    if helpers.prod(self.shape) != helpers.prod(new_shape):
-      raise ValueError(f"size mismatch, can't reshape ({self.shape}) -> ({new_shape})")
-    ret = self._mop(OpCode.RESHAPE, arg=new_shape)
-    return self if ret.shape == self.shape else ret
+    if (c := output_shape.count(-1)) > 1: raise RuntimeError(f"only one dimension can be inferred using -1, getting {output_shape}")
+    if c: output_shape = tuple([-helpers.prod(self.shape) // helpers.prod(output_shape) if s == -1 else s for s in output_shape])
+    if helpers.prod(self.shape) != helpers.prod(output_shape):
+      raise ValueError(f"size mismatch, can't reshape ({self.shape}) -> ({output_shape})")
+    
+    output = self._mop(OpCode.RESHAPE, arg=output_shape)
+    return self if output.shape == self.shape else output
 
   def shrink(self) -> Self: raise NotImplementedError("todo")
   def permute(self) -> Self: raise NotImplementedError("todo")
