@@ -165,7 +165,7 @@ class OpNode(GraphBuilder):
     return ret
 
   @property
-  def size(self) -> int: return prod([int(x.vmax) if isinstance(x, UOp) else x for x in self.shape])
+  def size(self) -> int: return prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
 
   @functools.cached_property
   def ended_ranges(self):
@@ -174,8 +174,8 @@ class OpNode(GraphBuilder):
 
   # determine what ranges this is in
   @recursive_property
-  def _ranges(self) -> dict[UOp, None]:
-    ret: dict[UOp, None] = {}
+  def _ranges(self) -> dict[OpNode, None]:
+    ret: dict[OpNode, None] = {}
     for s in self.src: ret.update(s.ranges)
     for er in self.ended_ranges:
       if er.op is Ops.RANGE:
@@ -187,6 +187,81 @@ class OpNode(GraphBuilder):
         for s in er.ranges:
           if s in ret: del ret[s]
     return ret
+  
+  # **************** Storage ****************
+  @staticmethod
+  def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, num=None):
+    return OpNode(OpCode.BUFFER, dtype, (OpNode.unique(num), OpNode(OpCode.DEVICE, arg=device)), size)
+  @property
+  def device(self) -> str|tuple[str, ...]: return unwrap(self._device)
+  @recursive_property
+  def _device(self) -> str|tuple[str, ...]|None:
+    if self.op is OpCode.DEVICE: return self.arg
+    if self.op is OpCode.BUFFERIZE: return self.arg.device
+    if self.op is OpCode.AFTER: return self.src[0]._device
+    if self.op is OpCode.MSELECT:
+      assert isinstance(self.src[0].device, tuple), "mselect must be on tuple device"
+      return self.src[0].device[self.arg]
+    if self.op is OpCode.MSTACK: return tuple(cast(str, x.device) for x in self.src)
+    if self.op in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}: return self.src[1].device
+    for x in self.src:
+      if x._device is not None: return x._device
+    return None
+  @property
+  def buf_uop(self) -> OpNode:
+    if self.op is OpCode.BUFFER: return self
+    if self.op is OpCode.MSELECT: return self.src[0].buf_uop.mselect(self.arg)
+    if self.op is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.buf_uop for x in self.src))
+    assert self.base.op is OpCode.AFTER, f"must be AFTER {self.base.op}"
+    return self.base.src[0].buf_uop.base
+
+  def as_buf(self) -> OpNode:
+    if self.op is OpCode.MSELECT: return self.src[0].as_buf().mselect(self.arg)
+    if self.op is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.as_buf() for x in self.src))
+    # TODO: this should be the only one of these. this is the one RANGEIFY uses
+    s = self
+    while len(s.src) and s.op not in {OpCode.BUFFER, OpCode.BUFFERIZE, OpCode.MSTACK}: s = s.src[0]
+    return s
+
+  def buf_target(self) -> OpNode:
+    # the buffer that's being loaded from or store to
+    match self.op:
+      case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG: return self
+      case OpCode.AFTER | OpCode.INDEX | OpCode.STORE | OpCode.LOAD: return self.src[0].buf_target()
+      case OpCode.VECTORIZE:
+        assert all_same(self.src)
+        return self.src[0].buf_target()
+      case _: raise RuntimeError(f"buf_target called on non load/index/store {self.op}")
+
+  @property
+  def buffer(self) -> Buffer|MultiBuffer:
+    from tinygrad.device import Buffer, MultiBuffer
+    if self is not self.base:
+      assert self.op is OpCode.RESHAPE, f"can only be RESHAPE {self}"
+      return self.src[0].buffer
+    if self.op is OpCode.MSELECT:
+      ret = self.src[0].buffer
+      assert isinstance(ret, MultiBuffer)
+      return ret.bufs[self.arg]
+    if self.op is OpCode.MSTACK:
+      ret = MultiBuffer.__new__(MultiBuffer)
+      ret.bufs = [cast(Buffer, x.buffer) for x in self.src]
+      assert all_same([x.size for x in ret.bufs]) and all_same([x.dtype for x in ret.bufs]), "multibuffers mismatch buffers"
+      return ret
+    assert self.op is OpCode.BUFFER, f"must be BUFFER {self.op}"
+    if (cret:=buffers.get(self)) is not None: return cret
+    rdtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base
+    if isinstance(self.device, tuple): ret = MultiBuffer(self.device, self.size, rdtype).ref(1)
+    else: ret = Buffer(self.device, self.size, rdtype).ref(1)
+    buffers[self] = ret
+    return ret
+  @property
+  def realized(self) -> Buffer|MultiBuffer|None:
+    # NOTE: this is used by the JIT to determine which inputs we capture
+    return self.buffer if self.op in {OpCode.BUFFER, OpCode.MSTACK} and self.buffer.is_allocated() else None
+  @property
+  def is_realized(self) -> bool:
+    return all(x.base.realized is not None for x in self.base.src) if self.base.op is OpCode.MULTI else self.base.realized is not None
   
   # **************** Compute ****************
   def _apply_compute_opcode(self, ftype: OpCode, *inputs:OpNode) -> Self: # required method by OpMixin
@@ -224,7 +299,7 @@ class OpNode(GraphBuilder):
       case OpCode.SIN: raise NotImplementedError("todo")
       case _: raise NotImplementedError(f"unsupported opcode {ftype!r}")
 
-  def _apply_movement_opcode(self, op:Ops, arg, same_shape_noop:bool=False) -> UOp:
+  def _apply_movement_opcode(self, op:Ops, arg, same_shape_noop:bool=False) -> OpNode:
     match op:
       case OpCode.RESHAPE | OpCode.EXPAND: src_args = [arg]
       case OpCode.PAD | OpCode.SHRINK: src_args = list(zip(*arg))
@@ -233,8 +308,8 @@ class OpNode(GraphBuilder):
     usrcs = []
     for arg in src_args:
       if len(arg) == 0: usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(0)))
-      elif all(isinstance(x, int) for x in arg): usrcs.append(UOp.const(dtypes.index.vec(len(arg)), arg))
-      else: usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(len(arg)), tuple(UOp.const(dtypes.index, x) if isinstance(x, int) else x for x in arg)))
+      elif all(isinstance(x, int) for x in arg): usrcs.append(OpNode.const(dtypes.index.vec(len(arg)), arg))
+      else: usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(len(arg)), tuple(OpNode.const(dtypes.index, x) if isinstance(x, int) else x for x in arg)))
     if len(usrcs) == 0: ret = OpNode(op, self.dtype, (self,), arg)
     else: ret = OpNode(op, self.dtype, (self,)+OpNode.sink(*usrcs).simplify().src)
     # for all movement ops, we check shape property
