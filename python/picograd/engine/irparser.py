@@ -71,12 +71,12 @@ OpMixin (at the bottom of the file) is a ComputeMixin and MovementMixin which ef
 
 class ComputeMixin:
   # required
-  def eval(self, ftype: OpCode, *inputs: Self) -> Self: raise NotImplementedError
+  def _apply_compute_opcode(self, ftype: OpCode, *inputs: Self) -> Self: raise NotImplementedError
   def const_like(self, b: Const) -> Self: raise NotImplementedError
 
   # provided
-  def _binop(self, op: OpCode, x: Self | Const, reverse: bool) -> Self:
-    return self.ufix(x).eval(op, self) if reverse else self.eval(op, self.ufix(x))
+  def _apply_compute_binopcode(self, op: OpCode, x: Self | Const, reverse: bool) -> Self:
+    return self.ufix(x)._apply_compute_opcode(op, self) if reverse else self._apply_compute_opcode(op, self.ufix(x))
   def ufix(self, x: Self | Const) -> Self:
     return self.const_like(x) if not isinstance(x, ComputeMixin) else x
 
@@ -84,32 +84,32 @@ class ComputeMixin:
     if (dtype := getattr(self, "dtype")) is None:
       raise TypeError(f"MathTraits __neg__ requires a dtype, {self=}")
     return self.logical_not() if dtype.scalar() == dtypes.bool else self * (-1)
-  def add(self, x: Self | Const, reverse: bool = False): return self._binop(OpCode.ADD, x, reverse)
-  def sub(self, x: Self | Const, reverse: bool = False): return self.ufix(x).eval(OpCode.ADD, -self) if reverse else self.eval(OpCode.ADD, self.ufix(-x))
-  def mul(self, x: Self | Const, reverse: bool = False): return self._binop(OpCode.MUL, x, reverse)
-  def idiv(self, x: Self | Const, reverse: bool = False): return self._binop(OpCode.IDIV, x, reverse)
-  def mod(self, x: Self | Const, reverse: bool = False): return self._binop(OpCode.MOD, x, reverse)
-  def div(self, x: Self | Const, reverse: bool = False): return (self.ufix(x) * self.eval(OpCode.RECIP)) if reverse else (self * self.ufix(x).eval(OpCode.RECIP))
-  def recip(self): return self.eval(OpCode.RECIP)
-  def trunc(self): return self.eval(OpCode.TRUNC)
-  def sqrt(self): return self.eval(OpCode.SQRT)
-  def sin(self): return self.eval(OpCode.SIN)
-  def log2(self): return self.eval(OpCode.LOG2)
-  def exp2(self): return self.eval(OpCode.EXP2)
-  def pow(self, x: Self | Const): return self.eval(OpCode.POW, self.ufix(x))
-  def maximum(self, x: Self | Const): return self.eval(OpCode.MAX, self.ufix(x))
+  def add(self, x: Self | Const, reverse: bool = False): return self._apply_compute_binopcode(OpCode.ADD, x, reverse)
+  def sub(self, x: Self | Const, reverse: bool = False): return self.ufix(x)._apply_compute_opcode(OpCode.ADD, -self) if reverse else self._apply_compute_opcode(OpCode.ADD, self.ufix(-x))
+  def mul(self, x: Self | Const, reverse: bool = False): return self._apply_compute_binopcode(OpCode.MUL, x, reverse)
+  def idiv(self, x: Self | Const, reverse: bool = False): return self._apply_compute_binopcode(OpCode.IDIV, x, reverse)
+  def mod(self, x: Self | Const, reverse: bool = False): return self._apply_compute_binopcode(OpCode.MOD, x, reverse)
+  def div(self, x: Self | Const, reverse: bool = False): return (self.ufix(x) * self._apply_compute_opcode(OpCode.RECIP)) if reverse else (self * self.ufix(x)._apply_compute_opcode(OpCode.RECIP))
+  def recip(self): return self._apply_compute_opcode(OpCode.RECIP)
+  def trunc(self): return self._apply_compute_opcode(OpCode.TRUNC)
+  def sqrt(self): return self._apply_compute_opcode(OpCode.SQRT)
+  def sin(self): return self._apply_compute_opcode(OpCode.SIN)
+  def log2(self): return self._apply_compute_opcode(OpCode.LOG2)
+  def exp2(self): return self._apply_compute_opcode(OpCode.EXP2)
+  def pow(self, x: Self | Const): return self._apply_compute_opcode(OpCode.POW, self.ufix(x))
+  def maximum(self, x: Self | Const): return self._apply_compute_opcode(OpCode.MAX, self.ufix(x))
   def minimum(self, x: Self | Const): return -(-self).maximum(-x)
-  def threefry(self, seed: Self): return self.eval(OpCode.THREEFRY, seed)
-  def bitwise_and(self, x: Self | Const, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.AND, x, reverse)
-  def bitwise_or(self, x: Self | Const, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.OR, x, reverse)
-  def bitwise_xor(self, x: Self | Const, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.XOR, x, reverse)
-  def lshift(self, x: Self | int, reverse: bool = False): return self._binop(OpCode.SHL, x, reverse)
-  def rshift(self, x: Self | int, reverse: bool = False): return self._binop(OpCode.SHR, x, reverse)
+  def threefry(self, seed: Self): return self._apply_compute_opcode(OpCode.THREEFRY, seed)
+  def bitwise_and(self, x: Self | Const, reverse: bool = False): self._check_dtype(); return self._apply_compute_binopcode(OpCode.AND, x, reverse)
+  def bitwise_or(self, x: Self | Const, reverse: bool = False): self._check_dtype(); return self._apply_compute_binopcode(OpCode.OR, x, reverse)
+  def bitwise_xor(self, x: Self | Const, reverse: bool = False): self._check_dtype(); return self._apply_compute_binopcode(OpCode.XOR, x, reverse)
+  def lshift(self, x: Self | int, reverse: bool = False): return self._apply_compute_binopcode(OpCode.SHL, x, reverse)
+  def rshift(self, x: Self | int, reverse: bool = False): return self._apply_compute_binopcode(OpCode.SHR, x, reverse)
   def where(self, x: Self | Const, y: Self | Const):
     if isinstance(x, type(self)):
-      return self.eval(OpCode.WHERE, x, x.ufix(y))
+      return self._apply_compute_opcode(OpCode.WHERE, x, x.ufix(y))
     if isinstance(y, type(self)):
-      return self.eval(OpCode.WHERE, y.ufix(x), y)
+      return self._apply_compute_opcode(OpCode.WHERE, y.ufix(x), y)
     raise RuntimeError("where needs at least one UOp arg")
   def logical_not(self): return self.ne(True)
   
@@ -128,11 +128,11 @@ class ComputeMixin:
   def __mod__(self, x: Self | Const): return self.mod(x)
   def __rmod__(self, x: Self | Const): return self.mod(x, True)
   
-  def __lt__(self, x: Self | Const): return self.eval(OpCode.CMPLT, self.ufix(x))
-  def __gt__(self, x: Self | Const): return self.ufix(x).eval(OpCode.CMPLT, self)
+  def __lt__(self, x: Self | Const): return self._apply_compute_opcode(OpCode.CMPLT, self.ufix(x))
+  def __gt__(self, x: Self | Const): return self.ufix(x)._apply_compute_opcode(OpCode.CMPLT, self)
   def __ge__(self, x: Self | Const): return (self < x).logical_not()
   def __le__(self, x: Self | Const): return (self > x).logical_not()
-  def ne(self, x: Self | Const): return self.eval(OpCode.CMPNE, self.ufix(x))
+  def ne(self, x: Self | Const): return self._apply_compute_opcode(OpCode.CMPNE, self.ufix(x))
   def eq(self, x: Self | Const): return self.ne(x).logical_not()
   def __ne__(self, x: Self | Const): return self.ne(x)  # type: ignore[override]
   # NOTE: __eq__ isn't overridden, and means the same thing as is b default
@@ -157,14 +157,19 @@ class ComputeMixin:
         raise RuntimeError(f"{dtype} is not supported")
 
 class MovementMixin:
+  # required
+  def _apply_movement_opcode(self, op: OpCode, arg) -> Self: raise NotImplementedError
+  @property
+  def shape(self) -> tuple[int, ...]: raise NotImplementedError
+  
+  # provided
   def expand(self) -> Self: raise NotImplementedError("todo")
   def reshape(self, shape) -> Self:
     output_shape = tuple([s if s is not None else self.shape[i] for i, s in enumerate(helpers.normalize_shape(shape))]) # resolve None and args
 
     if (c := output_shape.count(-1)) > 1: raise RuntimeError(f"only one dimension can be inferred using -1, getting {output_shape}")
     if c: output_shape = tuple([-helpers.prod(self.shape) // helpers.prod(output_shape) if s == -1 else s for s in output_shape])
-    if helpers.prod(self.shape) != helpers.prod(output_shape):
-      raise ValueError(f"size mismatch, can't reshape ({self.shape}) -> ({output_shape})")
+    if helpers.prod(self.shape) != helpers.prod(output_shape): raise ValueError(f"size mismatch, can't reshape ({self.shape}) -> ({output_shape})")
     
     output = self._mop(OpCode.RESHAPE, arg=output_shape)
     return self if output.shape == self.shape else output

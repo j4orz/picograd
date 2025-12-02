@@ -5,7 +5,7 @@ from typing import Any, Callable, Self, Sequence, TypeGuard,  cast, get_args
 import math, weakref, struct, pathlib
 
 from picograd import helpers
-from picograd.engine import OpNode, OpMixin
+from picograd.engine import OpCode, OpNode, OpMixin
 from picograd.helpers import EAGER, GRAPH
 from picograd.runtime import Device
 from picograd.dtype import Const, DType, DTypeLike, dtypes
@@ -78,8 +78,7 @@ class Tensor(OpMixin):
     print("moose", dtype, device)
     self.grad: Tensor|None = None                   # tensors can have gradients if you have called .backward
     self.requires_grad: bool|None = requires_grad   # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
-    opnode = Tensor._input_to_opnode(input, device, dtype, force_unique)
-  
+    opnode = Tensor._input_to_opnode(input, device, dtype, force_unique)  
     if isinstance(device, str): self.op: OpNode = opnode if input.device == device else input.copy_to_device(device)    # data might be on a different device
     all_tensors[weakref.ref(self)] = None                                                                               # add to all_tensors after construction succeeds
     return
@@ -111,6 +110,8 @@ class Tensor(OpMixin):
     print("moose", output_opnode)
     output_opnode = output_opnode.reshape(shape)
 
+    # fake realize. calling .storage.allocate() and passing bytes/memoryview as pre-allocated buf
+    # -> fake realize to real realize()
     truncate_function = picograd.dtype.truncate[dtype]
     data = struct.pack(f"{output_opnode.size}{dtype.fmt}", *[truncate_function(dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)])
     output_opnode.storage.allocate(memoryview(data)) # fake realize
@@ -141,6 +142,12 @@ class Tensor(OpMixin):
     requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
     output_tensor = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
     return output_tensor
+  
+  def _apply_compute_opcode(self, ftype: OpCode, *inputs):
+    x = 3
+
+  def _apply_movement_opcode(self, ftype: OpCode, *inputs):
+    return self._forward(OpNode._apply_movement_opcode, extra_args=(op,), arg=arg)
   
   # f'(x) backward
   def backward(self, grad: Tensor|None=None) -> Self:
@@ -209,7 +216,7 @@ class Tensor(OpMixin):
   def mm(self) -> Self: raise NotImplementedError("todo")
   # the builtin primitives (i.e add) which do not need to be desugared will call provided OpMixin._binop() to __________
   # which is overrided to ____________
-  def _binop(self, op, x, reverse):
+  def _apply_compute_binopcode(self, op, x, reverse):
     return self._apply_broadcasted_uop(lambda *u: OpNode.alu(u[0], op, *u[1:]), x, reverse) # _binop is used by MathTrait
   def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|Const, reverse=False) -> Self:
     lhs,rhs = self._broadcasted(x, reverse)

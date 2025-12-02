@@ -55,56 +55,6 @@ class OpNode(OpMixin):
   def const_like(self, b:ConstLike):
     return OpNode.const(self.dtype, b, device=self._device, shape=self._shape) # constants can optionally have a DEVICE source
   
-  # **************** Compute ****************
-  def eval(self, ftype: OpCode, *inputs:OpNode) -> Self: # required method by OpMixin
-    """
-    the evaluator overrides* the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
-    called by OpMixin.eval() which acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode intermediate representation
-    *: note that .eval is not a static method, that self is the Op that the OpCode ftype is operating on, to produce a new Self
-    the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .eval() returning an OpNode,
-    similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
-    """
-    out_dtype = (self, *inputs)[-1].dtype
-    # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
-    # return Op((self,)+inputs, ftype, out_dtype,)
-    match ftype:
-      case OpCode.NEG: launch_neg(*inputs)
-      case OpCode.ADD:
-        # 1. memory: allocate and memcpy on device
-        device = HIPDevice()
-        a, b, c = [device.allocator.alloc(4), device.allocator.alloc(4), device.allocator.alloc(4)]
-        device.allocator._copyin(a, memoryview(bytearray([2,0,0,0])))
-        device.allocator._copyin(b, memoryview(bytearray([3,0,0,0])))
-        # 2. compute: compile a kernel to a binary
-        kernel = HIPCCCompiler().compile("__global__ void add(int *a, int *b, int *c) { int id = blockDim.x * blockIdx.x + threadIdx.x; if(id < N) c[id] = a[id] + b[id]; }")
-        # 3. launch
-        f = device.kernel("add", kernel)
-        f(a, b, c) # HIPKernel
-
-        print(val := device.allocator._as_buffer(c).cast("I").tolist()[0])
-        assert val == 5 # check the data out
-      case OpCode.MUL: raise NotImplementedError("todo")
-      case OpCode.MM: raise NotImplementedError("todo")
-      case OpCode.RECIP: raise NotImplementedError("todo")
-      case OpCode.EXP2: raise NotImplementedError("todo")
-      case OpCode.LOG2: raise NotImplementedError("todo")
-      case OpCode.SIN: raise NotImplementedError("todo")
-      case _: raise NotImplementedError(f"unsupported opcode {ftype!r}")
-  
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
   def _device(self) -> str|tuple[str, ...]|None: # @recursive_property
     if self.op is OpCode.DEVICE: return self.arg
     if self.op is OpCode.BUFFERIZE: return self.arg.device
@@ -139,4 +89,57 @@ class OpNode(OpMixin):
     if isinstance(self.device, tuple): ret = MultiBuffer(self.device, self.size, rdtype).ref(1)
     else: ret = Buffer(self.device, self.size, rdtype).ref(1)
     buffers[self] = ret
+    return ret
+  
+  # **************** Compute ****************
+  def _apply_compute_opcode(self, ftype: OpCode, *inputs:OpNode) -> Self: # required method by OpMixin
+    """
+    the evaluator overrides* the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
+    called by OpMixin.eval() which acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode intermediate representation
+    *: note that .eval is not a static method, that self is the Op that the OpCode ftype is operating on, to produce a new Self
+    the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .eval() returning an OpNode,
+    similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
+    """
+    out_dtype = (self, *inputs)[-1].dtype
+    # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
+    # return Op((self,)+inputs, ftype, out_dtype,)
+    match ftype:
+      case OpCode.NEG: launch_neg(*inputs)
+      case OpCode.ADD:
+        # 1. memory: allocate and memcpy on device
+        device = HIPDevice()
+        a, b, c = [device.allocator.alloc(4), device.allocator.alloc(4), device.allocator.alloc(4)]
+        device.allocator._copyin(a, memoryview(bytearray([2,0,0,0])))
+        device.allocator._copyin(b, memoryview(bytearray([3,0,0,0])))
+        # 2. compute: compile a kernel to a binary
+        kernel = HIPCCCompiler().compile("__global__ void add(int *a, int *b, int *c) { int id = blockDim.x * blockIdx.x + threadIdx.x; if(id < N) c[id] = a[id] + b[id]; }")
+        # 3. launch
+        f = device.kernel("add", kernel)
+        f(a, b, c) # HIPKernel
+
+        print(val := device.allocator._as_buffer(c).cast("I").tolist()[0])
+        assert val == 5 # check the data out
+      case OpCode.MUL: raise NotImplementedError("todo")
+      case OpCode.MM: raise NotImplementedError("todo")
+      case OpCode.RECIP: raise NotImplementedError("todo")
+      case OpCode.EXP2: raise NotImplementedError("todo")
+      case OpCode.LOG2: raise NotImplementedError("todo")
+      case OpCode.SIN: raise NotImplementedError("todo")
+      case _: raise NotImplementedError(f"unsupported opcode {ftype!r}")
+
+  def _apply_movement_opcode(self, op:Ops, arg, same_shape_noop:bool=False) -> UOp:
+    match op:
+      case Ops.RESHAPE | Ops.EXPAND: src_args = [arg]
+      case Ops.PAD | Ops.SHRINK: src_args = list(zip(*arg))
+      case Ops.PERMUTE | Ops.FLIP: src_args = []
+      case _: raise RuntimeError(f"{op} is not a MovementOp")
+    usrcs = []
+    for arg in src_args:
+      if len(arg) == 0: usrcs.append(UOp(Ops.VECTORIZE, dtypes.index.vec(0)))
+      elif all(isinstance(x, int) for x in arg): usrcs.append(UOp.const(dtypes.index.vec(len(arg)), arg))
+      else: usrcs.append(UOp(Ops.VECTORIZE, dtypes.index.vec(len(arg)), tuple(UOp.const(dtypes.index, x) if isinstance(x, int) else x for x in arg)))
+    if len(usrcs) == 0: ret = UOp(op, self.dtype, (self,), arg)
+    else: ret = UOp(op, self.dtype, (self,)+UOp.sink(*usrcs).simplify().src)
+    # for all movement ops, we check shape property
+    if ret.shape == self.shape and same_shape_noop: return self
     return ret
