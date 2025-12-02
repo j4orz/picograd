@@ -7,7 +7,7 @@ from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
 from picograd.engine.irparser import OpCode, GraphBuilder
 if TYPE_CHECKING:
   from picograd.runtime.device import Buffer, Device
-from picograd.dtype import DType, dtypes
+from picograd.dtype import ConstLike, DType, dtypes
 
 # picograd to tinygrad bridge
 # - removed buf_op and as_buf used by haldie/tvm schedule/rangify to map high level ops back to buffers
@@ -67,28 +67,125 @@ class OpNode(GraphBuilder):
     for x in self.inputs:
       if x._device is not None: return x._device
     return None
+  
+  # **************** Shape ****************
+  @recursive_property
+  def _shape(self) -> tuple[sint, ...]|None:
+    match self.op:
+      # late ops don't have shape
+      case OpCode.UNIQUE | OpCode.DEVICE | OpCode.RANGE | OpCode.LOAD | OpCode.IF | OpCode.BARRIER | OpCode.CUSTOM | OpCode.CUSTOMI | \
+           OpCode.VECTORIZE | OpCode.VCONST | OpCode.GEP | OpCode.SPECIAL | OpCode.UNROLL | OpCode.CONTRACT:
+        return None
+
+      case OpCode.INDEX:
+        # non pointer index doesn't have a shape
+        if not isinstance(self.dtype, PtrDType): return None
+        # fully indexed doesn't have a shape. TODO: remove this
+        if self.src[0]._shape is None or len(self.src[1:]) == len(self.src[0].shape): return None
+        # pointer index
+        return self.src[0].shape[len(self.src[1:]):]
+
+      # some ops init the shape
+      case OpCode.CONST | OpCode.DEFINE_VAR | OpCode.BIND: return () if self._device is not None else None
+      case OpCode.BUFFER: return (self.arg,)
+      case OpCode.BUFFER_VIEW: return (self.arg[0],)
+      case OpCode.BUFFERIZE: return tuple([int(r.vmax+1) for r in self.src[1:]])
+      case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG: return (self.ptrdtype.size,)
+
+      # passthrough ops
+      case OpCode.REDUCE | OpCode.MSTACK | OpCode.MSELECT | OpCode.DETACH | OpCode.CONTIGUOUS | OpCode.CONTIGUOUS_BACKWARD | OpCode.AFTER | OpCode.END:
+        return self.src[0]._shape
+
+      # ops with custom handling
+      case OpCode.KERNEL: return self.arg.ast._shape
+
+      # TODO: disallow shape changing bitcast
+      case OpCode.BITCAST:
+        ps = self.src[0]._shape
+        if ps is None: return None
+        if (output_sz:=self.dtype.itemsize) != (input_sz:=self.src[0].dtype.itemsize): return ps[:-1]+(ssimplify((ps[-1]*input_sz) // output_sz),)
+        return ps
+
+      # TODO: disallow reshape from nothing. tested by TestOpenClip.test_multigpu_clip_score
+      case OpCode.RESHAPE:
+        if self.src[0]._shape is None: return self.marg
+
+    # movement ops change the shape. this is the logic from the old ShapeTracker
+    # NOTE: ssimplify is required because the shape needs to be canonical for broadcasting and same shape checking
+    if self.op in GroupOp.Movement.union({OpCode.MULTI, OpCode.REDUCE_AXIS, OpCode.WMMA}):
+      ps = self.src[0]._shape
+      # TODO: WMMA is used for both axis WMMA and op WMMA. fix this and remove this hack. tested by BERT on AMD LLVM
+      if ps is None and self.op is OpCode.WMMA: return None
+      if ps is None: raise RuntimeError(f"movement op {self.op} requires shape")
+      match self.op:
+        case OpCode.RESHAPE:
+          if not all(x >= 0 for x in self.marg): raise ValueError(f"shape can't contain negative numbers {self.marg}")
+          if prod(ps) != prod(self.marg): raise ValueError(f"bad reshape: {ps} -> {self.marg}")
+          return self.marg
+        case OpCode.EXPAND:
+          if len(ps) != len(self.marg) or not all(s==ns or (s==1 and ns>=0) for s,ns in zip(ps, self.marg)):
+            raise ValueError(f"bad expand: {ps} -> {self.marg}")
+          return self.marg
+        case OpCode.PERMUTE:
+          if sorted(self.marg) != list(range(len(ps))): raise ValueError(f"invalid permutation {self.marg} of len {len(ps)}")
+          return tuple(ps[i] for i in self.marg)
+        case OpCode.PAD:
+          # TODO: why do i need resolve here?
+          if len(ps) != len(self.marg) or not all(resolve(b>=0) and resolve(e>=0) for b,e in self.marg): raise ValueError(f"invalid pad {self.marg}")
+          return tuple(ssimplify(s+b+e) for s,(b,e) in zip(ps, self.marg))
+        case OpCode.SHRINK:
+          # TODO: why do i need resolve here?
+          if len(ps) != len(self.marg) or not all(resolve(0<=b) and resolve(b<=e) and resolve(e<=s) for s,(b,e) in zip(ps, self.marg)):
+            raise ValueError(f"invalid shrink {self.marg} for {ps}")
+          return tuple(ssimplify(e-s) for s,e in self.marg)
+        case OpCode.FLIP:
+          if len(ps) != len(self.marg) or not all(isinstance(x, bool) for x in self.marg): raise ValueError(f"bad flip on {ps}, {self.marg}")
+          return ps
+        case OpCode.MULTI: return tuple(s*len(self.device) if a == self.axis else s for a,s in enumerate(ps))
+        case OpCode.REDUCE_AXIS | OpCode.WMMA:
+          axis_arg = self.arg[1] if self.op is OpCode.REDUCE_AXIS else self.arg[7]
+          if not isinstance(axis_arg, tuple) or not all(isinstance(x, int) and x>=0 and x<len(ps) for x in axis_arg):
+            raise ValueError(f"invalid type for axis: {axis_arg}")
+          return tuple(1 if i in axis_arg else s for i,s in enumerate(ps))
+
+    # elementwise ops keep the shape the same. all inputs with shape must match
+    if self.op in GroupOp.ALU.union({OpCode.CAST, OpCode.COPY, OpCode.ASSIGN, OpCode.NOOP, OpCode.GROUP, OpCode.SINK, OpCode.ALLREDUCE, OpCode.STORE}):
+      # TODO: remove this hack for 3 op assign
+      input_shapes = [x._shape for x in (self.src[:2] if self.op is OpCode.ASSIGN else self.src) if x._shape is not None]
+      if len(input_shapes) == 0: return None
+      if not all_same(input_shapes): raise RuntimeError(f"shape mismatch at {self.op}: {input_shapes}")
+      return input_shapes[0]
+
+    # all Ops must be explicitly handled
+    raise NotImplementedError(f"no shape handling for {self.op} with {self.dtype}")
 
   @property
-  def storage(self) -> Buffer|MultiBuffer:
-    from tinygrad.device import Buffer, MultiBuffer
-    if self is not self.base:
-      assert self.op is OpCode.RESHAPE, f"can only be RESHAPE {self}"
-      return self.inputs[0].storage
-    if self.op is OpCode.MSELECT:
-      ret = self.inputs[0].storage
-      assert isinstance(ret, MultiBuffer)
-      return ret.bufs[self.arg]
-    if self.op is OpCode.MSTACK:
-      ret = MultiBuffer.__new__(MultiBuffer)
-      ret.bufs = [cast(Buffer, x.storage) for x in self.inputs]
-      assert all_same([x.size for x in ret.bufs]) and all_same([x.dtype for x in ret.bufs]), "multibuffers mismatch buffers"
-      return ret
-    assert self.op is OpCode.BUFFER, f"must be BUFFER {self.op}"
-    if (cret:=buffers.get(self)) is not None: return cret
-    rdtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base
-    if isinstance(self.device, tuple): ret = MultiBuffer(self.device, self.size, rdtype).ref(1)
-    else: ret = Buffer(self.device, self.size, rdtype).ref(1)
-    buffers[self] = ret
+  def shape(self) -> tuple[sint, ...]:
+    if (ret:=self._shape) is None: raise RuntimeError(f"shape requested, but {self.op} doesn't have a shape")
+    return ret
+
+  @property
+  def size(self) -> int: return prod([int(x.vmax) if isinstance(x, UOp) else x for x in self.shape])
+
+  @functools.cached_property
+  def ended_ranges(self):
+    if self.op in range_start: return self.src[range_start[self.op]:]
+    return ()
+
+  # determine what ranges this is in
+  @recursive_property
+  def _ranges(self) -> dict[UOp, None]:
+    ret: dict[UOp, None] = {}
+    for s in self.src: ret.update(s.ranges)
+    for er in self.ended_ranges:
+      if er.op is Ops.RANGE:
+        # if it's a single RANGE, we don't flow through it.
+        if er in ret: del ret[er]
+      else:
+        # if it's not a RANGE, we include all ranges in srcs.
+        # technically we shouldn't flow through these ranges either, but this is pre pm_add_control_flow so it's the same.
+        for s in er.ranges:
+          if s in ret: del ret[s]
     return ret
   
   # **************** Compute ****************
@@ -121,7 +218,7 @@ class OpNode(GraphBuilder):
         assert val == 5 # check the data out
       case OpCode.MUL: raise NotImplementedError("todo")
       case OpCode.MM: raise NotImplementedError("todo")
-      case OpCode.RECIP: raise NotImplementedError("todo")
+      case OpCode.RECIPROCAL: raise NotImplementedError("todo")
       case OpCode.EXP2: raise NotImplementedError("todo")
       case OpCode.LOG2: raise NotImplementedError("todo")
       case OpCode.SIN: raise NotImplementedError("todo")
@@ -129,17 +226,17 @@ class OpNode(GraphBuilder):
 
   def _apply_movement_opcode(self, op:Ops, arg, same_shape_noop:bool=False) -> UOp:
     match op:
-      case Ops.RESHAPE | Ops.EXPAND: src_args = [arg]
-      case Ops.PAD | Ops.SHRINK: src_args = list(zip(*arg))
-      case Ops.PERMUTE | Ops.FLIP: src_args = []
+      case OpCode.RESHAPE | OpCode.EXPAND: src_args = [arg]
+      case OpCode.PAD | OpCode.SHRINK: src_args = list(zip(*arg))
+      case OpCode.PERMUTE | OpCode.FLIP: src_args = []
       case _: raise RuntimeError(f"{op} is not a MovementOp")
     usrcs = []
     for arg in src_args:
-      if len(arg) == 0: usrcs.append(UOp(Ops.VECTORIZE, dtypes.index.vec(0)))
+      if len(arg) == 0: usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(0)))
       elif all(isinstance(x, int) for x in arg): usrcs.append(UOp.const(dtypes.index.vec(len(arg)), arg))
-      else: usrcs.append(UOp(Ops.VECTORIZE, dtypes.index.vec(len(arg)), tuple(UOp.const(dtypes.index, x) if isinstance(x, int) else x for x in arg)))
-    if len(usrcs) == 0: ret = UOp(op, self.dtype, (self,), arg)
-    else: ret = UOp(op, self.dtype, (self,)+UOp.sink(*usrcs).simplify().src)
+      else: usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(len(arg)), tuple(UOp.const(dtypes.index, x) if isinstance(x, int) else x for x in arg)))
+    if len(usrcs) == 0: ret = OpNode(op, self.dtype, (self,), arg)
+    else: ret = OpNode(op, self.dtype, (self,)+OpNode.sink(*usrcs).simplify().src)
     # for all movement ops, we check shape property
     if ret.shape == self.shape and same_shape_noop: return self
     return ret
