@@ -8,9 +8,8 @@ from enum import Enum, auto
 
 # from picograd.engine.opnode import OpNode
 
-sint = int
 # Variable = OpNode
-ConstType = float|int|bool
+Const = float|int|bool
 FmtStr = Literal['?', 'b', 'B', 'h', 'H', 'i', 'I', 'q', 'Q', 'e', 'f', 'd']
 
 class InvalidTypeMetaClass(type):
@@ -48,7 +47,7 @@ class DType(metaclass=DTypeMetaClass):
   _scalar: DType|None
   @staticmethod
   def new(priority:int, itemsize:int, name:str, fmt:FmtStr|None): return DType(priority, itemsize, name, fmt, 1, None)
-ConstLike = ConstType|InvalidType|tuple[ConstType|InvalidType, ...] # Variable
+ConstLike = Const|InvalidType|tuple[Const|InvalidType, ...] # Variable
 DTypeLike = str|DType
 def to_dtype(dtype:DTypeLike) -> DType: return dtype if isinstance(dtype, DType) else getattr(dtypes, dtype.lower())
 

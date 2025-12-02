@@ -2,7 +2,8 @@ from __future__ import annotations
 from typing import Self
 from enum import Enum, IntEnum, auto
 
-from picograd.dtype import ConstType
+from picograd import helpers
+from picograd.dtype import Const
 
 # **************** Intermediate Representation ****************
 class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses
@@ -67,40 +68,40 @@ the dunders call the provided mixins' methods, which in turn call .eval(), which
 class ComputeMixin:
   # required
   def eval(self, ftype: OpCode, *inputs: Self) -> Self: raise NotImplementedError
-  def const_like(self, b: ConstType) -> Self: raise NotImplementedError
+  def const_like(self, b: Const) -> Self: raise NotImplementedError
 
   # provided
-  def _binop(self, op: OpCode, x: Self | ConstType, reverse: bool) -> Self:
+  def _binop(self, op: OpCode, x: Self | Const, reverse: bool) -> Self:
     return self.ufix(x).eval(op, self) if reverse else self.eval(op, self.ufix(x))
-  def ufix(self, x: Self | ConstType) -> Self:
+  def ufix(self, x: Self | Const) -> Self:
     return self.const_like(x) if not isinstance(x, ComputeMixin) else x
 
   def neg(self):
     if (dtype := getattr(self, "dtype")) is None:
       raise TypeError(f"MathTraits __neg__ requires a dtype, {self=}")
     return self.logical_not() if dtype.scalar() == dtypes.bool else self * (-1)
-  def add(self, x: Self | ConstType, reverse: bool = False): return self._binop(OpCode.ADD, x, reverse)
-  def sub(self, x: Self | ConstType, reverse: bool = False): return self.ufix(x).eval(OpCode.ADD, -self) if reverse else self.eval(OpCode.ADD, self.ufix(-x))
-  def mul(self, x: Self | ConstType, reverse: bool = False): return self._binop(OpCode.MUL, x, reverse)
-  def idiv(self, x: Self | ConstType, reverse: bool = False): return self._binop(OpCode.IDIV, x, reverse)
-  def mod(self, x: Self | ConstType, reverse: bool = False): return self._binop(OpCode.MOD, x, reverse)
-  def div(self, x: Self | ConstType, reverse: bool = False): return (self.ufix(x) * self.eval(OpCode.RECIP)) if reverse else (self * self.ufix(x).eval(OpCode.RECIP))
+  def add(self, x: Self | Const, reverse: bool = False): return self._binop(OpCode.ADD, x, reverse)
+  def sub(self, x: Self | Const, reverse: bool = False): return self.ufix(x).eval(OpCode.ADD, -self) if reverse else self.eval(OpCode.ADD, self.ufix(-x))
+  def mul(self, x: Self | Const, reverse: bool = False): return self._binop(OpCode.MUL, x, reverse)
+  def idiv(self, x: Self | Const, reverse: bool = False): return self._binop(OpCode.IDIV, x, reverse)
+  def mod(self, x: Self | Const, reverse: bool = False): return self._binop(OpCode.MOD, x, reverse)
+  def div(self, x: Self | Const, reverse: bool = False): return (self.ufix(x) * self.eval(OpCode.RECIP)) if reverse else (self * self.ufix(x).eval(OpCode.RECIP))
   def recip(self): return self.eval(OpCode.RECIP)
   def trunc(self): return self.eval(OpCode.TRUNC)
   def sqrt(self): return self.eval(OpCode.SQRT)
   def sin(self): return self.eval(OpCode.SIN)
   def log2(self): return self.eval(OpCode.LOG2)
   def exp2(self): return self.eval(OpCode.EXP2)
-  def pow(self, x: Self | ConstType): return self.eval(OpCode.POW, self.ufix(x))
-  def maximum(self, x: Self | ConstType): return self.eval(OpCode.MAX, self.ufix(x))
-  def minimum(self, x: Self | ConstType): return -(-self).maximum(-x)
+  def pow(self, x: Self | Const): return self.eval(OpCode.POW, self.ufix(x))
+  def maximum(self, x: Self | Const): return self.eval(OpCode.MAX, self.ufix(x))
+  def minimum(self, x: Self | Const): return -(-self).maximum(-x)
   def threefry(self, seed: Self): return self.eval(OpCode.THREEFRY, seed)
-  def bitwise_and(self, x: Self | ConstType, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.AND, x, reverse)
-  def bitwise_or(self, x: Self | ConstType, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.OR, x, reverse)
-  def bitwise_xor(self, x: Self | ConstType, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.XOR, x, reverse)
+  def bitwise_and(self, x: Self | Const, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.AND, x, reverse)
+  def bitwise_or(self, x: Self | Const, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.OR, x, reverse)
+  def bitwise_xor(self, x: Self | Const, reverse: bool = False): self._check_dtype(); return self._binop(OpCode.XOR, x, reverse)
   def lshift(self, x: Self | int, reverse: bool = False): return self._binop(OpCode.SHL, x, reverse)
   def rshift(self, x: Self | int, reverse: bool = False): return self._binop(OpCode.SHR, x, reverse)
-  def where(self, x: Self | ConstType, y: Self | ConstType):
+  def where(self, x: Self | Const, y: Self | Const):
     if isinstance(x, type(self)):
       return self.eval(OpCode.WHERE, x, x.ufix(y))
     if isinstance(y, type(self)):
@@ -109,35 +110,35 @@ class ComputeMixin:
   def logical_not(self): return self.ne(True)
   
   def __neg__(self): return self.neg()
-  def __add__(self, x: Self | ConstType): return self.add(x)
-  def __radd__(self, x: Self | ConstType): return self.add(x, True)
-  def __sub__(self, x: Self | ConstType): return self.sub(x)
-  def __rsub__(self, x: Self | ConstType): return self.sub(x, True)
-  def __mul__(self, x: Self | ConstType): return self.mul(x)
-  def __rmul__(self, x: Self | ConstType): return self.mul(x, True)
-  def __pow__(self, x: Self | ConstType): return self.pow(x)
-  def __truediv__(self, x: Self | ConstType): return self.div(x)
-  def __rtruediv__(self, x: Self | ConstType): return self.div(x, True)
-  def __floordiv__(self, x: Self | ConstType): return self.idiv(x)  # TODO: idiv is trunc div, not floordiv
-  def __rfloordiv__(self, x: Self | ConstType): return self.idiv(x, True)
-  def __mod__(self, x: Self | ConstType): return self.mod(x)
-  def __rmod__(self, x: Self | ConstType): return self.mod(x, True)
+  def __add__(self, x: Self | Const): return self.add(x)
+  def __radd__(self, x: Self | Const): return self.add(x, True)
+  def __sub__(self, x: Self | Const): return self.sub(x)
+  def __rsub__(self, x: Self | Const): return self.sub(x, True)
+  def __mul__(self, x: Self | Const): return self.mul(x)
+  def __rmul__(self, x: Self | Const): return self.mul(x, True)
+  def __pow__(self, x: Self | Const): return self.pow(x)
+  def __truediv__(self, x: Self | Const): return self.div(x)
+  def __rtruediv__(self, x: Self | Const): return self.div(x, True)
+  def __floordiv__(self, x: Self | Const): return self.idiv(x)  # TODO: idiv is trunc div, not floordiv
+  def __rfloordiv__(self, x: Self | Const): return self.idiv(x, True)
+  def __mod__(self, x: Self | Const): return self.mod(x)
+  def __rmod__(self, x: Self | Const): return self.mod(x, True)
   
-  def __lt__(self, x: Self | ConstType): return self.eval(OpCode.CMPLT, self.ufix(x))
-  def __gt__(self, x: Self | ConstType): return self.ufix(x).eval(OpCode.CMPLT, self)
-  def __ge__(self, x: Self | ConstType): return (self < x).logical_not()
-  def __le__(self, x: Self | ConstType): return (self > x).logical_not()
-  def ne(self, x: Self | ConstType): return self.eval(OpCode.CMPNE, self.ufix(x))
-  def eq(self, x: Self | ConstType): return self.ne(x).logical_not()
-  def __ne__(self, x: Self | ConstType): return self.ne(x)  # type: ignore[override]
+  def __lt__(self, x: Self | Const): return self.eval(OpCode.CMPLT, self.ufix(x))
+  def __gt__(self, x: Self | Const): return self.ufix(x).eval(OpCode.CMPLT, self)
+  def __ge__(self, x: Self | Const): return (self < x).logical_not()
+  def __le__(self, x: Self | Const): return (self > x).logical_not()
+  def ne(self, x: Self | Const): return self.eval(OpCode.CMPNE, self.ufix(x))
+  def eq(self, x: Self | Const): return self.ne(x).logical_not()
+  def __ne__(self, x: Self | Const): return self.ne(x)  # type: ignore[override]
   # NOTE: __eq__ isn't overridden, and means the same thing as is b default
 
-  def __and__(self, x: Self | ConstType): return self.bitwise_and(x)
-  def __or__(self, x: Self | ConstType): return self.bitwise_or(x)
-  def __xor__(self, x: Self | ConstType): return self.bitwise_xor(x)
-  def __rand__(self, x: Self | ConstType): return self.bitwise_and(x, True)
-  def __ror__(self, x: Self | ConstType): return self.bitwise_or(x, True)
-  def __rxor__(self, x: Self | ConstType): return self.bitwise_xor(x, True)
+  def __and__(self, x: Self | Const): return self.bitwise_and(x)
+  def __or__(self, x: Self | Const): return self.bitwise_or(x)
+  def __xor__(self, x: Self | Const): return self.bitwise_xor(x)
+  def __rand__(self, x: Self | Const): return self.bitwise_and(x, True)
+  def __ror__(self, x: Self | Const): return self.bitwise_or(x, True)
+  def __rxor__(self, x: Self | Const): return self.bitwise_xor(x, True)
 
   def __lshift__(self, x: Self | int): return self.lshift(x)
   def __rshift__(self, x: Self | int): return self.rshift(x)
@@ -153,7 +154,18 @@ class ComputeMixin:
 
 class MovementMixin:
   def expand(self) -> Self: raise NotImplementedError("todo")
-  def reshape(self, shape) -> Self: raise NotImplementedError("todo")
+  def reshape(self, shape) -> Self:
+    new_shape = tuple([s if s is not None else self.shape[i] for i, s in enumerate(helpers.normalize_shape(shape, *args))]) # resolve None and args
+
+    if (c := new_shape.count(-1)) > 1:
+      raise RuntimeError(f"only one dimension can be inferred using -1, getting {new_shape}")
+    if c:
+      new_shape = tuple([-helpers.prod(self.shape) // helpers.prod(new_shape) if s == -1 else s for s in new_shape])
+    if helpers.prod(self.shape) != helpers.prod(new_shape):
+      raise ValueError(f"size mismatch, can't reshape ({self.shape}) -> ({new_shape})")
+    ret = self._mop(OpCode.RESHAPE, arg=new_shape)
+    return self if ret.shape == self.shape else ret
+
   def shrink(self) -> Self: raise NotImplementedError("todo")
   def permute(self) -> Self: raise NotImplementedError("todo")
   def flip(self) -> Self: raise NotImplementedError("todo")

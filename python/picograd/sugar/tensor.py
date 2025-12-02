@@ -1,15 +1,14 @@
 # inspired by https://github.com/karpathy/micrograd/blob/master/micrograd/engine.py
 #         and https://github.com/tinygrad/tinygrad/blob/master/tinygrad/tensor.py
 from __future__ import annotations
-import functools
-import operator
-from typing import Any, Callable, Iterable, Self, Sequence, TypeGuard, TypeVar, cast, get_args
+from typing import Any, Callable, Self, Sequence, TypeGuard,  cast, get_args
 import math, weakref, struct, pathlib
 
+from picograd import helpers
 from picograd.engine import OpNode, OpMixin
 from picograd.helpers import EAGER, GRAPH
 from picograd.runtime import Device
-from picograd.dtype import ConstType, DType, DTypeLike, dtypes
+from picograd.dtype import Const, DType, DTypeLike, dtypes
 import picograd.dtype
 
 all_tensors: dict[weakref.ref[Tensor], None] = {}
@@ -30,16 +29,6 @@ def get_shape(x) -> tuple[int, ...]:
   if not all_same(subs:=[get_shape(xi) for xi in x]): raise ValueError(f"inhomogeneous shape from {x}")
   return (len(subs),) + (subs[0] if subs else ())
 
-T = TypeVar("T")
-U = TypeVar("U")
-def prod(x:Iterable[T]) -> T|int: return functools.reduce(operator.mul, x, 1) # NOTE: it returns int 1 if x is empty regardless of the type of x
-
-def argfix(*x):
-  if x and x[0].__class__ in (tuple, list):
-    if len(x) != 1: raise ValueError(f"bad arg {x}")
-    return tuple(x[0])
-  return x
-
 class Tensor(OpMixin):
   """
   the Tensor class is a *sugared handle* to the expression graph of vertices V=Set<OpNode> and edges = Set<(OpNode,OpNode)>,
@@ -52,7 +41,7 @@ class Tensor(OpMixin):
   @property
   def device(self) -> str|tuple[str, ...]: return self.op.device
   @property
-  def shape(self) -> tuple[sint, ...]: return self.op.shape
+  def shape(self) -> tuple[int, ...]: return self.op.shape
   @property
   def dtype(self) -> DType: return self.op.dtype
   @property
@@ -63,29 +52,29 @@ class Tensor(OpMixin):
     assert all_int(self.shape), f"no data if shape is symbolic, {self.shape=}"
     return self._buffer().as_typed_buffer(self.shape)
 
-  def item(self) -> ConstType:
+  def item(self) -> Const:
     assert self.numel() == 1, "must have one element for item"
     return self.data()[(0,) * len(self.shape)]
   
+  # high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
   @staticmethod
-  def zeros(*shape, **kwargs) -> Self: return Tensor.full(argfix(*shape), 0.0)
+  def zeros(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 0.0)._evaluate()
   @staticmethod
-  def ones(*shape, **kwargs) -> Self: return Tensor.full(argfix(*shape), 1.0)
+  def ones(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 1.0)._evaluate()
+  
   @staticmethod
-  def full(shape:tuple[sint, ...], fill_value: ConstType) -> Self:
+  def full(shape: tuple[int, ...], fill: Const) -> Self:
     """
-    full 
+    full follows np.full and torch.full which constructs a Tensor with the provided shape and value
     """
-    new_shape = (1, )*len(argfix(shape))
-    return Tensor(fill_value, _force_unique=True).reshape(new_shape).expand(new_shape)
+    new_shape = (1, )*len(helpers.normalize_shape(shape))
+    return Tensor(fill, force_unique=True).reshape(new_shape).expand(new_shape)._evaluate()
   
   def __init__(self,
-               input:ConstType|bytes|list|tuple|OpNode|None,  # removed support for 'np.ndarray'|pathlib.Path|
-               device:str|tuple|list|None=None, dtype:DTypeLike|None=None, requires_grad:bool|None=None, force_unique:bool=False):
+               input:Const|bytes|list|tuple|OpNode|None,  # removed support for 'np.ndarray'|pathlib.Path|
+               device:str|tuple|list|None=None, dtype:DTypeLike|None=None, requires_grad:bool|None=None, force_unique:bool=False): # kwargs
     """
     Tensor.__init__() constructs the OpNode for the Tensor's given device and dtype
-    OpNode.const      symbolic const? ==> actually realize
-    OpNode.buffer     fake realize  ==> actually realize
     """
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
     dtype: DType|None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
@@ -100,10 +89,10 @@ class Tensor(OpMixin):
     return
   
   @staticmethod
-  def _input_to_opnode(input:ConstType|bytes|list|tuple|OpNode|None, device:str|tuple[str, ...], dtype: DType|None, force_unique) -> OpNode:
+  def _input_to_opnode(input: Const|bytes|list|tuple|OpNode|None, device: str|tuple[str, ...], dtype: DType|None, force_unique) -> OpNode:
     if isinstance(input, OpNode):                                               raise NotImplementedError("todo")
     elif input is None:                                                         opnode = OpNode.const(dtype or dtypes.default_float, 0, device, (), unique=force_unique)
-    elif isinstance(input, get_args(ConstType)):                                opnode = OpNode.const(dtype or dtypes.from_py(input), input, device, (), unique=force_unique)
+    elif isinstance(input, get_args(Const)):                                opnode = OpNode.const(dtype or dtypes.from_py(input), input, device, (), unique=force_unique)
     elif isinstance(input, bytes):                                              opnode = Tensor._frompy(input, dtypes.uint8 if dtype is None else dtype)
     elif isinstance(input, (list, tuple)):
       if dtype is None:
@@ -118,26 +107,47 @@ class Tensor(OpMixin):
   
   @staticmethod
   def _frompy(input:list|tuple|bytes, dtype:DType) -> OpNode:
+    """
+
+    """
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
-    output_opnode = OpNode.new_buffer("PYTHON", prod(shape:=get_shape(input)), dtype)
+    output_opnode = OpNode.new_buffer("PYTHON", helpers.prod(shape:=get_shape(input)), dtype)
     print("moose", output_opnode)
     output_opnode = output_opnode.reshape(shape)
+
     truncate_function = picograd.dtype.truncate[dtype]
     data = struct.pack(f"{output_opnode.size}{dtype.fmt}", *[truncate_function(dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)])
     output_opnode.storage.allocate(memoryview(data)) # fake realize
     return output_opnode
 
-
-
-  # < ------------------------------------------------- --high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial 
-
-
-
-
-
   # ************ Tensor Operations ************
+  def _evaluate(self, *other: Tensor) -> Self:
+    """
+    ._evaluate() is the method in which all evaluations funnel through, regardless of whether the operation is either
+      - sugar: directly calls ._evaluate() or
+      - primitive: indirectly calls ._evaluate() by _binop override
+    in either case, ._evaluate() evaluates f(x) by calling f, implemented by Op.eval(), which in turn, launches device kernels.
+    ._evaluate() then wraps the new output Op in the expression graph with a Tensor handle
+    """
+    unrealized_tensors = [tensor for tensor in (self,)+other if not tensor.op.is_contiguous()]
+    return self
+
+  # f(x) forward
+  def _forward(self, f: Callable, *other: Tensor) -> Self:
+    """
+    ._forward() is the internal graph(IR)-builder which constructs an OpNode
+    that represents the computation of f applied to the supplied Tensors
+    keep in mind that the Tensor returned is simply a handle to unevaluated, unmaterialized graph IR,
+    which internal call-sites evaluate with ._evaluate(), the teenygrad .realize() equivalent.
+    """
+    output_opnode: OpNode = f(*[t.op for t in (self,)+other]) # <------------ compiler pipeline: if EAGER ... elif GRAPH ... else ...
+    needs_input_grad = [t.requires_grad for t in (self,)+other]
+    requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
+    output_tensor = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
+    return output_tensor
+  
   # f'(x) backward
-  def backward(self, grad:Tensor|None=None) -> Self:
+  def backward(self, grad: Tensor|None=None) -> Self:
     """
     backward performs by collecting tensors, computing gradients with automatic differentiation, and updating said tensors.
     """
@@ -160,7 +170,7 @@ class Tensor(OpMixin):
     return self
     
   @staticmethod
-  def _automatically_differentiate(root:OpNode, root_grad:OpNode, targets:set[OpNode]) -> dict[OpNode, OpNode]:
+  def _automatically_differentiate(root: OpNode, root_grad: OpNode, targets: set[OpNode]) -> dict[OpNode, OpNode]:
     """
     _differentiate backpropagates partials on a topologically sorted expression graph with the chain rule
     and produces the gradient in the form of a map of ops to their partials (which, in turn, are ops)
@@ -192,35 +202,22 @@ class Tensor(OpMixin):
         #     all_metadata[bw_uop] = all_metadata.get(bw_uop, ())+backward_metadata
 
     return tens2grads
-  
-  def forward(self, f:Callable, *other:Tensor) -> Self:
-    """
-    .forward() is the method in which all evaluations funnel through, regardless of whether the operation is either
-      - sugar: directly calls .forward() or
-      - primitive: indirectly calls .forward() by _binop override
-    in either case, .forward() evaluates f(x) by calling f, implemented by Op.eval(), which in turn, launches device kernels.
-    .forward() then wraps the new output Op in the expression graph with a Tensor handle
-    """
-    output_opnode: OpNode = f(*[t.op for t in (self,)+other]) # <------------ compiler pipeline: if EAGER ... elif GRAPH ... else ...
-    needs_input_grad = [t.requires_grad for t in (self,)+other]
-    requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
-    output_tensor = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
-    return output_tensor
 
-  def recip(self) -> Self: return self.forward(OpNode.recip)
-  def sigmoid(self) -> Self: return (1 + (self * (-1/math.log(2))).exp2()).recip()
-  def tanh(self) -> Self: return 2.0 * ((2.0 * self).sigmoid()) - 1.0
-  def exp2(self) -> Self: return self.forward(OpNode.exp2)
-  def log2(self) -> Self: return self.forward(OpNode.log2)
+  # ************ Tensor Sugar ************
+  def recip(self) -> Self: return self._forward(OpNode.recip)._evaluate()
+  def sigmoid(self) -> Self: return (1 + (self * (-1/math.log(2))).exp2()).recip()._evaluate()
+  def tanh(self) -> Self: return (2.0 * ((2.0 * self).sigmoid()) - 1.0)._evaluate()
+  def exp2(self) -> Self: return self._forward(OpNode.exp2)._evaluate()
+  def log2(self) -> Self: return self._forward(OpNode.log2)._evaluate()
   def fa(self) -> Self: raise NotImplementedError("todo")
   def mm(self) -> Self: raise NotImplementedError("todo")
   # the builtin primitives (i.e add) which do not need to be desugared will call provided OpMixin._binop() to __________
   # which is overrided to ____________
   def _binop(self, op, x, reverse):
     return self._apply_broadcasted_uop(lambda *u: OpNode.alu(u[0], op, *u[1:]), x, reverse) # _binop is used by MathTrait
-  def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|ConstType, reverse=False) -> Self:
+  def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|Const, reverse=False) -> Self:
     lhs,rhs = self._broadcasted(x, reverse)
-    return lhs.forward(fxn, rhs)
+    return lhs.evaluate(fxn, rhs)
 
   # reduce ops
   # movement ops
