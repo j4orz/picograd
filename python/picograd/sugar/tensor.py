@@ -5,8 +5,8 @@ from typing import Any, Callable, Self, Sequence, TypeGuard,  cast, get_args
 import math, weakref, struct, pathlib
 
 from picograd import helpers
-from picograd.engine import OpCode, OpNode, OpMixin
-from picograd.helpers import EAGER, GRAPH
+from picograd.engine import OpCode, OpNode, GraphBuilder
+from picograd.helpers import DEBUG, EAGER, GRAPH
 from picograd.runtime import Device
 from picograd.dtype import Const, DType, DTypeLike, dtypes
 import picograd.dtype
@@ -29,7 +29,7 @@ def get_shape(x) -> tuple[int, ...]:
   if not all_same(subs:=[get_shape(xi) for xi in x]): raise ValueError(f"inhomogeneous shape from {x}")
   return (len(subs),) + (subs[0] if subs else ())
 
-class Tensor(OpMixin):
+class Tensor(GraphBuilder):
   """
   the Tensor class is a *sugared handle* to the expression graph of vertices V=Set<OpNode> and edges = Set<(OpNode,OpNode)>,
   which represents picograd's primitive understanding (intermediate representation) of the specified expression f(x)
@@ -37,13 +37,13 @@ class Tensor(OpMixin):
   """
 
   # ************ Tensor Data + Constructors ************
-  __slots__ = "op", "grad", "requires_grad", 
+  __slots__ = "opnode", "grad", "requires_grad", 
   @property
-  def device(self) -> str|tuple[str, ...]: return self.op.device
+  def device(self) -> str|tuple[str, ...]: return self.opnode.device
   @property
-  def shape(self) -> tuple[int, ...]: return self.op.shape
+  def shape(self) -> tuple[int, ...]: return self.opnode.shape
   @property
-  def dtype(self) -> DType: return self.op.dtype
+  def dtype(self) -> DType: return self.opnode.dtype
   @property
   def ndim(self) -> int: raise NotImplementedError("TODO")
 
@@ -66,21 +66,20 @@ class Tensor(OpMixin):
     new_shape = (1, )*len(helpers.normalize_shape(shape))
     return Tensor(fill, force_unique=True).reshape(new_shape).expand(new_shape)._evaluate()
   
-  def __init__(self,
-               input:Const|bytes|list|tuple|OpNode|None,  # removed support for 'np.ndarray'|pathlib.Path|
-               device:str|tuple|list|None=None, dtype:DTypeLike|None=None, requires_grad:bool|None=None, force_unique:bool=False): # kwargs
+  def __init__(self, input: Const | bytes | list | tuple | None, # removed OpNode, np.ndarray, pathlib.Path support (for now).
+               device: str |tuple | list | None=None, dtype: DTypeLike | None=None, requires_grad: bool | None=None, force_unique: bool=False): # kwargs
     """
     Tensor.__init__() constructs the OpNode for the Tensor's given device and dtype
     """
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
-    dtype: DType|None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
-    device: str|tuple[str, ...] = tuple(Device.canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize_device(device)
-    print("moose", dtype, device)
-    self.grad: Tensor|None = None                   # tensors can have gradients if you have called .backward
-    self.requires_grad: bool|None = requires_grad   # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
-    opnode = Tensor._input_to_opnode(input, device, dtype, force_unique)  
-    if isinstance(device, str): self.op: OpNode = opnode if input.device == device else input.copy_to_device(device)    # data might be on a different device
-    all_tensors[weakref.ref(self)] = None                                                                               # add to all_tensors after construction succeeds
+    dtype: DType | None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
+    device: str | tuple[str, ...] = tuple(Device.canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize_device(device)
+    if DEBUG >= 1: print("moose", dtype, device)
+    self.grad: Tensor | None = None                                                      # tensors can have gradients if you have called .backward
+    self.requires_grad: bool | None = requires_grad                                      # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
+    self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)    # if isinstance(device, str): if input.device == device else input.copy_to_device(device) data might be on a different device
+    all_tensors[weakref.ref(self)] = None                                                # add to all_tensors after construction succeeds
+    if DEBUG >= 1: print("moose", self.opnode)
     return
   
   @staticmethod
@@ -117,6 +116,9 @@ class Tensor(OpMixin):
     output_opnode.storage.allocate(memoryview(data)) # fake realize
     return output_opnode
 
+
+
+
   # ************ Tensor Operations ************
   def _evaluate(self, *other: Tensor) -> Self:
     """
@@ -126,7 +128,7 @@ class Tensor(OpMixin):
     in either case, ._evaluate() evaluates f(x) by calling f, implemented by Op.eval(), which in turn, launches device kernels.
     ._evaluate() then wraps the new output Op in the expression graph with a Tensor handle
     """
-    unrealized_tensors = [tensor for tensor in (self,)+other if not tensor.op.is_contiguous()]
+    unrealized_tensors = [tensor for tensor in (self,)+other if not tensor.opnode.is_contiguous()]
     return self
 
   # f(x) forward
@@ -137,7 +139,7 @@ class Tensor(OpMixin):
     keep in mind that the Tensor returned is simply a handle to unevaluated, unmaterialized graph IR,
     which internal call-sites evaluate with ._evaluate(), the teenygrad .realize() equivalent.
     """
-    output_opnode: OpNode = f(*[t.op for t in (self,)+other]) # <------------ compiler pipeline: if EAGER ... elif GRAPH ... else ...
+    output_opnode: OpNode = f(*[t.opnode for t in (self,)+other]) # <------------ compiler pipeline: if EAGER ... elif GRAPH ... else ...
     needs_input_grad = [t.requires_grad for t in (self,)+other]
     requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
     output_tensor = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
@@ -155,15 +157,15 @@ class Tensor(OpMixin):
     backward performs by collecting tensors, computing gradients with automatic differentiation, and updating said tensors.
     """
     # 1. collect all tensors that requires grad by topologically sorting the graph of uops and filter
-    all_uops = self.op.toposort()
-    tensors_require_grad: list[Tensor] = [t for tref in all_tensors if (t:=tref()) is not None and t.op in all_uops and t.requires_grad]
-    uops_require_grad = [t.op for t in tensors_require_grad]
+    all_uops = self.opnode.toposort()
+    tensors_require_grad: list[Tensor] = [t for tref in all_tensors if (t:=tref()) is not None and t.opnode in all_uops and t.requires_grad]
+    uops_require_grad = [t.opnode for t in tensors_require_grad]
     assert grad is not None or self.shape == tuple(), "when no gradient is provided, backward must be called on a scalar tensor"
     if not (self.is_floating_point() and all(t.is_floating_point() for t in tensors_require_grad)): raise RuntimeError("only float Tensors have gradient")
     
     # 2. compute the gradient with a map of tensors to partials
     if grad is None: grad = Tensor(1.0, dtype=self.dtype, device=self.device, requires_grad=False) # base case is 1.0
-    tens2grads = Tensor._automatically_differentiate(self.op, grad.op, set(uops_require_grad)) # skipping materializing zerod grads for now
+    tens2grads = Tensor._automatically_differentiate(self.opnode, grad.opnode, set(uops_require_grad)) # skipping materializing zerod grads for now
     grads = [Tensor(g, device=t.device) for t,g in zip(tens2grads.keys, tens2grads.values)] # initialize tensor grads on device
     
     # 3. update the tensors that require grad with the gradient's partials
@@ -205,6 +207,9 @@ class Tensor(OpMixin):
         #     all_metadata[bw_uop] = all_metadata.get(bw_uop, ())+backward_metadata
 
     return tens2grads
+
+
+
 
   # ************ Tensor Sugar ************
   def recip(self) -> Self: return self._forward(OpNode.recip)._evaluate()

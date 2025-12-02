@@ -1,8 +1,8 @@
 """
 this irparser includes teenygrad's intermediate representation and "parser".
 since teenygrad is an domain specific language embedded within the host language of python,
-the term "parser" is overloaded since teenygrad overrides the semantics of the host language with the OpMixin (there is no lexing, parsing, and typechecking),
-a composition of ComputeMixin and MovementMixin which map operations to their ir opcodes.
+the term "parser" is overloaded since teenygrad overrides the semantics of the host language with the GraphBuilder (there is no lexing, parsing, and typechecking),
+a composition of ComputeOpCodeBuilder and MovementOpCodeBuilder which map operations to their ir opcodes.
 the provided methods implemented on these two mixins are used by the sugared Tensor handle's graph/ir-builder logic.
 """
 
@@ -62,14 +62,14 @@ class OpCode(FastEnum):
   REDUCE_AXIS = auto(); REDUCE = auto(); ALLREDUCE = auto()                                                   # reduce
   UNROLL = auto(); CONTRACT = auto(); CAT = auto(); PTRCAT = auto()                                           # expander ops
 
-# **************** OpMixin: ComputeMixin * MovementMixin ****************
+# **************** GraphBuilder: ComputeOpCodeBuilder * MovementOpCodeBuilder ****************
 """
-OpMixin (at the bottom of the file) is a ComputeMixin and MovementMixin which effectively
+GraphBuilder (at the bottom of the file) is a ComputeOpCodeBuilder and MovementOpCodeBuilder which effectively
 1. removes the repetition between sugared and desugared Tensor/Op
 2. acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode ir
 """
 
-class ComputeMixin:
+class ComputeOpCodeBuilder:
   # required
   def _apply_compute_opcode(self, ftype: OpCode, *inputs: Self) -> Self: raise NotImplementedError
   def const_like(self, b: Const) -> Self: raise NotImplementedError
@@ -78,7 +78,7 @@ class ComputeMixin:
   def _apply_compute_binopcode(self, op: OpCode, x: Self | Const, reverse: bool) -> Self:
     return self.ufix(x)._apply_compute_opcode(op, self) if reverse else self._apply_compute_opcode(op, self.ufix(x))
   def ufix(self, x: Self | Const) -> Self:
-    return self.const_like(x) if not isinstance(x, ComputeMixin) else x
+    return self.const_like(x) if not isinstance(x, ComputeOpCodeBuilder) else x
 
   def neg(self):
     if (dtype := getattr(self, "dtype")) is None:
@@ -156,7 +156,7 @@ class ComputeMixin:
       if not (dtypes.is_bool(dtype) or dtypes.is_int(dtype)):
         raise RuntimeError(f"{dtype} is not supported")
 
-class MovementMixin:
+class MovementOpCodeBuilder:
   # required
   def _apply_movement_opcode(self, op: OpCode, arg) -> Self: raise NotImplementedError
   @property
@@ -186,5 +186,5 @@ class MovementMixin:
   def flatten(self) -> Self: raise NotImplementedError("todo")
   def unflatten(self) -> Self: raise NotImplementedError("todo")
 
-class OpMixin(ComputeMixin, MovementMixin):
+class GraphBuilder(ComputeOpCodeBuilder, MovementOpCodeBuilder):
   pass

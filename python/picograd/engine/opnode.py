@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import itertools
 
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
-from picograd.engine.irparser import OpCode, OpMixin
+from picograd.engine.irparser import OpCode, GraphBuilder
 if TYPE_CHECKING:
   from picograd.runtime.device import Buffer, Device
 from picograd.dtype import DType, dtypes
@@ -17,7 +17,7 @@ from picograd.dtype import DType, dtypes
 
 # **************** Expression Graph ****************
 @dataclass(eq=False, slots=True) # NOTE: this should be frozen, but frozen is slower
-class OpNode(OpMixin):
+class OpNode(GraphBuilder):
   """
   GraphOp structs (which Tensor's deusugar into) are vertices which form an expression graph G=(V,E) where V is a Set<Op> and E is a Set<(Op,Op)>
   the name of the struct "Op" is somewhat of a misnomer because the structs store
