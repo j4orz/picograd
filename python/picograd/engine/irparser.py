@@ -21,66 +21,66 @@ class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ an
 
 class OpCode(FastEnum):
   # ** 1 -- defines/special **
-  DEFINE_GLOBAL = auto(); DEFINE_VAR = auto(); BIND = auto()                                                  # define GLOBAL/VAR are ptrs to outside the Kernel
-  SPECIAL = auto()                                                                                            # this is a RANGE for GPU dimensions, similar to symbolic shapes but not exactly
-  DEFINE_LOCAL = auto(); DEFINE_REG = auto()                                                                  # define LOCAL/REG allocate things
+  DEFINE_GLOBAL = auto(); DEFINE_VAR = auto(); BIND = auto()                                                         # define GLOBAL/VAR are ptrs to outside the Kernel
+  SPECIAL = auto()                                                                                                   # this is a RANGE for GPU dimensions, similar to symbolic shapes but not exactly
+  DEFINE_LOCAL = auto(); DEFINE_REG = auto()                                                                         # define LOCAL/REG allocate things
 
   # ** 2 -- non op uops **
-  NOOP = auto(); REWRITE_ERROR = auto()                                                                       # uops that aren't rendered
-  SINK = auto(); AFTER = auto(); GROUP = auto()                                                               # AFTER passes src[0] through and promises in the toposort that any consumers of the AFTER run after src[1:]
-                                                                                                              # GROUP is a NOOP that just merges things together
-  GEP = auto(); VECTORIZE = auto()                                                                            # vector creation / item selection
+  NOOP = auto(); REWRITE_ERROR = auto()                                                                              # uops that aren't rendered
+  SINK = auto(); AFTER = auto(); GROUP = auto()                                                                      # AFTER passes src[0] through and promises in the toposort that any consumers of the AFTER run after src[1:]
+                                                                                                                     # GROUP is a NOOP that just merges things together
+  GEP = auto(); VECTORIZE = auto()                                                                                   # vector creation / item selection
 
   # ** 3 -- MEMORY **
-  INDEX = auto()                                                                                              # INDEX is a BinaryOp similar to ADD, but it operates on pointers
-  LOAD = auto(); STORE = auto()                                                                               # load/store before math
+  INDEX = auto()                                                                                                     # INDEX is a BinaryOp similar to ADD, but it operates on pointers
+  LOAD = auto(); STORE = auto()                                                                                      # load/store before math
 
   # ** 4 -- COMPUTE **
-  WMMA = auto()                                                                                               # tensor core math op, not elementwise
+  WMMA = auto()                                                                                                      # tensor core math op, not elementwise
 
-  CAST = auto(); BITCAST = auto(); EXP2 = auto(); LOG2 = auto(); SIN = auto()                                 # UnaryOps
+  CAST = auto(); BITCAST = auto(); EXP2 = auto(); LOG2 = auto(); SIN = auto()                                        # UnaryOps
   SQRT = auto(); RECIPROCAL = auto(); NEG = auto(); TRUNC = auto()
 
-  ADD = auto(); MUL = auto(); SHL = auto(); SHR = auto(); IDIV = auto(); MAX = auto(); MOD = auto()           # BinaryOps
+  ADD = auto(); MUL = auto(); SHL = auto(); SHR = auto(); IDIV = auto(); MAX = auto(); MOD = auto()                  # BinaryOps
   CMPLT = auto(); CMPNE = auto(); CMPEQ = auto()
   XOR = auto(); OR = auto(); AND = auto()
   THREEFRY = auto(); SUB = auto(); FDIV = auto(); POW = auto()
 
-  WHERE = auto(); MULACC = auto()                                                                             # TernaryOps
+  WHERE = auto(); MULACC = auto()                                                                                    # TernaryOps
 
   # ** 5 -- control flow / consts / custom **
-  BARRIER = auto(); RANGE = auto(); IF = auto(); END = auto(); ENDIF = auto()                                 # control flow ops
-  VCONST = auto(); CONST = auto()                                                                             # consts. VCONST is a vectorized const
-  CUSTOM = auto(); CUSTOMI = auto()                                                                           # CUSTOM/CUSTOMI are used to output strings into codegen. the I makes the string inline
+  BARRIER = auto(); RANGE = auto(); IF = auto(); END = auto(); ENDIF = auto()                                        # control flow ops
+  VCONST = auto(); CONST = auto()                                                                                    # consts. VCONST is a vectorized const
+  CUSTOM = auto(); CUSTOMI = auto()                                                                                  # CUSTOM/CUSTOMI are used to output strings into codegen. the I makes the string inline
 
   # ** 6 -- ops that don't exist in programs **
-  UNIQUE = auto(); DEVICE = auto(); KERNEL = auto(); ASSIGN = auto()                                          # tensor graph ops
-  CONTIGUOUS = auto(); CONTIGUOUS_BACKWARD = auto(); DETACH = auto()                                          # ops that adjust the behavior of the scheduler
-  BUFFERIZE = auto(); COPY = auto(); BUFFER = auto(); BUFFER_VIEW = auto(); MSELECT = auto(); MSTACK = auto() # buffer ops
-  RESHAPE = auto(); PERMUTE = auto(); EXPAND = auto(); PAD = auto(); SHRINK = auto(); FLIP = auto()           # the core 6 movement ops! these only exist in the tensor graph
-  MULTI = auto()                                                                                              # MULTI is really a movement op
-  REDUCE_AXIS = auto(); REDUCE = auto(); ALLREDUCE = auto()                                                   # reduce
-  UNROLL = auto(); CONTRACT = auto(); CAT = auto(); PTRCAT = auto()                                           # expander ops
+  UNIQUE = auto(); DEVICE = auto(); KERNEL = auto(); ASSIGN = auto()                                                 # tensor graph ops
+  CONTIGUOUS = auto(); CONTIGUOUS_BACKWARD = auto(); DETACH = auto()                                                 # ops that adjust the behavior of the scheduler
+  BUFFERIZE = auto(); COPY = auto(); BUFFER = auto(); BUFFER_VIEW = auto(); MSELECT = auto(); MSTACK = auto()        # buffer ops
+  RESHAPE = auto(); PERMUTE = auto(); EXPAND = auto(); PAD = auto(); SHRINK = auto(); FLIP = auto()                  # the core 6 movement ops! these only exist in the tensor graph
+  MULTI = auto()                                                                                                     # MULTI is really a movement op
+  REDUCE_AXIS = auto(); REDUCE = auto(); ALLREDUCE = auto()                                                          # reduce
+  UNROLL = auto(); CONTRACT = auto(); CAT = auto(); PTRCAT = auto()                                                  # expander ops
 
 class GroupedOpCodes:
-  Unary = {OpCode.EXP2, OpCode.LOG2, OpCode.SIN, OpCode.SQRT, OpCode.RECIPROCAL, OpCode.NEG, OpCode.TRUNC}
-  Binary = {OpCode.ADD, OpCode.MUL, OpCode.IDIV, OpCode.MAX, OpCode.MOD, OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ,
-            OpCode.XOR, OpCode.SHL, OpCode.SHR, OpCode.OR, OpCode.AND, OpCode.THREEFRY, OpCode.SUB, OpCode.FDIV, OpCode.POW}
-  Ternary = {OpCode.WHERE, OpCode.MULACC}
-  Compute = set.union(Unary, Binary, Ternary)
+  Unary =        {OpCode.EXP2, OpCode.LOG2, OpCode.SIN, OpCode.SQRT, OpCode.RECIPROCAL, OpCode.NEG, OpCode.TRUNC}
+  Binary =       {OpCode.ADD, OpCode.MUL, OpCode.IDIV, OpCode.MAX, OpCode.MOD, OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ,
+                  OpCode.XOR, OpCode.SHL, OpCode.SHR, OpCode.OR, OpCode.AND, OpCode.THREEFRY, OpCode.SUB, OpCode.FDIV, OpCode.POW}
+  Ternary =      {OpCode.WHERE, OpCode.MULACC}
+  Compute =      set.union(Unary, Binary, Ternary)
 
-  Elementwise = set.union(Compute, {OpCode.CAST, OpCode.BITCAST}) # TODO: is BITCAST always Elementwise if it's shape changing?
-  Defines = {OpCode.DEFINE_GLOBAL, OpCode.DEFINE_LOCAL, OpCode.DEFINE_REG}
-  Irreducible = {OpCode.CONST, OpCode.DEFINE_VAR, OpCode.SPECIAL, OpCode.RANGE}
-  Movement = {OpCode.RESHAPE, OpCode.EXPAND, OpCode.PERMUTE, OpCode.PAD, OpCode.SHRINK, OpCode.FLIP}
-  Buffer = {OpCode.LOAD, OpCode.STORE, OpCode.CONST, OpCode.DEFINE_VAR}
+  Elementwise =  set.union(Compute, {OpCode.CAST, OpCode.BITCAST}) # TODO: is BITCAST always Elementwise if it's shape changing?
+  Defines =      {OpCode.DEFINE_GLOBAL, OpCode.DEFINE_LOCAL, OpCode.DEFINE_REG}
+  Irreducible =  {OpCode.CONST, OpCode.DEFINE_VAR, OpCode.SPECIAL, OpCode.RANGE}
+  Movement =     {OpCode.RESHAPE, OpCode.EXPAND, OpCode.PERMUTE, OpCode.PAD, OpCode.SHRINK, OpCode.FLIP}
+  Buffer =       {OpCode.LOAD, OpCode.STORE, OpCode.CONST, OpCode.DEFINE_VAR}
 
-  Commutative = {OpCode.ADD, OpCode.MUL, OpCode.MAX, OpCode.CMPNE, OpCode.CMPEQ, OpCode.XOR, OpCode.AND, OpCode.OR} # BinaryOps that can be flipped
-  Associative = {OpCode.ADD, OpCode.MUL, OpCode.AND, OpCode.OR, OpCode.MAX}                                         # BinaryOps where f(f(a,b),c) = f(a,f(b,c))
-  Idempotent = {OpCode.OR, OpCode.AND, OpCode.MAX}                                                                  # BinaryOps where f(x,x)=x
-  Comparison = {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}                                                           # These can change the dtype to bool
-  UnsafePad = {OpCode.RECIPROCAL, OpCode.LOG2, OpCode.EXP2, OpCode.IDIV, OpCode.POW}                                # do not preserve f(0) = 0
-  All = set(OpCode)
+  Commutative =  {OpCode.ADD, OpCode.MUL, OpCode.MAX, OpCode.CMPNE, OpCode.CMPEQ, OpCode.XOR, OpCode.AND, OpCode.OR} # BinaryOps that can be flipped
+  Associative =  {OpCode.ADD, OpCode.MUL, OpCode.AND, OpCode.OR, OpCode.MAX}                                         # BinaryOps where f(f(a,b),c) = f(a,f(b,c))
+  Idempotent =   {OpCode.OR, OpCode.AND, OpCode.MAX}                                                                 # BinaryOps where f(x,x)=x
+  Comparison =   {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}                                                          # These can change the dtype to bool
+  UnsafePad =    {OpCode.RECIPROCAL, OpCode.LOG2, OpCode.EXP2, OpCode.IDIV, OpCode.POW}                              # do not preserve f(0) = 0
+  All =          set(OpCode)
 
 
 # **************** GraphBuilder: ComputeOpCodeBuilder * MovementOpCodeBuilder ****************

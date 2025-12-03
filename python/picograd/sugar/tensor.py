@@ -86,7 +86,7 @@ class Tensor(GraphBuilder):
   def _input_to_opnode(input: Const|bytes|list|tuple|OpNode|None, device: str|tuple[str, ...], dtype: DType|None, force_unique) -> OpNode:
     if isinstance(input, OpNode):                                               raise NotImplementedError("todo")
     elif input is None:                                                         opnode = OpNode.const(dtype or dtypes.default_float, 0, device, (), unique=force_unique)
-    elif isinstance(input, get_args(Const)):                                opnode = OpNode.const(dtype or dtypes.from_py(input), input, device, (), unique=force_unique)
+    elif isinstance(input, get_args(Const)):                                    opnode = OpNode.const(dtype or dtypes.from_py(input), input, device, (), unique=force_unique)
     elif isinstance(input, bytes):                                              opnode = Tensor._frompy(input, dtypes.uint8 if dtype is None else dtype)
     elif isinstance(input, (list, tuple)):
       if dtype is None:
@@ -117,7 +117,9 @@ class Tensor(GraphBuilder):
     return output_opnode
 
 
-
+  # **************** GraphBuilder Required Methods ****************
+  def _apply_compute_opcode(self, ftype: OpCode, *inputs): raise NotImplementedError("todo")
+  def _apply_movement_opcode(self, ftype: OpCode, *inputs): return self._forward(OpNode._apply_movement_opcode, extra_args=(op,), arg=arg)
 
   # ************ Tensor Operations ************
   def _evaluate(self, *other: Tensor) -> Self:
@@ -144,12 +146,6 @@ class Tensor(GraphBuilder):
     requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
     output_tensor = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
     return output_tensor
-  
-  def _apply_compute_opcode(self, ftype: OpCode, *inputs):
-    x = 3
-
-  def _apply_movement_opcode(self, ftype: OpCode, *inputs):
-    return self._forward(OpNode._apply_movement_opcode, extra_args=(op,), arg=arg)
   
   # f'(x) backward
   def backward(self, grad: Tensor|None=None) -> Self:
