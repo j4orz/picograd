@@ -192,7 +192,7 @@ class MovementOpCodeBuilder:
     if c: output_shape = tuple([-helpers.prod(self.shape) // helpers.prod(output_shape) if s == -1 else s for s in output_shape])
     if helpers.prod(self.shape) != helpers.prod(output_shape): raise ValueError(f"size mismatch, can't reshape ({self.shape}) -> ({output_shape})")
     
-    output = self._mop(OpCode.RESHAPE, arg=output_shape)
+    output = self._apply_movement_opcode(OpCode.RESHAPE, arg=output_shape)
     return self if output.shape == self.shape else output
 
   def shrink(self) -> Self: raise NotImplementedError("todo")

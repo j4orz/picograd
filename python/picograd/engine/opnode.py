@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any
+import math
+from typing import TYPE_CHECKING, Any, Self
 from dataclasses import dataclass
 import itertools
 
@@ -40,12 +41,6 @@ class OpNode(GraphBuilder):
 
   @property
   def device(self) -> str|tuple[str, ...]: return unwrap(self._device)
-  @property
-  def size(self) -> int: return prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
-
-  def const_like(self, b:ConstLike):
-    return OpNode.const(self.dtype, b, device=self._device, shape=self._shape) # constants can optionally have a DEVICE source
-  
   def _device(self) -> str|tuple[str, ...]|None: 
     if self.opcode is OpCode.DEVICE: return self.payload
     if self.opcode is OpCode.BUFFERIZE: return self.payload.device
@@ -58,6 +53,82 @@ class OpNode(GraphBuilder):
     for x in self.inputs:
       if x._device is not None: return x._device
     return None
+  @property
+  def size(self) -> int: return helpers.prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
+
+  @staticmethod
+  def const(dtype: DType, b: ConstLike, device: str | tuple[str, ...] | None=None,
+            shape: tuple[int, ...] | None=None,
+            src=None, unique: bool | int=False):
+    if isinstance(b, OpNode):                  return b.unbind()[0] if b.op is OpCode.BIND else b
+    if isinstance(b, tuple) and all_same(b):   b = b[0]           # doesn't have to be a VCONST if they are all the same
+    if isinstance(b, float) and math.isnan(b): b = math.nan     # NOTE: float('nan') != float('nan'), so we canonicalize here
+
+    output = OpNode(OpCode.VCONST if isinstance(b, tuple) else OpCode.CONST, dtype, arg=dtypes.as_const(b, dtype), src=() if src is None else (src,))
+    if device is not None:
+      if unique or not isinstance(unique, bool): output = output.replace(src=(OpNode(OpCode.DEVICE, arg=device), OpNode.unique(None if unique is True else unique)))
+      else:                                      output = output.replace(src=(OpNode(OpCode.DEVICE, arg=device),))
+    elif unique or not isinstance(unique, bool): raise RuntimeError("unique consts only with DEVICE")
+
+    if shape is not None: output = output.reshape((1,)*len(shape)).expand(shape)
+    return output
+  
+  def const_like(self, b:ConstLike): return OpNode.const(self.dtype, b, device=self._device, shape=self._shape) # constants can optionally have a DEVICE source
+  
+  # **************** GraphBuilder Required Methods ****************
+  def _apply_compute_opcode(self, opcode: OpCode, *inputs:OpNode) -> Self: # required method by OpMixin
+    """
+    the evaluator overrides* the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
+    called by OpMixin.eval() which acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode intermediate representation
+    *: note that .eval is not a static method, that self is the Op that the OpCode ftype is operating on, to produce a new Self
+    the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .eval() returning an OpNode,
+    similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
+    """
+    out_dtype = (self, *inputs)[-1].dtype
+    # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
+    # return Op((self,)+inputs, ftype, out_dtype,)
+    match ftype:
+      case OpCode.NEG: launch_neg(*inputs)
+      case OpCode.ADD:
+        # 1. memory: allocate and memcpy on device
+        device = HIPDevice()
+        a, b, c = [device.allocator.alloc(4), device.allocator.alloc(4), device.allocator.alloc(4)]
+        device.allocator._copyin(a, memoryview(bytearray([2,0,0,0])))
+        device.allocator._copyin(b, memoryview(bytearray([3,0,0,0])))
+        # 2. compute: compile a kernel to a binary
+        kernel = HIPCCCompiler().compile("__global__ void add(int *a, int *b, int *c) { int id = blockDim.x * blockIdx.x + threadIdx.x; if(id < N) c[id] = a[id] + b[id]; }")
+        # 3. launch
+        f = device.kernel("add", kernel)
+        f(a, b, c) # HIPKernel
+
+        print(val := device.allocator._as_buffer(c).cast("I").tolist()[0])
+        assert val == 5 # check the data out
+      case OpCode.MUL: raise NotImplementedError("todo")
+      case OpCode.MM: raise NotImplementedError("todo")
+      case OpCode.RECIPROCAL: raise NotImplementedError("todo")
+      case OpCode.EXP2: raise NotImplementedError("todo")
+      case OpCode.LOG2: raise NotImplementedError("todo")
+      case OpCode.SIN: raise NotImplementedError("todo")
+      case _: raise NotImplementedError(f"unsupported opcode {ftype!r}")
+
+  def _apply_movement_opcode(self, opcode:OpCode, arg, same_shape_noop:bool=False) -> Self:
+    match opcode:
+      case OpCode.RESHAPE | OpCode.EXPAND: src_args = [arg]
+      case OpCode.PAD | OpCode.SHRINK:     src_args = list(zip(*arg))
+      case OpCode.PERMUTE | OpCode.FLIP:   src_args = []
+      case _: raise RuntimeError(f"{opcode} is not a MovementOp")
+
+    usrcs = []
+    for arg in src_args:
+      if len(arg) == 0: usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(0)))
+      elif all(isinstance(x, int) for x in arg): usrcs.append(OpNode.const(dtypes.index.vec(len(arg)), arg))
+      else: usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(len(arg)), tuple(OpNode.const(dtypes.index, x) if isinstance(x, int) else x for x in arg)))
+
+    if len(usrcs) == 0: ret = OpNode(opcode, self.dtype, (self,), arg)
+    else: ret = OpNode(opcode, self.dtype, (self,)+OpNode.sink(*usrcs).simplify().src)
+
+    if ret.shape == self.shape and same_shape_noop: return self # for all movement ops, we check shape property
+    return ret
   
   # **************** Shape ****************
   @property
@@ -83,7 +154,7 @@ class OpNode(GraphBuilder):
 
       # constructor ops (which init the shape)
       case OpCode.CONST | OpCode.DEFINE_VAR | OpCode.BIND:                              return () if self._device is not None else None
-      case OpCode.BUFFER:                                                               print("mooooose"); return (self.payload,)
+      case OpCode.BUFFER:                                                               print("mooooose", (self.payload,)); return (self.payload,)
       case OpCode.BUFFER_VIEW:                                                          return (self.payload[0],)
       case OpCode.BUFFERIZE:                                                            return tuple([int(r.vmax+1) for r in self.src[1:]])
       case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG:              return (self.ptrdtype.size,)
@@ -248,56 +319,3 @@ class OpNode(GraphBuilder):
   @property
   def is_realized(self) -> bool:
     return all(x.base.realized is not None for x in self.base.src) if self.base.op is OpCode.MULTI else self.base.realized is not None
-  
-  # **************** Compute ****************
-  def _apply_compute_opcode(self, ftype: OpCode, *inputs:OpNode) -> Self: # required method by OpMixin
-    """
-    the evaluator overrides* the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
-    called by OpMixin.eval() which acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode intermediate representation
-    *: note that .eval is not a static method, that self is the Op that the OpCode ftype is operating on, to produce a new Self
-    the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .eval() returning an OpNode,
-    similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
-    """
-    out_dtype = (self, *inputs)[-1].dtype
-    # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
-    # return Op((self,)+inputs, ftype, out_dtype,)
-    match ftype:
-      case OpCode.NEG: launch_neg(*inputs)
-      case OpCode.ADD:
-        # 1. memory: allocate and memcpy on device
-        device = HIPDevice()
-        a, b, c = [device.allocator.alloc(4), device.allocator.alloc(4), device.allocator.alloc(4)]
-        device.allocator._copyin(a, memoryview(bytearray([2,0,0,0])))
-        device.allocator._copyin(b, memoryview(bytearray([3,0,0,0])))
-        # 2. compute: compile a kernel to a binary
-        kernel = HIPCCCompiler().compile("__global__ void add(int *a, int *b, int *c) { int id = blockDim.x * blockIdx.x + threadIdx.x; if(id < N) c[id] = a[id] + b[id]; }")
-        # 3. launch
-        f = device.kernel("add", kernel)
-        f(a, b, c) # HIPKernel
-
-        print(val := device.allocator._as_buffer(c).cast("I").tolist()[0])
-        assert val == 5 # check the data out
-      case OpCode.MUL: raise NotImplementedError("todo")
-      case OpCode.MM: raise NotImplementedError("todo")
-      case OpCode.RECIPROCAL: raise NotImplementedError("todo")
-      case OpCode.EXP2: raise NotImplementedError("todo")
-      case OpCode.LOG2: raise NotImplementedError("todo")
-      case OpCode.SIN: raise NotImplementedError("todo")
-      case _: raise NotImplementedError(f"unsupported opcode {ftype!r}")
-
-  def _apply_movement_opcode(self, op:Ops, arg, same_shape_noop:bool=False) -> OpNode:
-    match op:
-      case OpCode.RESHAPE | OpCode.EXPAND: src_args = [arg]
-      case OpCode.PAD | OpCode.SHRINK: src_args = list(zip(*arg))
-      case OpCode.PERMUTE | OpCode.FLIP: src_args = []
-      case _: raise RuntimeError(f"{op} is not a MovementOp")
-    usrcs = []
-    for arg in src_args:
-      if len(arg) == 0: usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(0)))
-      elif all(isinstance(x, int) for x in arg): usrcs.append(OpNode.const(dtypes.index.vec(len(arg)), arg))
-      else: usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(len(arg)), tuple(OpNode.const(dtypes.index, x) if isinstance(x, int) else x for x in arg)))
-    if len(usrcs) == 0: ret = OpNode(op, self.dtype, (self,), arg)
-    else: ret = OpNode(op, self.dtype, (self,)+OpNode.sink(*usrcs).simplify().src)
-    # for all movement ops, we check shape property
-    if ret.shape == self.shape and same_shape_noop: return self
-    return ret
