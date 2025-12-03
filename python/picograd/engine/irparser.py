@@ -62,6 +62,27 @@ class OpCode(FastEnum):
   REDUCE_AXIS = auto(); REDUCE = auto(); ALLREDUCE = auto()                                                   # reduce
   UNROLL = auto(); CONTRACT = auto(); CAT = auto(); PTRCAT = auto()                                           # expander ops
 
+class GroupedOpCodes:
+  Unary = {OpCode.EXP2, OpCode.LOG2, OpCode.SIN, OpCode.SQRT, OpCode.RECIPROCAL, OpCode.NEG, OpCode.TRUNC}
+  Binary = {OpCode.ADD, OpCode.MUL, OpCode.IDIV, OpCode.MAX, OpCode.MOD, OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ,
+            OpCode.XOR, OpCode.SHL, OpCode.SHR, OpCode.OR, OpCode.AND, OpCode.THREEFRY, OpCode.SUB, OpCode.FDIV, OpCode.POW}
+  Ternary = {OpCode.WHERE, OpCode.MULACC}
+  Compute = set.union(Unary, Binary, Ternary)
+
+  Elementwise = set.union(Compute, {OpCode.CAST, OpCode.BITCAST}) # TODO: is BITCAST always Elementwise if it's shape changing?
+  Defines = {OpCode.DEFINE_GLOBAL, OpCode.DEFINE_LOCAL, OpCode.DEFINE_REG}
+  Irreducible = {OpCode.CONST, OpCode.DEFINE_VAR, OpCode.SPECIAL, OpCode.RANGE}
+  Movement = {OpCode.RESHAPE, OpCode.EXPAND, OpCode.PERMUTE, OpCode.PAD, OpCode.SHRINK, OpCode.FLIP}
+  Buffer = {OpCode.LOAD, OpCode.STORE, OpCode.CONST, OpCode.DEFINE_VAR}
+
+  Commutative = {OpCode.ADD, OpCode.MUL, OpCode.MAX, OpCode.CMPNE, OpCode.CMPEQ, OpCode.XOR, OpCode.AND, OpCode.OR} # BinaryOps that can be flipped
+  Associative = {OpCode.ADD, OpCode.MUL, OpCode.AND, OpCode.OR, OpCode.MAX}                                         # BinaryOps where f(f(a,b),c) = f(a,f(b,c))
+  Idempotent = {OpCode.OR, OpCode.AND, OpCode.MAX}                                                                  # BinaryOps where f(x,x)=x
+  Comparison = {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}                                                           # These can change the dtype to bool
+  UnsafePad = {OpCode.RECIPROCAL, OpCode.LOG2, OpCode.EXP2, OpCode.IDIV, OpCode.POW}                                # do not preserve f(0) = 0
+  All = set(OpCode)
+
+
 # **************** GraphBuilder: ComputeOpCodeBuilder * MovementOpCodeBuilder ****************
 """
 GraphBuilder (at the bottom of the file) is a ComputeOpCodeBuilder and MovementOpCodeBuilder which effectively
