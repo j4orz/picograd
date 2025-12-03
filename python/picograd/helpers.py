@@ -10,7 +10,7 @@ ALLOW_DEVICE_USAGE, MAX_BUFFER_SIZE = 1, 1 #ContextVar("ALLOW_DEVICE_USAGE", 1),
 
 T = TypeVar("T")
 U = TypeVar("U")
-def prod(x:Iterable[T]) -> T|int: return functools.reduce(operator.mul, x, 1) # NOTE: it returns int 1 if x is empty regardless of the type of x
+def prod(input:Iterable[T]) -> T|int: return functools.reduce(operator.mul, input, 1) # NOTE: it returns int 1 if x is empty regardless of the type of x
 
 def normalize_shape(*args):
   if args and args[0].__class__ in (tuple, list):

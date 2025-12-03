@@ -3,11 +3,12 @@ from typing import TYPE_CHECKING, Any
 from dataclasses import dataclass
 import itertools
 
+from picograd import helpers
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
-from picograd.engine.irparser import OpCode, GraphBuilder
+from picograd.engine.irparser import GroupedOpCodes, OpCode, GraphBuilder
 if TYPE_CHECKING:
   from picograd.runtime.device import Buffer, Device
-from picograd.dtype import ConstLike, DType, dtypes
+from picograd.dtype import ConstLike, DType, PtrDType, dtypes
 
 # picograd to tinygrad bridge
 # - removed buf_op and as_buf used by haldie/tvm schedule/rangify to map high level ops back to buffers
@@ -31,7 +32,7 @@ class OpNode(GraphBuilder):
   the reverse direction is heuristically used with a reverse topological sort given that the time complexity is proportional to the number of outputs m which in this case is 1
   for many deeplearning workloads that are a series of matrix-matrix multiplications with a final matrix-vector multiplication, multiplying in the reverse direction results in [(v,e)->(v,e)^2]
   """
-  ftype: OpCode
+  opcode: OpCode
   inputs: tuple[OpNode, ...]
   dtype: DType
   # storage: Buffer
@@ -42,138 +43,118 @@ class OpNode(GraphBuilder):
   @property
   def size(self) -> int: return prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
 
-  unique_num = itertools.count(0)
-  @staticmethod
-  def unique(paylaod:int|None=None):
-    return OpNode(OpCode.UNIQUE, tuple(), dtypes.void, next(OpNode.unique_num) if paylaod is None else paylaod)
-
-  @staticmethod
-  def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, num=None):
-    # for now, picograd's retrofitted eager semantics mean all opnodes have their buffers eagerly materialized
-    return OpNode(OpCode.BUFFER, (OpNode.unique(num), OpNode(OpCode.DEVICE, tuple(), dtypes.void, payload=device)), dtype, size)
-
   def const_like(self, b:ConstLike):
     return OpNode.const(self.dtype, b, device=self._device, shape=self._shape) # constants can optionally have a DEVICE source
   
-  def _device(self) -> str|tuple[str, ...]|None: # @recursive_property
-    if self.op is OpCode.DEVICE: return self.arg
-    if self.op is OpCode.BUFFERIZE: return self.arg.device
-    if self.op is OpCode.AFTER: return self.inputs[0]._device
-    if self.op is OpCode.MSELECT:
+  def _device(self) -> str|tuple[str, ...]|None: 
+    if self.opcode is OpCode.DEVICE: return self.payload
+    if self.opcode is OpCode.BUFFERIZE: return self.payload.device
+    if self.opcode is OpCode.AFTER: return self.inputs[0]._device
+    if self.opcode is OpCode.MSELECT:
       assert isinstance(self.inputs[0].device, tuple), "mselect must be on tuple device"
-      return self.inputs[0].device[self.arg]
-    if self.op is OpCode.MSTACK: return tuple(cast(str, x.device) for x in self.inputs)
-    if self.op in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}: return self.inputs[1].device
+      return self.inputs[0].device[self.payload]
+    if self.opcode is OpCode.MSTACK: return tuple(cast(str, x.device) for x in self.inputs)
+    if self.opcode in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}: return self.inputs[1].device
     for x in self.inputs:
       if x._device is not None: return x._device
     return None
   
   # **************** Shape ****************
-  @recursive_property
-  def _shape(self) -> tuple[sint, ...]|None:
-    match self.op:
+  @property
+  def size(self) -> int: return helpers.prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
+  
+  @property
+  def shape(self) -> tuple[int, ...]:
+    if (output:=self._shape) is None: raise RuntimeError(f"shape requested, but {self.opcode} doesn't have a shape")
+    return output
+  
+  @property
+  def _shape(self) -> tuple[int, ...] | None:
+    match self.opcode:
       # late ops don't have shape
       case OpCode.UNIQUE | OpCode.DEVICE | OpCode.RANGE | OpCode.LOAD | OpCode.IF | OpCode.BARRIER | OpCode.CUSTOM | OpCode.CUSTOMI | \
            OpCode.VECTORIZE | OpCode.VCONST | OpCode.GEP | OpCode.SPECIAL | OpCode.UNROLL | OpCode.CONTRACT:
         return None
 
       case OpCode.INDEX:
-        # non pointer index doesn't have a shape
-        if not isinstance(self.dtype, PtrDType): return None
-        # fully indexed doesn't have a shape. TODO: remove this
-        if self.src[0]._shape is None or len(self.src[1:]) == len(self.src[0].shape): return None
-        # pointer index
-        return self.src[0].shape[len(self.src[1:]):]
+        if not isinstance(self.dtype, PtrDType):                                        return None # non pointer index doesn't have a shape
+        elif self.src[0]._shape is None or len(self.src[1:]) == len(self.src[0].shape): return None # fully indexed doesn't have a shape. TODO: remove this
+        else:                                                                           return self.src[0].shape[len(self.src[1:]):] # pointer index
 
-      # some ops init the shape
-      case OpCode.CONST | OpCode.DEFINE_VAR | OpCode.BIND: return () if self._device is not None else None
-      case OpCode.BUFFER: return (self.arg,)
-      case OpCode.BUFFER_VIEW: return (self.arg[0],)
-      case OpCode.BUFFERIZE: return tuple([int(r.vmax+1) for r in self.src[1:]])
-      case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG: return (self.ptrdtype.size,)
+      # constructor ops (which init the shape)
+      case OpCode.CONST | OpCode.DEFINE_VAR | OpCode.BIND:                              return () if self._device is not None else None
+      case OpCode.BUFFER:                                                               print("mooooose"); return (self.payload,)
+      case OpCode.BUFFER_VIEW:                                                          return (self.payload[0],)
+      case OpCode.BUFFERIZE:                                                            return tuple([int(r.vmax+1) for r in self.src[1:]])
+      case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG:              return (self.ptrdtype.size,)
 
-      # passthrough ops
-      case OpCode.REDUCE | OpCode.MSTACK | OpCode.MSELECT | OpCode.DETACH | OpCode.CONTIGUOUS | OpCode.CONTIGUOUS_BACKWARD | OpCode.AFTER | OpCode.END:
-        return self.src[0]._shape
+      case OpCode.REDUCE | OpCode.MSTACK | OpCode.MSELECT | OpCode.DETACH | OpCode.CONTIGUOUS | OpCode.CONTIGUOUS_BACKWARD | OpCode.AFTER | OpCode.END: return self.src[0]._shape # passthrough ops
+      case OpCode.KERNEL: return self.payload.ast._shape # ops with custom handling
 
-      # ops with custom handling
-      case OpCode.KERNEL: return self.arg.ast._shape
-
-      # TODO: disallow shape changing bitcast
-      case OpCode.BITCAST:
+      case OpCode.BITCAST: # TODO: disallow shape changing bitcast
         ps = self.src[0]._shape
         if ps is None: return None
         if (output_sz:=self.dtype.itemsize) != (input_sz:=self.src[0].dtype.itemsize): return ps[:-1]+(ssimplify((ps[-1]*input_sz) // output_sz),)
         return ps
-
-      # TODO: disallow reshape from nothing. tested by TestOpenClip.test_multigpu_clip_score
-      case OpCode.RESHAPE:
+      case OpCode.RESHAPE: # TODO: disallow reshape from nothing. tested by TestOpenClip.test_multigpu_clip_score
         if self.src[0]._shape is None: return self.marg
+
+    # elementwise ops keep the shape the same. all inputs with shape must match
+    if self.opcode in GroupedOpCodes.Compute.union({OpCode.CAST, OpCode.COPY, OpCode.ASSIGN, OpCode.NOOP, OpCode.GROUP, OpCode.SINK, OpCode.ALLREDUCE, OpCode.STORE}):
+      # TODO: remove this hack for 3 op assign
+      input_shapes = [x._shape for x in (self.src[:2] if self.opcode is OpCode.ASSIGN else self.src) if x._shape is not None]
+      if len(input_shapes) == 0: return None
+      if not all_same(input_shapes): raise RuntimeError(f"shape mismatch at {self.opcode}: {input_shapes}")
+      return input_shapes[0]
 
     # movement ops change the shape. this is the logic from the old ShapeTracker
     # NOTE: ssimplify is required because the shape needs to be canonical for broadcasting and same shape checking
-    if self.op in GroupOp.Movement.union({OpCode.MULTI, OpCode.REDUCE_AXIS, OpCode.WMMA}):
+    if self.opcode in GroupedOpCodes.Movement.union({OpCode.MULTI, OpCode.REDUCE_AXIS, OpCode.WMMA}):
       ps = self.src[0]._shape
       # TODO: WMMA is used for both axis WMMA and op WMMA. fix this and remove this hack. tested by BERT on AMD LLVM
-      if ps is None and self.op is OpCode.WMMA: return None
-      if ps is None: raise RuntimeError(f"movement op {self.op} requires shape")
-      match self.op:
+      if ps is None and self.opcode is OpCode.WMMA: return None
+      if ps is None: raise RuntimeError(f"movement op {self.opcode} requires shape")
+      match self.opcode:
         case OpCode.RESHAPE:
           if not all(x >= 0 for x in self.marg): raise ValueError(f"shape can't contain negative numbers {self.marg}")
-          if prod(ps) != prod(self.marg): raise ValueError(f"bad reshape: {ps} -> {self.marg}")
+          if helpers.prod(ps) != helpers.prod(self.marg): raise ValueError(f"bad reshape: {ps} -> {self.marg}")
           return self.marg
         case OpCode.EXPAND:
-          if len(ps) != len(self.marg) or not all(s==ns or (s==1 and ns>=0) for s,ns in zip(ps, self.marg)):
-            raise ValueError(f"bad expand: {ps} -> {self.marg}")
+          foo = len(ps) != len(self.marg) or not all(s==ns or (s==1 and ns>=0) for s,ns in zip(ps, self.marg))
+          if foo: raise ValueError(f"bad expand: {ps} -> {self.marg}")
           return self.marg
         case OpCode.PERMUTE:
-          if sorted(self.marg) != list(range(len(ps))): raise ValueError(f"invalid permutation {self.marg} of len {len(ps)}")
+          foo = sorted(self.marg) != list(range(len(ps)))
+          if foo: raise ValueError(f"invalid permutation {self.marg} of len {len(ps)}")
           return tuple(ps[i] for i in self.marg)
         case OpCode.PAD:
           # TODO: why do i need resolve here?
-          if len(ps) != len(self.marg) or not all(resolve(b>=0) and resolve(e>=0) for b,e in self.marg): raise ValueError(f"invalid pad {self.marg}")
+          foo = len(ps) != len(self.marg) or not all(resolve(b>=0) and resolve(e>=0) for b,e in self.marg)
+          if foo: raise ValueError(f"invalid pad {self.marg}")
           return tuple(ssimplify(s+b+e) for s,(b,e) in zip(ps, self.marg))
         case OpCode.SHRINK:
           # TODO: why do i need resolve here?
-          if len(ps) != len(self.marg) or not all(resolve(0<=b) and resolve(b<=e) and resolve(e<=s) for s,(b,e) in zip(ps, self.marg)):
-            raise ValueError(f"invalid shrink {self.marg} for {ps}")
+          foo = len(ps) != len(self.marg) or not all(resolve(0<=b) and resolve(b<=e) and resolve(e<=s) for s,(b,e) in zip(ps, self.marg))
+          if foo: raise ValueError(f"invalid shrink {self.marg} for {ps}")
           return tuple(ssimplify(e-s) for s,e in self.marg)
         case OpCode.FLIP:
-          if len(ps) != len(self.marg) or not all(isinstance(x, bool) for x in self.marg): raise ValueError(f"bad flip on {ps}, {self.marg}")
+          foo = len(ps) != len(self.marg) or not all(isinstance(x, bool) for x in self.marg)
+          if foo: raise ValueError(f"bad flip on {ps}, {self.marg}")
           return ps
         case OpCode.MULTI: return tuple(s*len(self.device) if a == self.axis else s for a,s in enumerate(ps))
         case OpCode.REDUCE_AXIS | OpCode.WMMA:
-          axis_arg = self.arg[1] if self.op is OpCode.REDUCE_AXIS else self.arg[7]
-          if not isinstance(axis_arg, tuple) or not all(isinstance(x, int) and x>=0 and x<len(ps) for x in axis_arg):
-            raise ValueError(f"invalid type for axis: {axis_arg}")
+          axis_arg = self.payload[1] if self.opcode is OpCode.REDUCE_AXIS else self.payload[7]
+          foo = not isinstance(axis_arg, tuple) or not all(isinstance(x, int) and x>=0 and x<len(ps) for x in axis_arg)
+          if foo: raise ValueError(f"invalid type for axis: {axis_arg}")
           return tuple(1 if i in axis_arg else s for i,s in enumerate(ps))
 
-    # elementwise ops keep the shape the same. all inputs with shape must match
-    if self.op in GroupOp.ALU.union({OpCode.CAST, OpCode.COPY, OpCode.ASSIGN, OpCode.NOOP, OpCode.GROUP, OpCode.SINK, OpCode.ALLREDUCE, OpCode.STORE}):
-      # TODO: remove this hack for 3 op assign
-      input_shapes = [x._shape for x in (self.src[:2] if self.op is OpCode.ASSIGN else self.src) if x._shape is not None]
-      if len(input_shapes) == 0: return None
-      if not all_same(input_shapes): raise RuntimeError(f"shape mismatch at {self.op}: {input_shapes}")
-      return input_shapes[0]
+    raise NotImplementedError(f"no shape handling for {self.opcode} with {self.dtype}") # all OpCodes must be explicitly handled
 
-    # all Ops must be explicitly handled
-    raise NotImplementedError(f"no shape handling for {self.op} with {self.dtype}")
-
-  @property
-  def shape(self) -> tuple[sint, ...]:
-    if (ret:=self._shape) is None: raise RuntimeError(f"shape requested, but {self.op} doesn't have a shape")
-    return ret
-
-  @property
-  def size(self) -> int: return prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
-
-  @functools.cached_property
   def ended_ranges(self):
-    if self.op in range_start: return self.src[range_start[self.op]:]
+    if self.opcode in range_start: return self.src[range_start[self.opcode]:]
     return ()
 
   # determine what ranges this is in
-  @recursive_property
   def _ranges(self) -> dict[OpNode, None]:
     ret: dict[OpNode, None] = {}
     for s in self.src: ret.update(s.ranges)
@@ -191,33 +172,38 @@ class OpNode(GraphBuilder):
   # **************** Storage ****************
   @staticmethod
   def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, num=None):
-    return OpNode(OpCode.BUFFER, dtype, (OpNode.unique(num), OpNode(OpCode.DEVICE, arg=device)), size)
+    return OpNode(OpCode.BUFFER, (OpNode.unique(num), OpNode(OpCode.DEVICE, tuple(), dtypes.void, payload=device)), dtype, size)
+
+  unique_num = itertools.count(0)
+  @staticmethod
+  def unique(paylaod:int|None=None):
+    return OpNode(OpCode.UNIQUE, tuple(), dtypes.void, next(OpNode.unique_num) if paylaod is None else paylaod)
+
   @property
   def device(self) -> str|tuple[str, ...]: return unwrap(self._device)
-  @recursive_property
   def _device(self) -> str|tuple[str, ...]|None:
-    if self.op is OpCode.DEVICE: return self.arg
-    if self.op is OpCode.BUFFERIZE: return self.arg.device
-    if self.op is OpCode.AFTER: return self.src[0]._device
-    if self.op is OpCode.MSELECT:
+    if self.opcode is OpCode.DEVICE: return self.payload
+    if self.opcode is OpCode.BUFFERIZE: return self.payload.device
+    if self.opcode is OpCode.AFTER: return self.src[0]._device
+    if self.opcode is OpCode.MSELECT:
       assert isinstance(self.src[0].device, tuple), "mselect must be on tuple device"
-      return self.src[0].device[self.arg]
-    if self.op is OpCode.MSTACK: return tuple(cast(str, x.device) for x in self.src)
-    if self.op in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}: return self.src[1].device
+      return self.src[0].device[self.payload]
+    if self.opcode is OpCode.MSTACK: return tuple(cast(str, x.device) for x in self.src)
+    if self.opcode in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}: return self.src[1].device
     for x in self.src:
       if x._device is not None: return x._device
     return None
   @property
   def buf_uop(self) -> OpNode:
-    if self.op is OpCode.BUFFER: return self
-    if self.op is OpCode.MSELECT: return self.src[0].buf_uop.mselect(self.arg)
-    if self.op is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.buf_uop for x in self.src))
+    if self.opcode is OpCode.BUFFER: return self
+    if self.opcode is OpCode.MSELECT: return self.src[0].buf_uop.mselect(self.payload)
+    if self.opcode is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.buf_uop for x in self.src))
     assert self.base.op is OpCode.AFTER, f"must be AFTER {self.base.op}"
     return self.base.src[0].buf_uop.base
 
   def as_buf(self) -> OpNode:
-    if self.op is OpCode.MSELECT: return self.src[0].as_buf().mselect(self.arg)
-    if self.op is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.as_buf() for x in self.src))
+    if self.opcode is OpCode.MSELECT: return self.src[0].as_buf().mselect(self.payload)
+    if self.opcode is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.as_buf() for x in self.src))
     # TODO: this should be the only one of these. this is the one RANGEIFY uses
     s = self
     while len(s.src) and s.op not in {OpCode.BUFFER, OpCode.BUFFERIZE, OpCode.MSTACK}: s = s.src[0]
@@ -225,30 +211,30 @@ class OpNode(GraphBuilder):
 
   def buf_target(self) -> OpNode:
     # the buffer that's being loaded from or store to
-    match self.op:
+    match self.opcode:
       case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG: return self
       case OpCode.AFTER | OpCode.INDEX | OpCode.STORE | OpCode.LOAD: return self.src[0].buf_target()
       case OpCode.VECTORIZE:
         assert all_same(self.src)
         return self.src[0].buf_target()
-      case _: raise RuntimeError(f"buf_target called on non load/index/store {self.op}")
+      case _: raise RuntimeError(f"buf_target called on non load/index/store {self.opcode}")
 
   @property
   def buffer(self) -> Buffer|MultiBuffer:
     from tinygrad.device import Buffer, MultiBuffer
     if self is not self.base:
-      assert self.op is OpCode.RESHAPE, f"can only be RESHAPE {self}"
+      assert self.opcode is OpCode.RESHAPE, f"can only be RESHAPE {self}"
       return self.src[0].buffer
-    if self.op is OpCode.MSELECT:
+    if self.opcode is OpCode.MSELECT:
       ret = self.src[0].buffer
       assert isinstance(ret, MultiBuffer)
-      return ret.bufs[self.arg]
-    if self.op is OpCode.MSTACK:
+      return ret.bufs[self.payload]
+    if self.opcode is OpCode.MSTACK:
       ret = MultiBuffer.__new__(MultiBuffer)
       ret.bufs = [cast(Buffer, x.buffer) for x in self.src]
       assert all_same([x.size for x in ret.bufs]) and all_same([x.dtype for x in ret.bufs]), "multibuffers mismatch buffers"
       return ret
-    assert self.op is OpCode.BUFFER, f"must be BUFFER {self.op}"
+    assert self.opcode is OpCode.BUFFER, f"must be BUFFER {self.opcode}"
     if (cret:=buffers.get(self)) is not None: return cret
     rdtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base
     if isinstance(self.device, tuple): ret = MultiBuffer(self.device, self.size, rdtype).ref(1)
@@ -258,7 +244,7 @@ class OpNode(GraphBuilder):
   @property
   def realized(self) -> Buffer|MultiBuffer|None:
     # NOTE: this is used by the JIT to determine which inputs we capture
-    return self.buffer if self.op in {OpCode.BUFFER, OpCode.MSTACK} and self.buffer.is_allocated() else None
+    return self.buffer if self.opcode in {OpCode.BUFFER, OpCode.MSTACK} and self.buffer.is_allocated() else None
   @property
   def is_realized(self) -> bool:
     return all(x.base.realized is not None for x in self.base.src) if self.base.op is OpCode.MULTI else self.base.realized is not None
