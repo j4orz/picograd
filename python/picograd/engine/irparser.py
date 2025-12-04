@@ -25,7 +25,7 @@ class OpCode(FastEnum):
   SPECIAL = auto()                                                                                                   # this is a RANGE for GPU dimensions, similar to symbolic shapes but not exactly
   DEFINE_LOCAL = auto(); DEFINE_REG = auto()                                                                         # define LOCAL/REG allocate things
 
-  # ** 2 -- non op uops **
+  # ** 2 -- non op opnodes **
   NOOP = auto(); REWRITE_ERROR = auto()                                                                              # uops that aren't rendered
   SINK = auto(); AFTER = auto(); GROUP = auto()                                                                      # AFTER passes src[0] through and promises in the toposort that any consumers of the AFTER run after src[1:]
                                                                                                                      # GROUP is a NOOP that just merges things together

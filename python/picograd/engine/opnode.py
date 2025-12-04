@@ -103,7 +103,9 @@ class OpNode(GraphBuilder):
     _apply_movement_opcode converts the
     *payload* (i.e python tuple) for the given movement *opcode* (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
     *into* the embedded dsl's IR with OpNode's that have OpCode.{VECTORIZE/VCONST} which are subsequently used as input OpNode's to the originally specified movement OpNode
-    -> embedding host constructs into the DSL IR set's teenygrad up for it's compiler pipeline i.e transformations on shapes and dynamic shapes
+    -> embedding host constructs into the DSL IR sets teenygrad up for it's compiler pipeline i.e transformations on shapes and dynamic shapes
+       as opposed to embedding host constructs into OpNode.payloads, which was infact the previous implementation
+       see PR12695: https://github.com/tinygrad/tinygrad/pull/12695/files#diff-2bccd37177726a35e599bc6fa693fb1c82ac1736fad2893d3ba12adb46b6d9faL528
     """
     output_opnodes_inputs = OpNode._convert_movementopcode_payload_to_opnodeir_input(opcode, payload)
     if len(output_opnodes_inputs) == 0:                         output_opnode = OpNode(opcode, (self,), self.dtype, payload)
@@ -124,10 +126,9 @@ class OpNode(GraphBuilder):
     output_opnodes_inputs = []
     for payload in decoded_payload:
       if len(payload) == 0:                                     output_opnodes_inputs.append(OpNode(OpCode.VECTORIZE, tuple(), dtypes.index.vec(0)))       # empty payload => empty index vector
-      elif all(isinstance(x, int) for x in payload):            output_opnodes_inputs.append(OpNode.const(dtypes.index.vec(len(payload)), payload))        # all int payload => constant index vector
-      else:                                                     output_opnodes_inputs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(len(payload)),      # mized int/OpNode payload => 
-                                                                                                    tuple(OpNode.const(dtypes.index, x) if isinstance(x, int) else x for x in payload)))
-        
+      elif all(isinstance(x, int) for x in payload):            output_opnodes_inputs.append(OpNode.const(payload, dtypes.index.vec(len(payload))))        # all int payload => constant index vector
+      else:                                                     output_opnodes_inputs.append(OpNode(OpCode.VECTORIZE, tuple(OpNode.const(dtypes.index, x) if isinstance(x, int) else x for x in payload))), dtypes.index.vec(len(payload)), # mized int/OpNode payload => 
+                                                                                                    
     if DEBUG >= 1: print("output opnodes inputs are:", output_opnodes_inputs)
     return output_opnodes_inputs
 
@@ -145,22 +146,26 @@ class OpNode(GraphBuilder):
     return OpNode(OpCode.SINK, dtypes.void, tuple([x for x in srcs if x is not None]), **kwargs)
 
   def const_like(self, b:ConstLike): return OpNode.const(self.dtype, b, device=self._device, shape=self._shape) # constants can optionally have a DEVICE source
+
   @staticmethod
-  def const(dtype: DType, b: ConstLike, device: str | tuple[str, ...] | None=None,
+  def const(c: ConstLike, dtype: DType,
+            device: str | tuple[str, ...] | None = None,
             shape: tuple[int, ...] | None=None,
-            src=None, unique: bool | int=False):
-    if isinstance(b, OpNode):                  return b.unbind()[0] if b.op is OpCode.BIND else b
-    if isinstance(b, tuple) and helpers.all_same(b):   b = b[0]           # doesn't have to be a VCONST if they are all the same
-    if isinstance(b, float) and math.isnan(b): b = math.nan     # NOTE: float('nan') != float('nan'), so we canonicalize here
+            inputs=None,
+            unique: bool | int=False):
+    if isinstance(c, OpNode):                                   return c.unbind()[0] if c.op is OpCode.BIND else c
+    if isinstance(c, tuple) and helpers.all_same(c):            c = c[0]     # doesn't have to be a VCONST if they are all the same
+    if isinstance(c, float) and math.isnan(c):                  c = math.nan # NOTE: float('nan') != float('nan'), so we canonicalize here
 
-    output = OpNode(OpCode.VCONST if isinstance(b, tuple) else OpCode.CONST, dtype, arg=dtypes.as_const(b, dtype), src=() if src is None else (src,))
+    opcode = OpCode.VCONST if isinstance(c, tuple) else OpCode.CONST
+    output_opnode = OpNode(opcode, dtype, payload=dtypes.as_const(c, dtype), src=() if inputs is None else (inputs,))
     if device is not None:
-      if unique or not isinstance(unique, bool): output = output.replace(src=(OpNode(OpCode.DEVICE, arg=device), OpNode.unique(None if unique is True else unique)))
-      else:                                      output = output.replace(src=(OpNode(OpCode.DEVICE, arg=device),))
-    elif unique or not isinstance(unique, bool): raise RuntimeError("unique consts only with DEVICE")
+      if unique or not isinstance(unique, bool):                output_opnode = output_opnode.replace(src=(OpNode(OpCode.DEVICE, arg=device), OpNode.unique(None if unique is True else unique)))
+      else:                                                     output_opnode = output_opnode.replace(src=(OpNode(OpCode.DEVICE, arg=device),))
+    elif unique or not isinstance(unique, bool):                raise RuntimeError("unique consts only with DEVICE")
 
-    if shape is not None: output = output.reshape((1,)*len(shape)).expand(shape)
-    return output
+    if shape is not None: output_opnode = output_opnode.reshape((1,)*len(shape)).expand(shape)
+    return output_opnode
   
   # **************** Shape ****************
   @property
