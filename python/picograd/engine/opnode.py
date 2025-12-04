@@ -109,7 +109,8 @@ class OpNode(GraphBuilder):
     """
     output_opnodes_inputs = OpNode._convert_movementopcode_payload_to_opnodeir_input(opcode, payload)
     if len(output_opnodes_inputs) == 0:                         output_opnode = OpNode(opcode, (self,), self.dtype, payload)
-    else:                                                       output_opnode = OpNode(opcode, (self,) + OpNode.sink(*output_opnodes_inputs).simplify().inputs, self.dtype)
+    else:                                                       output_opnode = OpNode(opcode, (self,) + OpNode.sink(*output_opnodes_inputs).simplify().inputs, self.dtype) # <------------------------------------- you're here now.
+
     if output_opnode.shape == self.shape and same_shape_noop:   return self # for all movement ops, we check if the movement op results in an identiy no-op
     return                                                      output_opnode
   
@@ -158,7 +159,7 @@ class OpNode(GraphBuilder):
     if isinstance(c, float) and math.isnan(c):                  c = math.nan # NOTE: float('nan') != float('nan'), so we canonicalize here
 
     opcode = OpCode.VCONST if isinstance(c, tuple) else OpCode.CONST
-    output_opnode = OpNode(opcode, dtype, payload=dtypes.as_const(c, dtype), src=() if inputs is None else (inputs,))
+    output_opnode = OpNode(opcode, () if inputs is None else (inputs,), dtype, payload=dtypes.as_const(c, dtype),)
     if device is not None:
       if unique or not isinstance(unique, bool):                output_opnode = output_opnode.replace(src=(OpNode(OpCode.DEVICE, arg=device), OpNode.unique(None if unique is True else unique)))
       else:                                                     output_opnode = output_opnode.replace(src=(OpNode(OpCode.DEVICE, arg=device),))

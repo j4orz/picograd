@@ -51,6 +51,7 @@ class DType(metaclass=DTypeMetaClass):
     assert self.count == 1, f"can't vectorize {self} with size {sz}"
     if sz == 1 or self == dtypes.void: return self  # void doesn't vectorize, and sz=1 is scalar
     return DType(self.priority, self.itemsize*sz, f"{INVERSE_DTYPES_DICT[self.name]}{sz}", None, sz, self)
+  def scalar(self) -> DType: return self._scalar if self._scalar is not None else self
 
 ConstLike = Const|InvalidType|tuple[Const|InvalidType, ...] # Variable
 DTypeLike = str|DType
@@ -85,6 +86,16 @@ class dtypes:
   sints = (int8, int16, int32, int64)
   ints = uints + sints
   all = floats + ints + (bool, index) # noqa: A003
+
+  def is_int(x: DType) -> bool: return x.scalar() in dtypes.ints + (dtypes.index,)
+
+  @staticmethod
+  def as_const(val: tuple[ConstType|InvalidType, ...]|ConstType|InvalidType, dtype:DType):
+    if isinstance(val, tuple):
+      assert len(val) == dtype.count, f"mismatch {val} {dtype}"
+      return tuple(dtypes.as_const(x, dtype) for x in val)
+    if isinstance(val, InvalidType): return val
+    return int(val) if dtypes.is_int(dtype) else float(val) if dtypes.is_float(dtype) else bool(val)
 
 DTYPES_DICT = {k: v for k, v in dtypes.__dict__.items() if isinstance(v, DType) and not k.startswith(("default", "void", "index"))}
 INVERSE_DTYPES_DICT = {**{v.name:k for k,v in DTYPES_DICT.items()}, "void": "void", "index":"index"}
