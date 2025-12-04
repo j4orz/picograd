@@ -58,7 +58,7 @@ class OpNode(GraphBuilder):
   inputs: tuple[OpNode, ...]
   dtype: DType
   # storage: Buffer
-  payload: Any
+  payload: Any=None
 
   @property
   def device(self) -> str|tuple[str, ...]: return unwrap(self._device)
@@ -99,14 +99,20 @@ class OpNode(GraphBuilder):
     return OpNode(opcode, (self,)+inputs, output_dtype,)
 
   def _apply_movement_opcode(self, opcode: OpCode, payload, same_shape_noop: bool=False) -> Self:
-    output_opnodes_inputs = OpNode._convert_movementopcode_payload_to_opnode_inputs(opcode, payload)
+    """
+    _apply_movement_opcode converts the
+    *payload* (i.e python tuple) for the given movement *opcode* (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
+    *into* the embedded dsl's IR with OpNode's that have OpCode.{VECTORIZE/VCONST} which are subsequently used as input OpNode's to the originally specified movement OpNode
+    -> embedding host constructs into the DSL IR set's teenygrad up for it's compiler pipeline i.e transformations on shapes and dynamic shapes
+    """
+    output_opnodes_inputs = OpNode._convert_movementopcode_payload_to_opnodeir_input(opcode, payload)
     if len(output_opnodes_inputs) == 0:                         output_opnode = OpNode(opcode, (self,), self.dtype, payload)
     else:                                                       output_opnode = OpNode(opcode, (self,) + OpNode.sink(*output_opnodes_inputs).simplify().inputs, self.dtype)
     if output_opnode.shape == self.shape and same_shape_noop:   return self # for all movement ops, we check if the movement op results in an identiy no-op
     return                                                      output_opnode
   
   @staticmethod
-  def _convert_movementopcode_payload_to_opnode_inputs(opcode: OpCode, payload):
+  def _convert_movementopcode_payload_to_opnodeir_input(opcode: OpCode, payload):
     if DEBUG >= 1: print("converting movementopcode payload to opnode inputs...")
     match opcode:
       case OpCode.RESHAPE | OpCode.EXPAND:                      decoded_payload = [payload]
@@ -114,7 +120,7 @@ class OpNode(GraphBuilder):
       case OpCode.PERMUTE | OpCode.FLIP:                        decoded_payload = []
       case _: raise RuntimeError(f"{opcode} is not a MovementOp")
 
-    if DEBUG >= 1: print("decoded payload is", decoded_payload)
+    if DEBUG >= 1: print("decoded movementopcode payload is", decoded_payload)
     output_opnodes_inputs = []
     for payload in decoded_payload:
       if len(payload) == 0:                                     output_opnodes_inputs.append(OpNode(OpCode.VECTORIZE, tuple(), dtypes.index.vec(0)))       # empty payload => empty index vector
