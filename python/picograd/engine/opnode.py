@@ -76,18 +76,27 @@ class OpNode(GraphBuilder):
   def const_like(self, b:ConstLike): return OpNode.const(self.dtype, b, device=self._device, shape=self._shape) # constants can optionally have a DEVICE source
   
   # **************** GraphBuilder Required Methods ****************
+  """
+  the evaluator overrides* the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
+  called by ComputeOpCodeBuilder._apply_compute_opcode() and MovementOpCodeBuilder._apply_movement_opcode()
+  which act as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding IR OpCode
+
+  *:  keep in mind that the semantics of these two methods are applying *ir op code*
+      that is, to maintain parity in semantics with tinygrad (and a smooth pedagogical progression),
+      the returned OpNode's are still un-{materialized/realized/evaluated}, and caller's (namely tensor.py)
+      need to invoke .eval() on the OpNode for eager semantics.
+
+  **: if you're coming from a functional mindset, note the pythonic/object-oriented .eval is not a static method
+      that self is the OpNode that the OpCode ftype is operating on, to produce a new Self(OpNode)
+      i.e the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .eval() returning an OpNode,
+      i.e similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
+  """
+
   def _apply_compute_opcode(self, opcode: OpCode, *inputs:OpNode) -> Self: # required method by OpMixin
-    """
-    the evaluator overrides* the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
-    called by OpMixin.eval() which acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode intermediate representation
-    *: note that .eval is not a static method, that self is the Op that the OpCode ftype is operating on, to produce a new Self
-    the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .eval() returning an OpNode,
-    similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
-    """
     out_dtype = (self, *inputs)[-1].dtype
     # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
     # return Op((self,)+inputs, ftype, out_dtype,)
-    match ftype:
+    match opcode:
       case OpCode.NEG: launch_neg(*inputs)
       case OpCode.ADD:
         # 1. memory: allocate and memcpy on device
@@ -109,26 +118,25 @@ class OpNode(GraphBuilder):
       case OpCode.EXP2: raise NotImplementedError("todo")
       case OpCode.LOG2: raise NotImplementedError("todo")
       case OpCode.SIN: raise NotImplementedError("todo")
-      case _: raise NotImplementedError(f"unsupported opcode {ftype!r}")
+      case _: raise NotImplementedError(f"unsupported opcode {opcode!r}")
 
-  def _apply_movement_opcode(self, opcode:OpCode, arg, same_shape_noop:bool=False) -> Self:
+  def _apply_movement_opcode(self, opcode: OpCode, arg, same_shape_noop: bool=False) -> Self:
     match opcode:
-      case OpCode.RESHAPE | OpCode.EXPAND: src_args = [arg]
-      case OpCode.PAD | OpCode.SHRINK:     src_args = list(zip(*arg))
-      case OpCode.PERMUTE | OpCode.FLIP:   src_args = []
+      case OpCode.RESHAPE | OpCode.EXPAND:                      decoded_args = [arg]
+      case OpCode.PAD | OpCode.SHRINK:                          decoded_args = list(zip(*arg))
+      case OpCode.PERMUTE | OpCode.FLIP:                        decoded_args = []
       case _: raise RuntimeError(f"{opcode} is not a MovementOp")
 
     usrcs = []
-    for arg in src_args:
-      if len(arg) == 0: usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(0)))
-      elif all(isinstance(x, int) for x in arg): usrcs.append(OpNode.const(dtypes.index.vec(len(arg)), arg))
-      else: usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(len(arg)), tuple(OpNode.const(dtypes.index, x) if isinstance(x, int) else x for x in arg)))
+    for arg in decoded_args:
+      if len(arg) == 0:                                         usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(0)))
+      elif all(isinstance(x, int) for x in arg):                usrcs.append(OpNode.const(dtypes.index.vec(len(arg)), arg))
+      else:                                                     usrcs.append(OpNode(OpCode.VECTORIZE, dtypes.index.vec(len(arg)), tuple(OpNode.const(dtypes.index, x) if isinstance(x, int) else x for x in arg)))
 
-    if len(usrcs) == 0: ret = OpNode(opcode, self.dtype, (self,), arg)
-    else: ret = OpNode(opcode, self.dtype, (self,)+OpNode.sink(*usrcs).simplify().src)
-
-    if ret.shape == self.shape and same_shape_noop: return self # for all movement ops, we check shape property
-    return ret
+    if len(usrcs) == 0:                                         reshaped_opnode = OpNode(opcode, self.dtype, (self,), arg)
+    else:                                                       reshaped_opnode = OpNode(opcode, self.dtype, (self,)+OpNode.sink(*usrcs).simplify().src)
+    if reshaped_opnode.shape == self.shape and same_shape_noop: return self # for all movement ops, we check if the movement op results in an identiy no-op
+    return                                                      reshaped_opnode
   
   # **************** Shape ****************
   @property
