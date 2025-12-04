@@ -3,7 +3,7 @@ import functools, platform, sys, os, time, ctypes, subprocess
 from typing import Iterable, TypeVar, overload
 
 EAGER, GRAPH = 1, 0 
-DEBUG = 0 # ContextVar("DEBUG", 0)
+DEBUG = 1 # ContextVar("DEBUG", 0)
 OSX, WIN = platform.system() == "Darwin", sys.platform == "win32"
 LRU = 1 # ContextVar("LRU", 1)
 ALLOW_DEVICE_USAGE, MAX_BUFFER_SIZE = 1, 1 #ContextVar("ALLOW_DEVICE_USAGE", 1), ContextVar("MAX_BUFFER_SIZE", 0)
@@ -11,6 +11,7 @@ ALLOW_DEVICE_USAGE, MAX_BUFFER_SIZE = 1, 1 #ContextVar("ALLOW_DEVICE_USAGE", 1),
 T = TypeVar("T")
 U = TypeVar("U")
 def prod(input:Iterable[T]) -> T|int: return functools.reduce(operator.mul, input, 1) # NOTE: it returns int 1 if x is empty regardless of the type of x
+def all_same(items:tuple[T, ...]|list[T]): return all(x == items[0] for x in items)
 
 def normalize_shape(*args):
   if args and args[0].__class__ in (tuple, list):

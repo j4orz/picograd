@@ -47,6 +47,11 @@ class DType(metaclass=DTypeMetaClass):
   _scalar: DType|None
   @staticmethod
   def new(priority:int, itemsize:int, name:str, fmt:FmtStr|None): return DType(priority, itemsize, name, fmt, 1, None)
+  def vec(self, sz:int) -> DType:
+    assert self.count == 1, f"can't vectorize {self} with size {sz}"
+    if sz == 1 or self == dtypes.void: return self  # void doesn't vectorize, and sz=1 is scalar
+    return DType(self.priority, self.itemsize*sz, f"{INVERSE_DTYPES_DICT[self.name]}{sz}", None, sz, self)
+
 ConstLike = Const|InvalidType|tuple[Const|InvalidType, ...] # Variable
 DTypeLike = str|DType
 def to_dtype(dtype:DTypeLike) -> DType: return dtype if isinstance(dtype, DType) else getattr(dtypes, dtype.lower())
@@ -80,6 +85,9 @@ class dtypes:
   sints = (int8, int16, int32, int64)
   ints = uints + sints
   all = floats + ints + (bool, index) # noqa: A003
+
+DTYPES_DICT = {k: v for k, v in dtypes.__dict__.items() if isinstance(v, DType) and not k.startswith(("default", "void", "index"))}
+INVERSE_DTYPES_DICT = {**{v.name:k for k,v in DTYPES_DICT.items()}, "void": "void", "index":"index"}
 
 def float_to_fp16(x):
   try: return struct.unpack('e', struct.pack('e', float(x)))[0]

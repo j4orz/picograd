@@ -74,16 +74,16 @@ class Tensor(GraphBuilder):
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
     dtype: DType | None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
     device: str | tuple[str, ...] = tuple(Device.canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize_device(device)
-    if DEBUG >= 1: print("moose", dtype, device)
+    if DEBUG >= 1: print("initializing tensor with dtype:", dtype, "on device:", device)
     self.grad: Tensor | None = None                                                      # tensors can have gradients if you have called .backward
     self.requires_grad: bool | None = requires_grad                                      # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
     self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)    # if isinstance(device, str): if input.device == device else input.copy_to_device(device) data might be on a different device
     all_tensors[weakref.ref(self)] = None                                                # add to all_tensors after construction succeeds
-    if DEBUG >= 1: print("moose", self.opnode)
     return
   
   @staticmethod
   def _input_to_opnode(input: Const|bytes|list|tuple|OpNode|None, device: str|tuple[str, ...], dtype: DType|None, force_unique) -> OpNode:
+    if DEBUG >= 1: print("constructing Tensor's OpNode...")
     if isinstance(input, OpNode):                                               raise NotImplementedError("todo")
     elif input is None:                                                         opnode = OpNode.const(dtype or dtypes.default_float, 0, device, (), unique=force_unique)
     elif isinstance(input, get_args(Const)):                                    opnode = OpNode.const(dtype or dtypes.from_py(input), input, device, (), unique=force_unique)
@@ -102,12 +102,13 @@ class Tensor(GraphBuilder):
   @staticmethod
   def _frompy(input:list|tuple|bytes, dtype:DType) -> OpNode:
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
+    if DEBUG >= 1: print("constructing OpNode from python input:", input)
     output_opnode = OpNode.new_buffer("PYTHON", helpers.prod(shape:=get_shape(input)), dtype)
-    print("created buffer opnode on device PYTHON (host)", output_opnode)
+    if DEBUG >=1: print("created OpCode.BUFFER OpNode on Device PYTHON (host)", output_opnode, "\n")
+    if DEBUG >=1: print("now applying OpCode.RESHAPE on the BUFFER OpNOde with shape:", shape)
     output_opnode = output_opnode.reshape(shape)
-    
-    # fake realize. calling .storage.allocate() and passing bytes/memoryview as pre-allocated buf
-    output_opnode.storage.allocate(memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)])))
+    output_opnode.storage.allocate(memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)]))) # fake realize. calling .storage.allocate() and passing bytes/memoryview as pre-allocated buf
+    # todo: actually realize(evaluate/materialize)
     return output_opnode
 
 
