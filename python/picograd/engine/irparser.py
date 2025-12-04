@@ -186,14 +186,14 @@ class MovementOpCodeBuilder:
   # provided
   def expand(self) -> Self: raise NotImplementedError("todo")
   def reshape(self, shape) -> Self:
-    output_shape = tuple([di if di is not None else self.shape[i] for i, di in enumerate(helpers.normalize_shape(shape))]) # resolve None and args
+    reshape = tuple([dim_i if dim_i is not None else self.shape[i] for i, dim_i in enumerate(helpers.normalize_shape(shape))])                      # handle None and args
+    if inferred_dim_count := reshape.count(-1) >= 1:                                                                                                # handle -1 inferred dims
+      if inferred_dim_count > 1: raise RuntimeError(f"only one dimension can be inferred using -1, getting {reshape}")
+      else: reshape = tuple([-helpers.prod(self.shape) // helpers.prod(reshape) if dim == -1 else dim for dim in reshape])
 
-    if (c := output_shape.count(-1)) > 1: raise RuntimeError(f"only one dimension can be inferred using -1, getting {output_shape}")
-    if c: output_shape = tuple([-helpers.prod(self.shape) // helpers.prod(output_shape) if s == -1 else s for s in output_shape])
-    if helpers.prod(self.shape) != helpers.prod(output_shape): raise ValueError(f"size mismatch, can't reshape ({self.shape}) -> ({output_shape})")
-    
-    output = self._apply_movement_opcode(OpCode.RESHAPE, arg=output_shape)
-    return self if output.shape == self.shape else output
+    if helpers.prod(self.shape) != helpers.prod(reshape): raise ValueError(f"size mismatch, can't reshape ({self.shape}) -> ({reshape})")           # guard
+    output = self._apply_movement_opcode(OpCode.RESHAPE, arg=reshape)                                                                               # apply
+    return self if output.shape == self.shape else output                                                                                           # identity return
 
   def shrink(self) -> Self: raise NotImplementedError("todo")
   def permute(self) -> Self: raise NotImplementedError("todo")
