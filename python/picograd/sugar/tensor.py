@@ -101,19 +101,13 @@ class Tensor(GraphBuilder):
   
   @staticmethod
   def _frompy(input:list|tuple|bytes, dtype:DType) -> OpNode:
-    """
-
-    """
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
     output_opnode = OpNode.new_buffer("PYTHON", helpers.prod(shape:=get_shape(input)), dtype)
-    print("moose", output_opnode)
+    print("created buffer opnode on device PYTHON (host)", output_opnode)
     output_opnode = output_opnode.reshape(shape)
-
+    
     # fake realize. calling .storage.allocate() and passing bytes/memoryview as pre-allocated buf
-    # -> fake realize to real realize()
-    truncate_function = picograd.dtype.truncate[dtype]
-    data = struct.pack(f"{output_opnode.size}{dtype.fmt}", *[truncate_function(dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)])
-    output_opnode.storage.allocate(memoryview(data)) # fake realize
+    output_opnode.storage.allocate(memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)])))
     return output_opnode
 
 

@@ -77,8 +77,8 @@ class OpNode(GraphBuilder):
   
   # **************** GraphBuilder Required Methods ****************
   """
-  the evaluator overrides* the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
-  called by ComputeOpCodeBuilder._apply_compute_opcode() and MovementOpCodeBuilder._apply_movement_opcode()
+  the graphbuilder overrides the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
+  with ComputeOpCodeBuilder._apply_compute_opcode() and MovementOpCodeBuilder._apply_movement_opcode()
   which act as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding IR OpCode
 
   *:  keep in mind that the semantics of these two methods are applying *ir op code*
@@ -86,41 +86,20 @@ class OpNode(GraphBuilder):
       the returned OpNode's are still un-{materialized/realized/evaluated}, and caller's (namely tensor.py)
       need to invoke .eval() on the OpNode for eager semantics.
 
-  **: if you're coming from a functional mindset, note the pythonic/object-oriented .eval is not a static method
+  **: if you're coming from a functional mindset, note the pythonic/object-oriented .apply_opcode is not a static method
       that self is the OpNode that the OpCode ftype is operating on, to produce a new Self(OpNode)
-      i.e the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .eval() returning an OpNode,
+      i.e the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .apply_opcode() returning an OpNode,
       i.e similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
   """
-
-  def _apply_compute_opcode(self, opcode: OpCode, *inputs:OpNode) -> Self: # required method by OpMixin
-    out_dtype = (self, *inputs)[-1].dtype
-    # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
-    # return Op((self,)+inputs, ftype, out_dtype,)
-    match opcode:
-      case OpCode.NEG: launch_neg(*inputs)
-      case OpCode.ADD:
-        # 1. memory: allocate and memcpy on device
-        device = HIPDevice()
-        a, b, c = [device.allocator.alloc(4), device.allocator.alloc(4), device.allocator.alloc(4)]
-        device.allocator._copyin(a, memoryview(bytearray([2,0,0,0])))
-        device.allocator._copyin(b, memoryview(bytearray([3,0,0,0])))
-        # 2. compute: compile a kernel to a binary
-        kernel = HIPCCCompiler().compile("__global__ void add(int *a, int *b, int *c) { int id = blockDim.x * blockIdx.x + threadIdx.x; if(id < N) c[id] = a[id] + b[id]; }")
-        # 3. launch
-        f = device.kernel("add", kernel)
-        f(a, b, c) # HIPKernel
-
-        print(val := device.allocator._as_buffer(c).cast("I").tolist()[0])
-        assert val == 5 # check the data out
-      case OpCode.MUL: raise NotImplementedError("todo")
-      case OpCode.MM: raise NotImplementedError("todo")
-      case OpCode.RECIPROCAL: raise NotImplementedError("todo")
-      case OpCode.EXP2: raise NotImplementedError("todo")
-      case OpCode.LOG2: raise NotImplementedError("todo")
-      case OpCode.SIN: raise NotImplementedError("todo")
-      case _: raise NotImplementedError(f"unsupported opcode {opcode!r}")
+  def _apply_compute_opcode(self, opcode: OpCode, *inputs:OpNode) -> Self:
+    output_dtype = (self, *inputs)[-1].dtype # use the last input's dtype 
+    if opcode in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: output_dtype = dtypes.bool.vec(output_dtype.count) if output_dtype.count > 1 else dtypes.bool
+    return OpNode(opcode, output_dtype, (self,)+inputs)
 
   def _apply_movement_opcode(self, opcode: OpCode, arg, same_shape_noop: bool=False) -> Self:
+    """
+    
+    """
     match opcode:
       case OpCode.RESHAPE | OpCode.EXPAND:                      decoded_args = [arg]
       case OpCode.PAD | OpCode.SHRINK:                          decoded_args = list(zip(*arg))
@@ -137,6 +116,27 @@ class OpNode(GraphBuilder):
     else:                                                       reshaped_opnode = OpNode(opcode, self.dtype, (self,)+OpNode.sink(*usrcs).simplify().src)
     if reshaped_opnode.shape == self.shape and same_shape_noop: return self # for all movement ops, we check if the movement op results in an identiy no-op
     return                                                      reshaped_opnode
+  
+    # out_dtype = (self, *inputs)[-1].dtype
+    # # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
+    # # return Op((self,)+inputs, ftype, out_dtype,)
+    # match opcode:
+    #   case OpCode.NEG: launch_neg(*inputs)
+    #   case OpCode.ADD:
+    #     # 1. memory: allocate and memcpy on device
+    #     device = HIPDevice()
+    #     a, b, c = [device.allocator.alloc(4), device.allocator.alloc(4), device.allocator.alloc(4)]
+    #     device.allocator._copyin(a, memoryview(bytearray([2,0,0,0])))
+    #     device.allocator._copyin(b, memoryview(bytearray([3,0,0,0])))
+    #     # 2. compute: compile a kernel to a binary
+    #     kernel = HIPCCCompiler().compile("__global__ void add(int *a, int *b, int *c) { int id = blockDim.x * blockIdx.x + threadIdx.x; if(id < N) c[id] = a[id] + b[id]; }")
+    #     # 3. launch
+    #     f = device.kernel("add", kernel)
+    #     f(a, b, c) # HIPKernel
+
+    #     print(val := device.allocator._as_buffer(c).cast("I").tolist()[0])
+    #     assert val == 5 # check the data out
+    #   case _: raise NotImplementedError(f"unsupported opcode {opcode!r}")
   
   # **************** Shape ****************
   @property
