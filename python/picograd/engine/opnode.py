@@ -100,9 +100,9 @@ class OpNode(GraphBuilder):
 
   def _apply_movement_opcode(self, opcode: OpCode, payload, same_shape_noop: bool=False) -> Self:
     """
-    _apply_movement_opcode is a lot more involved compare to _apply_compute_opcode.
+    _apply_movement_opcode is much more involved compared to _apply_compute_opcode.
     this is largely because movement opcode's (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
-    modify the *shape*, which is logical/virtual and needs to be mapped to physical memory.
+    modify the *shape*, which is *logical/virtual* and needs to be mapped to *physical* memory.
 
     with the application of movement opcode's, there's a design decision to be made.
       1. following the numpy/torch model (like c++'s std::iterator/std::container), view operations are non-allocating and share the same underlying storage
@@ -113,13 +113,13 @@ class OpNode(GraphBuilder):
           and becomes problematic when you want to *vertically split* the shape for _____ optimizations.
 
       2. the alternative design decision is to *encode* and embed all movement semantics around a Tensor's shape *in* the dsl's IR itself,
-          to enable __________ about the shapes with the RANGIFY and POSTOPT abstractions,
-          inspired by halide and tvm paper (https://arxiv.org/abs/1802.04799).
-
-        see: https://x.com/__tinygrad__/status/1964037572503752910
+         to enable __________ about the shapes with the RANGIFY and POSTOPT abstractions,
+         inspired by halide and tvm paper (https://arxiv.org/abs/1802.04799).
+         see: https://x.com/__tinygrad__/status/1964037572503752910
     
-          so _apply_movement_opcode converts the *payload* (i.e python tuple) for the given movement *opcode* (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
-          *into* the embedded dsl's IR with OpNode's that have OpCode.{VECTORIZE/VCONST} which are subsequently used as input OpNode's to the originally specified movement OpNode
+         so _apply_movement_opcode converts the *payload* (i.e python tuple) for the given movement *opcode* (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
+         *into* the embedded dsl's IR with OpNode's that have OpCode.{VECTORIZE/VCONST} which are subsequently used as input OpNode's to the originally specified movement OpNode.
+         and any subsequent logic that needs to access the embedded payload will use .movementopcode_payload() and .gep(), which are aware of how to extract the payload from the IR
     """
     output_opnodes_inputs = OpNode._convert_movementopcode_payload_to_opnodeir_input(opcode, payload)
     if len(output_opnodes_inputs) == 0:                         output_opnode = OpNode(opcode, (self,), self.dtype, payload)
@@ -148,6 +148,21 @@ class OpNode(GraphBuilder):
                                                                                                     
     if DEBUG >= 1: print("output opnodes inputs are:", output_opnodes_inputs)
     return output_opnodes_inputs
+  
+  def gep(self, i:int) -> int: # like gep, but might return an integer
+    match self.opcode:
+      case OpCode.CONST:                            return self.payload # TODO: this won't hit on non-peepholed expressions because i'm not .simplfying() on _apply_movementopcode??
+      case OpCode.VCONST:                           return self.payload[i]
+      case OpCode.VECTORIZE:                        return self.inputs[i].sintify()
+      case _: raise RuntimeError(f"no sgep on {self.op}")
+  
+  @property
+  def movementopcode_payload(self):
+    match self.opcode:
+      case OpCode.RESHAPE | OpCode.EXPAND:          return tuple(self.inputs[1].gep(i) for i in range(self.inputs[1].dtype.count))
+      case OpCode.PAD | OpCode.SHRINK:              return tuple((self.inputs[1].gep(i), self.inputs[2].gep(i)) for i in range(self.inputs[1].dtype.count))
+      case OpCode.PERMUTE | OpCode.FLIP:            return self.arg
+      case _:                                       raise RuntimeError(f"{self.op} is not a MovementOp")
 
   # **************** Evaluation ****************
   def simplify(self, tracked=False):
@@ -197,75 +212,63 @@ class OpNode(GraphBuilder):
   def _shape(self) -> tuple[int, ...] | None:
     match self.opcode:
       # late ops don't have shape
-      case OpCode.UNIQUE | OpCode.DEVICE | OpCode.RANGE | OpCode.LOAD | OpCode.IF | OpCode.BARRIER | OpCode.CUSTOM | OpCode.CUSTOMI | \
-           OpCode.VECTORIZE | OpCode.VCONST | OpCode.GEP | OpCode.SPECIAL | OpCode.UNROLL | OpCode.CONTRACT:
-        return None
-
+      case OpCode.UNIQUE | OpCode.DEVICE | OpCode.RANGE | OpCode.LOAD | OpCode.IF | OpCode.BARRIER | OpCode.CUSTOM | OpCode.CUSTOMI | OpCode.VECTORIZE | OpCode.VCONST | OpCode.GEP | OpCode.SPECIAL | OpCode.UNROLL | OpCode.CONTRACT: return None
       case OpCode.INDEX:
-        if not isinstance(self.dtype, PtrDType):                                        return None # non pointer index doesn't have a shape
-        elif self.inputs[0]._shape is None or len(self.inputs[1:]) == len(self.inputs[0].shape): return None # fully indexed doesn't have a shape. TODO: remove this
-        else:                                                                           return self.inputs[0].shape[len(self.inputs[1:]):] # pointer index
-
+        if not isinstance(self.dtype, PtrDType):                                                                                                        return None # non pointer index doesn't have a shape
+        elif self.inputs[0]._shape is None or len(self.inputs[1:]) == len(self.inputs[0].shape):                                                        return None # fully indexed doesn't have a shape. TODO: remove this
+        else:                                                                                                                                           return self.inputs[0].shape[len(self.inputs[1:]):] # pointer index
       # constructor ops (which init the shape)
-      case OpCode.CONST | OpCode.DEFINE_VAR | OpCode.BIND:                              return () if self._device is not None else None
-      case OpCode.BUFFER:                                                               return (self.payload,)
-      case OpCode.BUFFER_VIEW:                                                          return (self.payload[0],)
-      case OpCode.BUFFERIZE:                                                            return tuple([int(r.vmax+1) for r in self.inputs[1:]])
-      case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG:              return (self.ptrdtype.size,)
-      # passthrough ops
-      case OpCode.REDUCE | OpCode.MSTACK | OpCode.MSELECT | OpCode.DETACH | OpCode.CONTIGUOUS | OpCode.CONTIGUOUS_BACKWARD | OpCode.AFTER | OpCode.END: return self.inputs[0]._shape
-      # ops with custom handling
-      case OpCode.KERNEL: return self.payload.ast._shape
-      # TODO: disallow shape changing bitcast
-      case OpCode.BITCAST:
+      case OpCode.CONST | OpCode.DEFINE_VAR | OpCode.BIND:                                                                                              return () if self._device is not None else None
+      case OpCode.BUFFER:                                                                                                                               return (self.payload,)
+      case OpCode.BUFFER_VIEW:                                                                                                                          return (self.payload[0],)
+      case OpCode.BUFFERIZE:                                                                                                                            return tuple([int(r.vmax+1) for r in self.inputs[1:]])
+      case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG:                                                                              return (self.ptrdtype.size,)
+      case OpCode.REDUCE | OpCode.MSTACK | OpCode.MSELECT | OpCode.DETACH | OpCode.CONTIGUOUS | OpCode.CONTIGUOUS_BACKWARD | OpCode.AFTER | OpCode.END: return self.inputs[0]._shape # passthrough ops
+      case OpCode.KERNEL:                                                                                                                               return self.payload.ast._shape # ops with custom handling
+      case OpCode.BITCAST: # TODO: disallow shape changing bitcast
         ps = self.inputs[0]._shape
         if ps is None: return None
         if (output_sz:=self.dtype.itemsize) != (input_sz:=self.inputs[0].dtype.itemsize): return ps[:-1]+(ssimplify((ps[-1]*input_sz) // output_sz),)
         return ps
       case OpCode.RESHAPE: # TODO: disallow reshape from nothing. tested by TestOpenClip.test_multigpu_clip_score
-        if self.inputs[0]._shape is None: return self.marg
+        if self.inputs[0]._shape is None:                                                                                                               return self.movementopcode_payload
 
-    # elementwise ops keep the shape the same. all inputs with shape must match
+    # COMPUTE ops keep the shape the same. all inputs with shape must match
     if self.opcode in GroupedOpCodes.Compute.union({OpCode.CAST, OpCode.COPY, OpCode.ASSIGN, OpCode.NOOP, OpCode.GROUP, OpCode.SINK, OpCode.ALLREDUCE, OpCode.STORE}):
-      # TODO: remove this hack for 3 op assign
-      input_shapes = [x._shape for x in (self.inputs[:2] if self.opcode is OpCode.ASSIGN else self.inputs) if x._shape is not None]
+      input_shapes = [x._shape for x in (self.inputs[:2] if self.opcode is OpCode.ASSIGN else self.inputs) if x._shape is not None] # TODO: remove this hack for 3 op assign
       if len(input_shapes) == 0: return None
       if not all_same(input_shapes): raise RuntimeError(f"shape mismatch at {self.opcode}: {input_shapes}")
       return input_shapes[0]
-
-    # movement ops change the shape. this is the logic from the old ShapeTracker
-    # NOTE: ssimplify is required because the shape needs to be canonical for broadcasting and same shape checking
-    if self.opcode in GroupedOpCodes.Movement.union({OpCode.MULTI, OpCode.REDUCE_AXIS, OpCode.WMMA}):
+    # MOVEMENT ops change the shape. this is the logic from the old ShapeTracker NOTE: ssimplify is required because the shape needs to be canonical for broadcasting and same shape checking
+    elif self.opcode in GroupedOpCodes.Movement.union({OpCode.MULTI, OpCode.REDUCE_AXIS, OpCode.WMMA}):
       ps = self.inputs[0]._shape
-      # TODO: WMMA is used for both axis WMMA and op WMMA. fix this and remove this hack. tested by BERT on AMD LLVM
-      if ps is None and self.opcode is OpCode.WMMA: return None
+      if ps is None and self.opcode is OpCode.WMMA: return None # TODO: WMMA is used for both axis WMMA and op WMMA. fix this and remove this hack. tested by BERT on AMD LLVM
       if ps is None: raise RuntimeError(f"movement op {self.opcode} requires shape")
+
       match self.opcode:
         case OpCode.RESHAPE:
-          if not all(x >= 0 for x in self.marg): raise ValueError(f"shape can't contain negative numbers {self.marg}")
-          if helpers.prod(ps) != helpers.prod(self.marg): raise ValueError(f"bad reshape: {ps} -> {self.marg}")
-          return self.marg
+          if not all(x >= 0 for x in self.movementopcode_payload): raise ValueError(f"shape can't contain negative numbers {self.movementopcode_payload}")
+          if helpers.prod(ps) != helpers.prod(self.movementopcode_payload): raise ValueError(f"bad reshape: {ps} -> {self.movementopcode_payload}")
+          return self.movementopcode_payload
         case OpCode.EXPAND:
-          foo = len(ps) != len(self.marg) or not all(s==ns or (s==1 and ns>=0) for s,ns in zip(ps, self.marg))
-          if foo: raise ValueError(f"bad expand: {ps} -> {self.marg}")
-          return self.marg
+          foo = len(ps) != len(self.movementopcode_payload) or not all(s==ns or (s==1 and ns>=0) for s,ns in zip(ps, self.movementopcode_payload))
+          if foo: raise ValueError(f"bad expand: {ps} -> {self.movementopcode_payload}")
+          return self.movementopcode_payload
         case OpCode.PERMUTE:
-          foo = sorted(self.marg) != list(range(len(ps)))
-          if foo: raise ValueError(f"invalid permutation {self.marg} of len {len(ps)}")
-          return tuple(ps[i] for i in self.marg)
+          foo = sorted(self.movementopcode_payload) != list(range(len(ps)))
+          if foo: raise ValueError(f"invalid permutation {self.movementopcode_payload} of len {len(ps)}")
+          return tuple(ps[i] for i in self.movementopcode_payload)
         case OpCode.PAD:
-          # TODO: why do i need resolve here?
-          foo = len(ps) != len(self.marg) or not all(resolve(b>=0) and resolve(e>=0) for b,e in self.marg)
-          if foo: raise ValueError(f"invalid pad {self.marg}")
-          return tuple(ssimplify(s+b+e) for s,(b,e) in zip(ps, self.marg))
+          foo = len(ps) != len(self.movementopcode_payload) or not all(resolve(b>=0) and resolve(e>=0) for b,e in self.movementopcode_payload)                                # TODO: why do i need resolve here?
+          if foo: raise ValueError(f"invalid pad {self.movementopcode_payload}")
+          return tuple(ssimplify(s+b+e) for s,(b,e) in zip(ps, self.movementopcode_payload))
         case OpCode.SHRINK:
-          # TODO: why do i need resolve here?
-          foo = len(ps) != len(self.marg) or not all(resolve(0<=b) and resolve(b<=e) and resolve(e<=s) for s,(b,e) in zip(ps, self.marg))
-          if foo: raise ValueError(f"invalid shrink {self.marg} for {ps}")
-          return tuple(ssimplify(e-s) for s,e in self.marg)
+          foo = len(ps) != len(self.movementopcode_payload) or not all(resolve(0<=b) and resolve(b<=e) and resolve(e<=s) for s,(b,e) in zip(ps, self.movementopcode_payload)) # TODO: why do i need resolve here?
+          if foo: raise ValueError(f"invalid shrink {self.movementopcode_payload} for {ps}")
+          return tuple(ssimplify(e-s) for s,e in self.movementopcode_payload)
         case OpCode.FLIP:
-          foo = len(ps) != len(self.marg) or not all(isinstance(x, bool) for x in self.marg)
-          if foo: raise ValueError(f"bad flip on {ps}, {self.marg}")
+          foo = len(ps) != len(self.movementopcode_payload) or not all(isinstance(x, bool) for x in self.movementopcode_payload)
+          if foo: raise ValueError(f"bad flip on {ps}, {self.movementopcode_payload}")
           return ps
         case OpCode.MULTI: return tuple(s*len(self.device) if a == self.axis else s for a,s in enumerate(ps))
         case OpCode.REDUCE_AXIS | OpCode.WMMA:
