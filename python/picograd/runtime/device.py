@@ -3,7 +3,7 @@ from typing import Any, Generic, Self, Sequence, Iterator, TypeVar, cast
 import functools,  atexit, re, pathlib, contextlib, importlib, inspect, os, ctypes
 from picograd.dtype import DType, PtrDType
 from picograd.engine.compiler import Renderer
-from picograd.helpers import ALLOW_DEVICE_USAGE, DEBUG, LRU, getenv
+from picograd.helpers import ALLOW_DEVICE_USAGE, DEBUG, LRU, MAX_BUFFER_SIZE, getenv
 
 # picograd to tinygrad bridge
 # - removed Device.Default
@@ -78,25 +78,45 @@ class Buffer:
     return mv
 
   def __init__(self, device:str, size:int, dtype:DType, buf_opaque:Any=None, initial_value: bytes|None=None,
-               options:BufferSpec|None=None, Op_refcount=0, base:Buffer|None=None, offset:int=0, preallocate=False):
+               options:BufferSpec|None=None, opnode_refcount=0, base:Buffer|None=None, offset:int=0, preallocate=False):
     assert isinstance(dtype, DType) and not isinstance(dtype, PtrDType)
     self.device, self.size, self.dtype, = device, size, dtype
     self.options, self.offset, self.allocated_views = options, offset, 0
+    if DEBUG >=1: print("initializing Buffer with the following size, dtype, and device")
+    if DEBUG >= 1: print("blaa", device)
 
     if base is None:
       assert offset == 0, "base buffers can't have offset"
       self._basebuf = None
-      self._Op_refcount = Op_refcount
+      self._opnode_refcount = opnode_refcount
 
-      if buf_opaque is not None: self.allocate(buf_opaque)
+      print("wolf")
+      if buf_opaque is not None:
+        print("deer")
+        self.allocate(buf_opaque)
+        if DEBUG >=1: print("allocated the Buffer with an opaque buf", buf_opaque)
       if initial_value is not None:
+        print("mooose")
         self.allocate()
+        if DEBUG >=1: print("allocated the Buffer")
         self.copyin(memoryview(initial_value))
+        if DEBUG >=1: print("memcpy'd a memoryview of initial values", initial_value)
+
+      print("bird")
     else:
       assert base._basebuf is None, "base can't have a base"
       assert device == base.device, "base must have the same device"
+      print("dog")
       self._basebuf = base
-    if preallocate: self.allocate()
+    if preallocate:
+      print("bark")
+      self.allocate()
+
+  @property
+  def base(self) -> Buffer: return self._basebuf if self._basebuf is not None else self
+  def ref(self, count):
+    self.base._opnode_refcount += count
+    return self
 
   """
   
@@ -104,6 +124,7 @@ class Buffer:
   def allocate(self, opaque=None, external_ptr=None) -> Self:
     assert not self.is_initialized(), "can't allocate already allocated buffer"
     if DEBUG >= 7: print(f"buffer: allocate {self.nbytes} bytes on {self.device}")
+    print("moosE", self.device)
     if not self.device.startswith("NULL") and self.size > MAX_BUFFER_SIZE > 0: raise RuntimeError(f"buffer of size {self.size/1e6:.2f}M is too large")
     self.allocator: Allocator = Device[self.device].allocator
 
