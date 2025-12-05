@@ -102,13 +102,17 @@ class Tensor(GraphBuilder):
   @staticmethod
   def _frompy(input:list|tuple|bytes, dtype:DType) -> OpNode:
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
-    if DEBUG >= 1: print("constructing OpNode from python input:", input)
-    output_opnode = OpNode.new_buffer("PYTHON", helpers.prod(shape:=get_shape(input)), dtype)
-    if DEBUG >=1: print("created OpCode.BUFFER OpNode on Device PYTHON (host)", output_opnode, "\n")
-    if DEBUG >=1: print("now applying OpCode.RESHAPE on the BUFFER OpNOde with shape:", shape)
-    output_opnode = output_opnode.reshape(shape)
-    output_opnode.buffer.allocate(memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)]))) # fake realize. calling .storage.allocate() and passing bytes/memoryview as pre-allocated buf
+    if DEBUG >= 1: print("START _frompy: constructing OpNode from python input", input)
+    if DEBUG >= 1: print("======================================================================")
+    output_opnode = OpNode.new_buffer("PYTHON", helpers.prod(shape:=get_shape(input)), dtype) # BUFFER
+    if DEBUG >= 1: print("1. created OpNode with OpCode.BUFFER")
+    output_opnode = output_opnode.reshape(shape)                                              # RESHAPE
+    if DEBUG >= 1: print("2. applied OpCode.RESHAPE")
+    bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)]))
+    if DEBUG >= 1: print("3. allocating the buffer...")
+    output_opnode.buffer.allocate(bytes) # fake realize. calling .storage.allocate() and passing bytes/memoryview as pre-allocated buf
     # todo: actually realize(evaluate/materialize)
+
     return output_opnode
 
   # **************** GraphBuilder Required Methods ****************

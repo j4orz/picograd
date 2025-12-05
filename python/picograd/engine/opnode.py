@@ -16,6 +16,27 @@ from picograd.dtype import Const, ConstLike, DType, ImageDType, PtrDType, dtypes
 # - rename OpMixin.alu() -> OpMixin.eval()
 # - retrofit an eager interpreter in OpMixin.eval()
 
+# recursive_property replaces functools.cached_property in recursive UOp functions to prevent RecursionError
+class recursive_property(property):
+  def __init__(self, fxn):
+    self.fxn = fxn
+    self.nm = "_RECURSIVE_PROPERTY_"+fxn.__name__
+    self.__doc__ = fxn.__doc__
+  def __get__(self, x:OpNode|None, owner=None):
+    if x is None: return self
+    # this is very similar to toposort/topovisit
+    stack: list[tuple[OpNode, bool]] = [(x, False)]
+    while stack:
+      opnode, visited = stack.pop()
+      if self.nm in opnode.__dict__: continue
+      if not visited:
+        stack.append((opnode, True))
+        for s in reversed(opnode.inputs): stack.append((s, False))
+      else: opnode.__dict__[self.nm] = self.fxn(opnode)
+    return x.__dict__[self.nm]
+
+# we import this late
+
 # out_dtype = (self, *inputs)[-1].dtype
 # # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
 # # return Op((self,)+inputs, ftype, out_dtype,)
@@ -56,23 +77,10 @@ class OpNode(GraphBuilder):
   opcode: OpCode
   inputs: tuple[OpNode, ...]
   dtype: DType
-  # storage: Buffer
   payload: Any=None
+  # shape, storage (and it's device) are embedded in the IR as opcode's with payloads
+  # see .shape, .buffer and .device @properties below
 
-  @property
-  def device(self) -> str|tuple[str, ...]: return helpers.unwrap(self._device)
-  def _device(self) -> str|tuple[str, ...]|None: 
-    if self.opcode is OpCode.DEVICE: return self.payload
-    if self.opcode is OpCode.BUFFERIZE: return self.payload.device
-    if self.opcode is OpCode.AFTER: return self.inputs[0]._device
-    if self.opcode is OpCode.MSELECT:
-      assert isinstance(self.inputs[0].device, tuple), "mselect must be on tuple device"
-      return self.inputs[0].device[self.payload]
-    if self.opcode is OpCode.MSTACK: return tuple(cast(str, x.device) for x in self.inputs)
-    if self.opcode in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}: return self.inputs[1].device
-    for x in self.inputs:
-      if x._device is not None: return x._device
-    return None
   @property
   def size(self) -> int: return helpers.prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
 
@@ -111,7 +119,7 @@ class OpNode(GraphBuilder):
           (see kelley's halide disertation: https://dspace.mit.edu/handle/1721.1/89996),
           and becomes problematic when you want to *vertically split* the shape for _____ optimizations.
 
-      2. the alternative design decision is to *encode* and embed all movement semantics around a Tensor's shape *in* the dsl's IR itself,
+      2. the alternative design decision is to *encode* and embed all movement semantics around a Tensor's shape *within* the dsl's IR itself,
          to enable __________ about the shapes with the RANGIFY and POSTOPT abstractions,
          inspired by halide and tvm paper (https://arxiv.org/abs/1802.04799).
          see: https://x.com/__tinygrad__/status/1964037572503752910
@@ -304,28 +312,31 @@ class OpNode(GraphBuilder):
     return ret
   
   # **************** Physical Storage (uses runtime/) ****************
-  @staticmethod
-  def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, num=None):
-    return OpNode(OpCode.BUFFER, (OpNode.unique(num), OpNode(OpCode.DEVICE, tuple(), dtypes.void, payload=device)), dtype, size)
-
   unique_num = itertools.count(0)
   @staticmethod
-  def unique(paylaod:int|None=None):
-    return OpNode(OpCode.UNIQUE, tuple(), dtypes.void, next(OpNode.unique_num) if paylaod is None else paylaod)
+  def unique(payload:int|None=None):
+    return OpNode(OpCode.UNIQUE, tuple(), dtypes.void, payload=next(OpNode.unique_num) if payload is None else payload)
+
+  @staticmethod
+  def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, num=None):
+    inputs = (OpNode.unique(num), OpNode(OpCode.DEVICE, tuple(), dtypes.void, payload=device))
+    return OpNode(OpCode.BUFFER, inputs, dtype, size)
 
   @property
-  def device(self) -> str|tuple[str, ...]: return helpers.unwrap(self._device)
-  def _device(self) -> str|tuple[str, ...]|None:
-    if self.opcode is OpCode.DEVICE:                                        return self.payload
-    if self.opcode is OpCode.BUFFERIZE:                                     return self.payload.device
-    if self.opcode is OpCode.AFTER:                                         return self.inputs[0]._device
-    if self.opcode is OpCode.MSELECT:
+  def device(self) -> str|tuple[str, ...]:                                    return helpers.unwrap(self._device)
+  @recursive_property
+  def _device(self) -> str|tuple[str, ...] | None:
+    if self.opcode is OpCode.DEVICE:                                          return self.payload
+    elif self.opcode is OpCode.BUFFERIZE:                                     return self.payload.device
+    elif self.opcode is OpCode.AFTER:                                         return self.inputs[0]._device
+    elif self.opcode is OpCode.MSELECT:
       assert isinstance(self.inputs[0].device, tuple), "mselect must be on tuple device"
       return self.inputs[0].device[self.payload]
-    if self.opcode is OpCode.MSTACK:                                        return tuple(cast(str, x.device) for x in self.inputs)
-    if self.opcode in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}:       return self.inputs[1].device
-    for x in self.inputs:
-      if x._device is not None:                                             return x._device
+    elif self.opcode is OpCode.MSTACK:                                        return tuple(cast(str, x.device) for x in self.inputs)
+    elif self.opcode in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}:       return self.inputs[1].device
+    else:
+      for input in self.inputs:                                               # otherwise, recurse
+        if input._device is not None:                                         return input._device
     return None
   
   @property
@@ -356,7 +367,7 @@ class OpNode(GraphBuilder):
 
   @property
   def buffer(self) -> Buffer:
-    from tinygrad.device import Buffer
+    from picograd.runtime.device import Buffer
     if self is not self.base:
       assert self.opcode is OpCode.RESHAPE, f"can only be RESHAPE {self}"
       return self.inputs[0].buffer
@@ -369,11 +380,18 @@ class OpNode(GraphBuilder):
     #   ret.bufs = [cast(Buffer, x.buffer) for x in self.inputs]
     #   assert all_same([x.size for x in ret.bufs]) and all_same([x.dtype for x in ret.bufs]), "multibuffers mismatch buffers"
     #   return ret
-    assert self.opcode is OpCode.BUFFER, f"must be BUFFER {self.opcode}"
-    if (cret:=buffers.get(self)) is not None: return cret
+    assert self.opcode is OpCode.BUFFER, f"must be BUFFER {self.opcode}"  
+    if (cret:=buffers.get(self)) is not None:
+      if DEBUG >= 1: print("moose")
+      return cret
+    
     output_dtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base
-    if isinstance(self.device, tuple): output_buffer = MultiBuffer(self.device, self.size, output_dtype).ref(1)
-    else: output_buffer = Buffer(self.device, self.size, output_dtype).ref(1)
+
+    if isinstance(self.device, tuple):
+      output_buffer = MultiBuffer(self.device, self.size, output_dtype).ref(1)
+    else:
+      if DEBUG >= 1: print("3.1 OpNode.buffer initializing Buffer...")
+      output_buffer = Buffer(self.device, self.size, output_dtype).ref(1)
     buffers[self] = output_buffer
     return output_buffer
   @property
