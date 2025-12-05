@@ -79,7 +79,7 @@ class OpNode(GraphBuilder):
   dtype: DType
   payload: Any=None
   # shape, storage (and it's device) are embedded in the IR as opcode's with payloads
-  # see .shape, .buffer and .device @properties below
+  # see .shape, .buffer and .device @properties *below* the required graphbuilder's ir/opcode applier methods
 
   @property
   def size(self) -> int: return helpers.prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
@@ -368,30 +368,13 @@ class OpNode(GraphBuilder):
   @property
   def buffer(self) -> Buffer:
     from picograd.runtime.device import Buffer
-    if self is not self.base:
-      assert self.opcode is OpCode.RESHAPE, f"can only be RESHAPE {self}"
-      return self.inputs[0].buffer
-    # if self.opcode is OpCode.MSELECT:
-    #   ret = self.inputs[0].buffer
-    #   assert isinstance(ret, MultiBuffer)
-    #   return ret.bufs[self.payload]
-    # if self.opcode is OpCode.MSTACK:
-    #   ret = MultiBuffer.__new__(MultiBuffer)
-    #   ret.bufs = [cast(Buffer, x.buffer) for x in self.inputs]
-    #   assert all_same([x.size for x in ret.bufs]) and all_same([x.dtype for x in ret.bufs]), "multibuffers mismatch buffers"
-    #   return ret
+    if self is not self.base: assert self.opcode is OpCode.RESHAPE, f"can only be RESHAPE {self}"; return self.inputs[0].buffer
+    if self.opcode is OpCode.MSELECT: raise NotImplementedError("todo")
+    if self.opcode is OpCode.MSTACK: raise NotImplementedError("todo")
     assert self.opcode is OpCode.BUFFER, f"must be BUFFER {self.opcode}"  
-    if (cret:=buffers.get(self)) is not None:
-      if DEBUG >= 1: print("moose")
-      return cret
-    
+    if (cret:=buffers.get(self)) is not None: return cret
     output_dtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base
-
-    if isinstance(self.device, tuple):
-      output_buffer = MultiBuffer(self.device, self.size, output_dtype).ref(1)
-    else:
-      if DEBUG >= 1: print("3.1 OpNode.buffer initializing Buffer...")
-      output_buffer = Buffer(self.device, self.size, output_dtype).ref(1)
+    output_buffer = Buffer(self.device, self.size, output_dtype).ref(1) # MultiBuffer(self.device, self.size, output_dtype).ref(1) if isinstance(self.device, tuple) else  Buffer(...)
     buffers[self] = output_buffer
     return output_buffer
   @property
