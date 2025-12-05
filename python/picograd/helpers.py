@@ -8,11 +8,15 @@ OSX, WIN = platform.system() == "Darwin", sys.platform == "win32"
 LRU = 1 # ContextVar("LRU", 1)
 ALLOW_DEVICE_USAGE, MAX_BUFFER_SIZE = 1, 1 #ContextVar("ALLOW_DEVICE_USAGE", 1), ContextVar("MAX_BUFFER_SIZE", 0)
 
+def unwrap(x:T|None) -> T:
+  assert x is not None
+  return x
+def unwrap_class_type(cls_t): return cls_t.func if isinstance(cls_t, functools.partial) else cls_t
+
 T = TypeVar("T")
 U = TypeVar("U")
 def prod(input:Iterable[T]) -> T|int: return functools.reduce(operator.mul, input, 1) # NOTE: it returns int 1 if x is empty regardless of the type of x
 def all_same(items:tuple[T, ...]|list[T]): return all(x == items[0] for x in items)
-
 def normalize_shape(*args):
   if args and args[0].__class__ in (tuple, list):
     if len(args) != 1: raise ValueError(f"bad arg {args}") # i.e (1,2), 3
@@ -25,8 +29,6 @@ def getenv(key:str) -> int: ...
 def getenv(key:str, default:T) -> T: ...
 @functools.cache
 def getenv(key:str, default:Any=0): return type(default)(os.getenv(key, default))
-
-def unwrap_class_type(cls_t): return cls_t.func if isinstance(cls_t, functools.partial) else cls_t
 def suppress_finalizing(func):
   def wrapper(*args, **kwargs):
     try: return func(*args, **kwargs)

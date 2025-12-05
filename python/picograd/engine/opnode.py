@@ -1,15 +1,14 @@
 from __future__ import annotations
-import math
 from typing import TYPE_CHECKING, Any, Self
 from dataclasses import dataclass
-import itertools
+import math, itertools, weakref
 
 from picograd import helpers
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
-from picograd.engine.irparser import GroupedOpCodes, OpCode, GraphBuilder
+from picograd.engine.irparser import GroupedOpCode, OpCode, GraphBuilder
 if TYPE_CHECKING:
   from picograd.runtime.device import Buffer, Device
-from picograd.dtype import Const, ConstLike, DType, PtrDType, dtypes
+from picograd.dtype import Const, ConstLike, DType, ImageDType, PtrDType, dtypes
 
 # picograd to tinygrad bridge
 # - removed buf_op and as_buf used by haldie/tvm schedule/rangify to map high level ops back to buffers
@@ -38,21 +37,21 @@ from picograd.dtype import Const, ConstLike, DType, PtrDType, dtypes
 #     assert val == 5 # check the data out
 #   case _: raise NotImplementedError(f"unsupported opcode {opcode!r}")
 
+# the derivative f'(x) is the sum of path products on the expression graph, where factors in the product are local derivatives.
+# selecting the optimal order to evaluate such path products (given that the operations represented by each vertex is *associative*) is NP-hard.
+# since the functions f(x) that need to be differentiated in the field of machine learning are loss functions of the form f: R^n -> R which fan-out,
+# the reverse direction is heuristically used with a reverse topological sort given that the time complexity is proportional to the number of outputs m which in this case is 1
+# for many deeplearning workloads that are a series of matrix-matrix multiplications with a final matrix-vector multiplication, multiplying in the reverse direction results in [(v,e)->(v,e)^2]
+
 # **************** Expression Graph ****************
 @dataclass(eq=False, slots=True) # NOTE: this should be frozen, but frozen is slower
 class OpNode(GraphBuilder):
   """
-  GraphOp structs (which Tensor's deusugar into) are vertices which form an expression graph G=(V,E) where V is a Set<Op> and E is a Set<(Op,Op)>
-  the name of the struct "Op" is somewhat of a misnomer because the structs store
-  *state* for both the a. specified compute (OpCode) and b. the allocated memory (Buffer)
-  so it's more accurate to conceptualize the struct of Op as both the function type f: _ -> _ and the evaluation of said function f(.)
-  produced by the *functionality* of the dynamically "eager" interpreter and the just-in-time lazy "graph" compiler.
-
-  the derivative f'(x) is the sum of path products on the expression graph, where factors in the product are local derivatives.
-  selecting the optimal order to evaluate such path products (given that the operations represented by each vertex is *associative*) is NP-hard.
-  since the functions f(x) that need to be differentiated in the field of machine learning are loss functions of the form f: R^n -> R which fan-out,
-  the reverse direction is heuristically used with a reverse topological sort given that the time complexity is proportional to the number of outputs m which in this case is 1
-  for many deeplearning workloads that are a series of matrix-matrix multiplications with a final matrix-vector multiplication, multiplying in the reverse direction results in [(v,e)->(v,e)^2]
+  OpNode structs (which Tensor's deusugar into) are vertices which form an expression graph G=(V,E) where V is a Set<Op> and E is a Set<(Op,Op)>
+  OpNodes store state for
+    1. specified compute (OpCode) aka the function type f
+    2. resulting virtual shape (.shape) aka the image of the function f: _ -> SHAPE
+    c. mapped physical stoage (Buffer)
   """
   opcode: OpCode
   inputs: tuple[OpNode, ...]
@@ -61,7 +60,7 @@ class OpNode(GraphBuilder):
   payload: Any=None
 
   @property
-  def device(self) -> str|tuple[str, ...]: return unwrap(self._device)
+  def device(self) -> str|tuple[str, ...]: return helpers.unwrap(self._device)
   def _device(self) -> str|tuple[str, ...]|None: 
     if self.opcode is OpCode.DEVICE: return self.payload
     if self.opcode is OpCode.BUFFERIZE: return self.payload.device
@@ -126,7 +125,7 @@ class OpNode(GraphBuilder):
     else:                                                       output_opnode = OpNode(opcode, (self,) + helpers.normalize_shape(output_opnodes_inputs), self.dtype) # no .simplify() peephole on inputs
                                                                                                                                             # i.e constant folding 2*3->6
                                                                                                                                             # i.e VECTORIZE -> VCONST
-
+    if DEBUG >= 1: print("constructed movement opnode with opcode", output_opnode.opcode)
     if output_opnode.shape == self.shape and same_shape_noop:   return self # for all movement ops, we check if the movement op results in an identiy no-op
     return                                                      output_opnode
   
@@ -149,6 +148,12 @@ class OpNode(GraphBuilder):
     if DEBUG >= 1: print("output opnodes inputs are:", output_opnodes_inputs)
     return output_opnodes_inputs
   
+  @property
+  def base(self) -> OpNode:
+    if self.opcode in GroupedOpCode.Movement:       return self.inputs[0].base
+    if self.opcode is OpCode.MULTI:                 return self.inputs[0].base  # MULTI is really a VIEW
+    return self
+  
   def gep(self, i:int) -> int: # like gep, but might return an integer
     match self.opcode:
       case OpCode.CONST:                            return self.payload # TODO: this won't hit on non-peepholed expressions because i'm not .simplfying() on _apply_movementopcode??
@@ -164,7 +169,7 @@ class OpNode(GraphBuilder):
       case OpCode.PERMUTE | OpCode.FLIP:            return self.arg
       case _:                                       raise RuntimeError(f"{self.op} is not a MovementOp")
 
-  # **************** Evaluation ****************
+  # **************** Peephole (evaluation) ****************
   def simplify(self, tracked=False):
     # late import!
     from tinygrad.uop.symbolic import symbolic
@@ -199,7 +204,7 @@ class OpNode(GraphBuilder):
     if shape is not None: output_opnode = output_opnode.reshape((1,)*len(shape)).expand(shape)
     return output_opnode
   
-  # **************** Shape ****************
+  # **************** Virtual Shape ****************
   @property
   def size(self) -> int: return helpers.prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
   
@@ -234,41 +239,41 @@ class OpNode(GraphBuilder):
         if self.inputs[0]._shape is None:                                                                                                               return self.movementopcode_payload
 
     # COMPUTE ops keep the shape the same. all inputs with shape must match
-    if self.opcode in GroupedOpCodes.Compute.union({OpCode.CAST, OpCode.COPY, OpCode.ASSIGN, OpCode.NOOP, OpCode.GROUP, OpCode.SINK, OpCode.ALLREDUCE, OpCode.STORE}):
+    if self.opcode in GroupedOpCode.Compute.union({OpCode.CAST, OpCode.COPY, OpCode.ASSIGN, OpCode.NOOP, OpCode.GROUP, OpCode.SINK, OpCode.ALLREDUCE, OpCode.STORE}):
       input_shapes = [x._shape for x in (self.inputs[:2] if self.opcode is OpCode.ASSIGN else self.inputs) if x._shape is not None] # TODO: remove this hack for 3 op assign
       if len(input_shapes) == 0: return None
       if not all_same(input_shapes): raise RuntimeError(f"shape mismatch at {self.opcode}: {input_shapes}")
       return input_shapes[0]
     # MOVEMENT ops change the shape. this is the logic from the old ShapeTracker NOTE: ssimplify is required because the shape needs to be canonical for broadcasting and same shape checking
-    elif self.opcode in GroupedOpCodes.Movement.union({OpCode.MULTI, OpCode.REDUCE_AXIS, OpCode.WMMA}):
+    elif self.opcode in GroupedOpCode.Movement.union({OpCode.MULTI, OpCode.REDUCE_AXIS, OpCode.WMMA}):
       ps = self.inputs[0]._shape
       if ps is None and self.opcode is OpCode.WMMA: return None # TODO: WMMA is used for both axis WMMA and op WMMA. fix this and remove this hack. tested by BERT on AMD LLVM
       if ps is None: raise RuntimeError(f"movement op {self.opcode} requires shape")
 
       match self.opcode:
         case OpCode.RESHAPE:
-          if not all(x >= 0 for x in self.movementopcode_payload): raise ValueError(f"shape can't contain negative numbers {self.movementopcode_payload}")
-          if helpers.prod(ps) != helpers.prod(self.movementopcode_payload): raise ValueError(f"bad reshape: {ps} -> {self.movementopcode_payload}")
+          if not all(x >= 0 for x in self.movementopcode_payload):                                                                                        raise ValueError(f"shape can't contain negative numbers {self.movementopcode_payload}")
+          if helpers.prod(ps) != helpers.prod(self.movementopcode_payload):                                                                               raise ValueError(f"bad reshape: {ps} -> {self.movementopcode_payload}")
           return self.movementopcode_payload
         case OpCode.EXPAND:
           foo = len(ps) != len(self.movementopcode_payload) or not all(s==ns or (s==1 and ns>=0) for s,ns in zip(ps, self.movementopcode_payload))
-          if foo: raise ValueError(f"bad expand: {ps} -> {self.movementopcode_payload}")
+          if foo:                                                                                                                                         raise ValueError(f"bad expand: {ps} -> {self.movementopcode_payload}")
           return self.movementopcode_payload
         case OpCode.PERMUTE:
           foo = sorted(self.movementopcode_payload) != list(range(len(ps)))
-          if foo: raise ValueError(f"invalid permutation {self.movementopcode_payload} of len {len(ps)}")
+          if foo:                                                                                                                                         raise ValueError(f"invalid permutation {self.movementopcode_payload} of len {len(ps)}")
           return tuple(ps[i] for i in self.movementopcode_payload)
         case OpCode.PAD:
           foo = len(ps) != len(self.movementopcode_payload) or not all(resolve(b>=0) and resolve(e>=0) for b,e in self.movementopcode_payload)                                # TODO: why do i need resolve here?
-          if foo: raise ValueError(f"invalid pad {self.movementopcode_payload}")
+          if foo:                                                                                                                                         raise ValueError(f"invalid pad {self.movementopcode_payload}")
           return tuple(ssimplify(s+b+e) for s,(b,e) in zip(ps, self.movementopcode_payload))
         case OpCode.SHRINK:
           foo = len(ps) != len(self.movementopcode_payload) or not all(resolve(0<=b) and resolve(b<=e) and resolve(e<=s) for s,(b,e) in zip(ps, self.movementopcode_payload)) # TODO: why do i need resolve here?
-          if foo: raise ValueError(f"invalid shrink {self.movementopcode_payload} for {ps}")
+          if foo:                                                                                                                                         raise ValueError(f"invalid shrink {self.movementopcode_payload} for {ps}")
           return tuple(ssimplify(e-s) for s,e in self.movementopcode_payload)
         case OpCode.FLIP:
           foo = len(ps) != len(self.movementopcode_payload) or not all(isinstance(x, bool) for x in self.movementopcode_payload)
-          if foo: raise ValueError(f"bad flip on {ps}, {self.movementopcode_payload}")
+          if foo:                                                                                                                                         raise ValueError(f"bad flip on {ps}, {self.movementopcode_payload}")
           return ps
         case OpCode.MULTI: return tuple(s*len(self.device) if a == self.axis else s for a,s in enumerate(ps))
         case OpCode.REDUCE_AXIS | OpCode.WMMA:
@@ -298,7 +303,7 @@ class OpNode(GraphBuilder):
           if s in ret: del ret[s]
     return ret
   
-  # **************** Storage ****************
+  # **************** Physical Storage (uses runtime/) ****************
   @staticmethod
   def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, num=None):
     return OpNode(OpCode.BUFFER, (OpNode.unique(num), OpNode(OpCode.DEVICE, tuple(), dtypes.void, payload=device)), dtype, size)
@@ -309,30 +314,31 @@ class OpNode(GraphBuilder):
     return OpNode(OpCode.UNIQUE, tuple(), dtypes.void, next(OpNode.unique_num) if paylaod is None else paylaod)
 
   @property
-  def device(self) -> str|tuple[str, ...]: return unwrap(self._device)
+  def device(self) -> str|tuple[str, ...]: return helpers.unwrap(self._device)
   def _device(self) -> str|tuple[str, ...]|None:
-    if self.opcode is OpCode.DEVICE: return self.payload
-    if self.opcode is OpCode.BUFFERIZE: return self.payload.device
-    if self.opcode is OpCode.AFTER: return self.inputs[0]._device
+    if self.opcode is OpCode.DEVICE:                                        return self.payload
+    if self.opcode is OpCode.BUFFERIZE:                                     return self.payload.device
+    if self.opcode is OpCode.AFTER:                                         return self.inputs[0]._device
     if self.opcode is OpCode.MSELECT:
       assert isinstance(self.inputs[0].device, tuple), "mselect must be on tuple device"
       return self.inputs[0].device[self.payload]
-    if self.opcode is OpCode.MSTACK: return tuple(cast(str, x.device) for x in self.inputs)
-    if self.opcode in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}: return self.inputs[1].device
+    if self.opcode is OpCode.MSTACK:                                        return tuple(cast(str, x.device) for x in self.inputs)
+    if self.opcode in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}:       return self.inputs[1].device
     for x in self.inputs:
-      if x._device is not None: return x._device
+      if x._device is not None:                                             return x._device
     return None
+  
   @property
   def buf_uop(self) -> OpNode:
-    if self.opcode is OpCode.BUFFER: return self
-    if self.opcode is OpCode.MSELECT: return self.inputs[0].buf_uop.mselect(self.payload)
-    if self.opcode is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.buf_uop for x in self.inputs))
+    if self.opcode is OpCode.BUFFER:                                        return self
+    if self.opcode is OpCode.MSELECT:                                       return self.inputs[0].buf_uop.mselect(self.payload)
+    if self.opcode is OpCode.MSTACK:                                        return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.buf_uop for x in self.inputs))
     assert self.base.op is OpCode.AFTER, f"must be AFTER {self.base.op}"
     return self.base.inputs[0].buf_uop.base
 
   def as_buf(self) -> OpNode:
-    if self.opcode is OpCode.MSELECT: return self.inputs[0].as_buf().mselect(self.payload)
-    if self.opcode is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.as_buf() for x in self.inputs))
+    if self.opcode is OpCode.MSELECT:                                       return self.inputs[0].as_buf().mselect(self.payload)
+    if self.opcode is OpCode.MSTACK:                                        return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.as_buf() for x in self.inputs))
     # TODO: this should be the only one of these. this is the one RANGEIFY uses
     s = self
     while len(s.inputs) and s.op not in {OpCode.BUFFER, OpCode.BUFFERIZE, OpCode.MSTACK}: s = s.inputs[0]
@@ -341,35 +347,35 @@ class OpNode(GraphBuilder):
   def buf_target(self) -> OpNode:
     # the buffer that's being loaded from or store to
     match self.opcode:
-      case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG: return self
-      case OpCode.AFTER | OpCode.INDEX | OpCode.STORE | OpCode.LOAD: return self.inputs[0].buf_target()
+      case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG:  return self
+      case OpCode.AFTER | OpCode.INDEX | OpCode.STORE | OpCode.LOAD:        return self.inputs[0].buf_target()
       case OpCode.VECTORIZE:
         assert all_same(self.inputs)
         return self.inputs[0].buf_target()
       case _: raise RuntimeError(f"buf_target called on non load/index/store {self.opcode}")
 
   @property
-  def buffer(self) -> Buffer|MultiBuffer:
-    from tinygrad.device import Buffer, MultiBuffer
+  def buffer(self) -> Buffer:
+    from tinygrad.device import Buffer
     if self is not self.base:
       assert self.opcode is OpCode.RESHAPE, f"can only be RESHAPE {self}"
       return self.inputs[0].buffer
-    if self.opcode is OpCode.MSELECT:
-      ret = self.inputs[0].buffer
-      assert isinstance(ret, MultiBuffer)
-      return ret.bufs[self.payload]
-    if self.opcode is OpCode.MSTACK:
-      ret = MultiBuffer.__new__(MultiBuffer)
-      ret.bufs = [cast(Buffer, x.buffer) for x in self.inputs]
-      assert all_same([x.size for x in ret.bufs]) and all_same([x.dtype for x in ret.bufs]), "multibuffers mismatch buffers"
-      return ret
+    # if self.opcode is OpCode.MSELECT:
+    #   ret = self.inputs[0].buffer
+    #   assert isinstance(ret, MultiBuffer)
+    #   return ret.bufs[self.payload]
+    # if self.opcode is OpCode.MSTACK:
+    #   ret = MultiBuffer.__new__(MultiBuffer)
+    #   ret.bufs = [cast(Buffer, x.buffer) for x in self.inputs]
+    #   assert all_same([x.size for x in ret.bufs]) and all_same([x.dtype for x in ret.bufs]), "multibuffers mismatch buffers"
+    #   return ret
     assert self.opcode is OpCode.BUFFER, f"must be BUFFER {self.opcode}"
     if (cret:=buffers.get(self)) is not None: return cret
-    rdtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base
-    if isinstance(self.device, tuple): ret = MultiBuffer(self.device, self.size, rdtype).ref(1)
-    else: ret = Buffer(self.device, self.size, rdtype).ref(1)
-    buffers[self] = ret
-    return ret
+    output_dtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base
+    if isinstance(self.device, tuple): output_buffer = MultiBuffer(self.device, self.size, output_dtype).ref(1)
+    else: output_buffer = Buffer(self.device, self.size, output_dtype).ref(1)
+    buffers[self] = output_buffer
+    return output_buffer
   @property
   def realized(self) -> Buffer|MultiBuffer|None:
     # NOTE: this is used by the JIT to determine which inputs we capture
@@ -377,3 +383,5 @@ class OpNode(GraphBuilder):
   @property
   def is_realized(self) -> bool:
     return all(x.base.realized is not None for x in self.base.inputs) if self.base.op is OpCode.MULTI else self.base.realized is not None
+  
+buffers:weakref.WeakKeyDictionary[OpNode, Buffer] = weakref.WeakKeyDictionary() # this maps BUFFER uops to their device Buffers

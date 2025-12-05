@@ -52,6 +52,8 @@ class DType(metaclass=DTypeMetaClass):
     if sz == 1 or self == dtypes.void: return self  # void doesn't vectorize, and sz=1 is scalar
     return DType(self.priority, self.itemsize*sz, f"{INVERSE_DTYPES_DICT[self.name]}{sz}", None, sz, self)
   def scalar(self) -> DType: return self._scalar if self._scalar is not None else self
+  @property
+  def base(self): return self
 
 ConstLike = Const|InvalidType|tuple[Const|InvalidType, ...] # Variable
 DTypeLike = str|DType
@@ -199,3 +201,9 @@ class PtrDType(DType):
   addrspace: AddrSpace
   v: int
   size: int = -1  # -1 is unlimited size
+  @property
+  def base(self): return self._base
+
+@dataclass(frozen=True, eq=False)
+class ImageDType(PtrDType): # leaky abstraction for comm'as QCOM devices which tinygrad wants to fix
+  shape: tuple[int, ...] = ()   # shape of the Image

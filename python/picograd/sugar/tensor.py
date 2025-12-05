@@ -107,10 +107,9 @@ class Tensor(GraphBuilder):
     if DEBUG >=1: print("created OpCode.BUFFER OpNode on Device PYTHON (host)", output_opnode, "\n")
     if DEBUG >=1: print("now applying OpCode.RESHAPE on the BUFFER OpNOde with shape:", shape)
     output_opnode = output_opnode.reshape(shape)
-    output_opnode.storage.allocate(memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)]))) # fake realize. calling .storage.allocate() and passing bytes/memoryview as pre-allocated buf
+    output_opnode.buffer.allocate(memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)]))) # fake realize. calling .storage.allocate() and passing bytes/memoryview as pre-allocated buf
     # todo: actually realize(evaluate/materialize)
     return output_opnode
-
 
   # **************** GraphBuilder Required Methods ****************
   def _apply_compute_opcode(self, ftype: OpCode, *inputs): raise NotImplementedError("todo")

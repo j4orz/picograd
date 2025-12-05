@@ -62,7 +62,7 @@ class OpCode(FastEnum):
   REDUCE_AXIS = auto(); REDUCE = auto(); ALLREDUCE = auto()                                                          # reduce
   UNROLL = auto(); CONTRACT = auto(); CAT = auto(); PTRCAT = auto()                                                  # expander ops
 
-class GroupedOpCodes:
+class GroupedOpCode:
   Unary =        {OpCode.EXP2, OpCode.LOG2, OpCode.SIN, OpCode.SQRT, OpCode.RECIPROCAL, OpCode.NEG, OpCode.TRUNC}
   Binary =       {OpCode.ADD, OpCode.MUL, OpCode.IDIV, OpCode.MAX, OpCode.MOD, OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ,
                   OpCode.XOR, OpCode.SHL, OpCode.SHR, OpCode.OR, OpCode.AND, OpCode.THREEFRY, OpCode.SUB, OpCode.FDIV, OpCode.POW}
