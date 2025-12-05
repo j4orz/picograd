@@ -100,12 +100,26 @@ class OpNode(GraphBuilder):
 
   def _apply_movement_opcode(self, opcode: OpCode, payload, same_shape_noop: bool=False) -> Self:
     """
-    _apply_movement_opcode converts the
-    *payload* (i.e python tuple) for the given movement *opcode* (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
-    *into* the embedded dsl's IR with OpNode's that have OpCode.{VECTORIZE/VCONST} which are subsequently used as input OpNode's to the originally specified movement OpNode
-    -> embedding host constructs into the DSL IR sets teenygrad up for it's compiler pipeline i.e transformations on shapes and dynamic shapes
-       as opposed to embedding host constructs into OpNode.payloads, which was infact the previous implementation
-       see PR12695: https://github.com/tinygrad/tinygrad/pull/12695/files#diff-2bccd37177726a35e599bc6fa693fb1c82ac1736fad2893d3ba12adb46b6d9faL528
+    _apply_movement_opcode is a lot more involved compare to _apply_compute_opcode.
+    this is largely because movement opcode's (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
+    modify the *shape*, which is logical/virtual and needs to be mapped to physical memory.
+
+    with the application of movement opcode's, there's a design decision to be made.
+      1. following the numpy/torch model (like c++'s std::iterator/std::container), view operations are non-allocating and share the same underlying storage
+         tinygrad followed this design decision with their ShapeTracker/LazyBuffer abstractions, which tracked logical nd-indices to physical 1d-indices with a stack of views
+        
+          option 1 conflates, confuses, and couples the *algorithm* with it's *layout/organization*
+          (see kelley's halide disertation: https://dspace.mit.edu/handle/1721.1/89996),
+          and becomes problematic when you want to *vertically split* the shape for _____ optimizations.
+
+      2. the alternative design decision is to *encode* and embed all movement semantics around a Tensor's shape *in* the dsl's IR itself,
+          to enable __________ about the shapes with the RANGIFY and POSTOPT abstractions,
+          inspired by halide and tvm paper (https://arxiv.org/abs/1802.04799).
+
+        see: https://x.com/__tinygrad__/status/1964037572503752910
+    
+          so _apply_movement_opcode converts the *payload* (i.e python tuple) for the given movement *opcode* (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
+          *into* the embedded dsl's IR with OpNode's that have OpCode.{VECTORIZE/VCONST} which are subsequently used as input OpNode's to the originally specified movement OpNode
     """
     output_opnodes_inputs = OpNode._convert_movementopcode_payload_to_opnodeir_input(opcode, payload)
     if len(output_opnodes_inputs) == 0:                         output_opnode = OpNode(opcode, (self,), self.dtype, payload)
@@ -189,31 +203,32 @@ class OpNode(GraphBuilder):
 
       case OpCode.INDEX:
         if not isinstance(self.dtype, PtrDType):                                        return None # non pointer index doesn't have a shape
-        elif self.src[0]._shape is None or len(self.src[1:]) == len(self.src[0].shape): return None # fully indexed doesn't have a shape. TODO: remove this
-        else:                                                                           return self.src[0].shape[len(self.src[1:]):] # pointer index
+        elif self.inputs[0]._shape is None or len(self.inputs[1:]) == len(self.inputs[0].shape): return None # fully indexed doesn't have a shape. TODO: remove this
+        else:                                                                           return self.inputs[0].shape[len(self.inputs[1:]):] # pointer index
 
       # constructor ops (which init the shape)
       case OpCode.CONST | OpCode.DEFINE_VAR | OpCode.BIND:                              return () if self._device is not None else None
       case OpCode.BUFFER:                                                               return (self.payload,)
       case OpCode.BUFFER_VIEW:                                                          return (self.payload[0],)
-      case OpCode.BUFFERIZE:                                                            return tuple([int(r.vmax+1) for r in self.src[1:]])
+      case OpCode.BUFFERIZE:                                                            return tuple([int(r.vmax+1) for r in self.inputs[1:]])
       case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG:              return (self.ptrdtype.size,)
-
-      case OpCode.REDUCE | OpCode.MSTACK | OpCode.MSELECT | OpCode.DETACH | OpCode.CONTIGUOUS | OpCode.CONTIGUOUS_BACKWARD | OpCode.AFTER | OpCode.END: return self.src[0]._shape # passthrough ops
-      case OpCode.KERNEL: return self.payload.ast._shape # ops with custom handling
-
-      case OpCode.BITCAST: # TODO: disallow shape changing bitcast
-        ps = self.src[0]._shape
+      # passthrough ops
+      case OpCode.REDUCE | OpCode.MSTACK | OpCode.MSELECT | OpCode.DETACH | OpCode.CONTIGUOUS | OpCode.CONTIGUOUS_BACKWARD | OpCode.AFTER | OpCode.END: return self.inputs[0]._shape
+      # ops with custom handling
+      case OpCode.KERNEL: return self.payload.ast._shape
+      # TODO: disallow shape changing bitcast
+      case OpCode.BITCAST:
+        ps = self.inputs[0]._shape
         if ps is None: return None
-        if (output_sz:=self.dtype.itemsize) != (input_sz:=self.src[0].dtype.itemsize): return ps[:-1]+(ssimplify((ps[-1]*input_sz) // output_sz),)
+        if (output_sz:=self.dtype.itemsize) != (input_sz:=self.inputs[0].dtype.itemsize): return ps[:-1]+(ssimplify((ps[-1]*input_sz) // output_sz),)
         return ps
       case OpCode.RESHAPE: # TODO: disallow reshape from nothing. tested by TestOpenClip.test_multigpu_clip_score
-        if self.src[0]._shape is None: return self.marg
+        if self.inputs[0]._shape is None: return self.marg
 
     # elementwise ops keep the shape the same. all inputs with shape must match
     if self.opcode in GroupedOpCodes.Compute.union({OpCode.CAST, OpCode.COPY, OpCode.ASSIGN, OpCode.NOOP, OpCode.GROUP, OpCode.SINK, OpCode.ALLREDUCE, OpCode.STORE}):
       # TODO: remove this hack for 3 op assign
-      input_shapes = [x._shape for x in (self.src[:2] if self.opcode is OpCode.ASSIGN else self.src) if x._shape is not None]
+      input_shapes = [x._shape for x in (self.inputs[:2] if self.opcode is OpCode.ASSIGN else self.inputs) if x._shape is not None]
       if len(input_shapes) == 0: return None
       if not all_same(input_shapes): raise RuntimeError(f"shape mismatch at {self.opcode}: {input_shapes}")
       return input_shapes[0]
@@ -221,7 +236,7 @@ class OpNode(GraphBuilder):
     # movement ops change the shape. this is the logic from the old ShapeTracker
     # NOTE: ssimplify is required because the shape needs to be canonical for broadcasting and same shape checking
     if self.opcode in GroupedOpCodes.Movement.union({OpCode.MULTI, OpCode.REDUCE_AXIS, OpCode.WMMA}):
-      ps = self.src[0]._shape
+      ps = self.inputs[0]._shape
       # TODO: WMMA is used for both axis WMMA and op WMMA. fix this and remove this hack. tested by BERT on AMD LLVM
       if ps is None and self.opcode is OpCode.WMMA: return None
       if ps is None: raise RuntimeError(f"movement op {self.opcode} requires shape")
@@ -262,13 +277,13 @@ class OpNode(GraphBuilder):
     raise NotImplementedError(f"no shape handling for {self.opcode} with {self.dtype}") # all OpCodes must be explicitly handled
 
   def ended_ranges(self):
-    if self.opcode in range_start: return self.src[range_start[self.opcode]:]
+    if self.opcode in range_start: return self.inputs[range_start[self.opcode]:]
     return ()
 
   # determine what ranges this is in
   def _ranges(self) -> dict[OpNode, None]:
     ret: dict[OpNode, None] = {}
-    for s in self.src: ret.update(s.ranges)
+    for s in self.inputs: ret.update(s.ranges)
     for er in self.ended_ranges:
       if er.op is Ops.RANGE:
         # if it's a single RANGE, we don't flow through it.
@@ -295,39 +310,39 @@ class OpNode(GraphBuilder):
   def _device(self) -> str|tuple[str, ...]|None:
     if self.opcode is OpCode.DEVICE: return self.payload
     if self.opcode is OpCode.BUFFERIZE: return self.payload.device
-    if self.opcode is OpCode.AFTER: return self.src[0]._device
+    if self.opcode is OpCode.AFTER: return self.inputs[0]._device
     if self.opcode is OpCode.MSELECT:
-      assert isinstance(self.src[0].device, tuple), "mselect must be on tuple device"
-      return self.src[0].device[self.payload]
-    if self.opcode is OpCode.MSTACK: return tuple(cast(str, x.device) for x in self.src)
-    if self.opcode in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}: return self.src[1].device
-    for x in self.src:
+      assert isinstance(self.inputs[0].device, tuple), "mselect must be on tuple device"
+      return self.inputs[0].device[self.payload]
+    if self.opcode is OpCode.MSTACK: return tuple(cast(str, x.device) for x in self.inputs)
+    if self.opcode in {OpCode.COPY, OpCode.BUFFER, OpCode.ALLREDUCE}: return self.inputs[1].device
+    for x in self.inputs:
       if x._device is not None: return x._device
     return None
   @property
   def buf_uop(self) -> OpNode:
     if self.opcode is OpCode.BUFFER: return self
-    if self.opcode is OpCode.MSELECT: return self.src[0].buf_uop.mselect(self.payload)
-    if self.opcode is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.buf_uop for x in self.src))
+    if self.opcode is OpCode.MSELECT: return self.inputs[0].buf_uop.mselect(self.payload)
+    if self.opcode is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.buf_uop for x in self.inputs))
     assert self.base.op is OpCode.AFTER, f"must be AFTER {self.base.op}"
-    return self.base.src[0].buf_uop.base
+    return self.base.inputs[0].buf_uop.base
 
   def as_buf(self) -> OpNode:
-    if self.opcode is OpCode.MSELECT: return self.src[0].as_buf().mselect(self.payload)
-    if self.opcode is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.as_buf() for x in self.src))
+    if self.opcode is OpCode.MSELECT: return self.inputs[0].as_buf().mselect(self.payload)
+    if self.opcode is OpCode.MSTACK: return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.as_buf() for x in self.inputs))
     # TODO: this should be the only one of these. this is the one RANGEIFY uses
     s = self
-    while len(s.src) and s.op not in {OpCode.BUFFER, OpCode.BUFFERIZE, OpCode.MSTACK}: s = s.src[0]
+    while len(s.inputs) and s.op not in {OpCode.BUFFER, OpCode.BUFFERIZE, OpCode.MSTACK}: s = s.inputs[0]
     return s
 
   def buf_target(self) -> OpNode:
     # the buffer that's being loaded from or store to
     match self.opcode:
       case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG: return self
-      case OpCode.AFTER | OpCode.INDEX | OpCode.STORE | OpCode.LOAD: return self.src[0].buf_target()
+      case OpCode.AFTER | OpCode.INDEX | OpCode.STORE | OpCode.LOAD: return self.inputs[0].buf_target()
       case OpCode.VECTORIZE:
-        assert all_same(self.src)
-        return self.src[0].buf_target()
+        assert all_same(self.inputs)
+        return self.inputs[0].buf_target()
       case _: raise RuntimeError(f"buf_target called on non load/index/store {self.opcode}")
 
   @property
@@ -335,14 +350,14 @@ class OpNode(GraphBuilder):
     from tinygrad.device import Buffer, MultiBuffer
     if self is not self.base:
       assert self.opcode is OpCode.RESHAPE, f"can only be RESHAPE {self}"
-      return self.src[0].buffer
+      return self.inputs[0].buffer
     if self.opcode is OpCode.MSELECT:
-      ret = self.src[0].buffer
+      ret = self.inputs[0].buffer
       assert isinstance(ret, MultiBuffer)
       return ret.bufs[self.payload]
     if self.opcode is OpCode.MSTACK:
       ret = MultiBuffer.__new__(MultiBuffer)
-      ret.bufs = [cast(Buffer, x.buffer) for x in self.src]
+      ret.bufs = [cast(Buffer, x.buffer) for x in self.inputs]
       assert all_same([x.size for x in ret.bufs]) and all_same([x.dtype for x in ret.bufs]), "multibuffers mismatch buffers"
       return ret
     assert self.opcode is OpCode.BUFFER, f"must be BUFFER {self.opcode}"
@@ -358,4 +373,4 @@ class OpNode(GraphBuilder):
     return self.buffer if self.opcode in {OpCode.BUFFER, OpCode.MSTACK} and self.buffer.is_allocated() else None
   @property
   def is_realized(self) -> bool:
-    return all(x.base.realized is not None for x in self.base.src) if self.base.op is OpCode.MULTI else self.base.realized is not None
+    return all(x.base.realized is not None for x in self.base.inputs) if self.base.op is OpCode.MULTI else self.base.realized is not None
