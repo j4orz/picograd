@@ -109,7 +109,9 @@ class OpNode(GraphBuilder):
     """
     output_opnodes_inputs = OpNode._convert_movementopcode_payload_to_opnodeir_input(opcode, payload)
     if len(output_opnodes_inputs) == 0:                         output_opnode = OpNode(opcode, (self,), self.dtype, payload)
-    else:                                                       output_opnode = OpNode(opcode, (self,) + OpNode.sink(*output_opnodes_inputs).simplify().inputs, self.dtype) # <------------------------------------- you're here now.
+    else:                                                       output_opnode = OpNode(opcode, (self,) + helpers.normalize_shape(output_opnodes_inputs), self.dtype) # no .simplify() peephole on inputs
+                                                                                                                                            # i.e constant folding 2*3->6
+                                                                                                                                            # i.e VECTORIZE -> VCONST
 
     if output_opnode.shape == self.shape and same_shape_noop:   return self # for all movement ops, we check if the movement op results in an identiy no-op
     return                                                      output_opnode
