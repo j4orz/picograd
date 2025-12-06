@@ -19,17 +19,18 @@ class _Device:
   device registry which maps device strings to device Runtimes
   """
   def __init__(self) -> None:
-    self._devices = [x.stem[len("ops_"):].upper() for x in (pathlib.Path(__file__).parent).iterdir() if x.stem.endswith("runtime.py")]
+    self._devices = [path.stem[len("ops_"):].upper() for path in (pathlib.Path(__file__).parent).iterdir() if path.stem.endswith("runtime.py")]
     self._opened_devices:set[str] = set()
-  def __getitem__(self, ix:str) -> Runtime: return self.canonicalized_runtime(self.canonicalize_device(ix))
+  def __getitem__(self, device:str) -> Runtime: return self.canonicalize_runtime(self.canonicalize_device(device))
   def canonicalize_device(self, device:str) -> str: return re.sub(r":0$", "", (d:=device.split(":", 1)[0].upper()) + device[len(d):])
-  def canonicalized_runtime(self, ix:str) -> Runtime:
-    assert ALLOW_DEVICE_USAGE or ix.split(":")[0] in ["DISK", "TINYFS", "NPY", "PYTHON"], f"usage of device {ix} disallowed"
-    base = (__package__ or __name__).split('.')[0]  # tinygrad
-    x = ix.split(":")[0].lower()
-    output = [cls for cname, cls in inspect.getmembers(importlib.import_module(f'{base}.runtime.ops_{x}')) if (cname.lower() == x + "device")][0](ix)
-    if DEBUG >= 1: print(f"opened device {ix} from pid:{os.getpid()}")
-    self._opened_devices.add(ix)
+  def canonicalize_runtime(self, canonicalized_device:str) -> Runtime:
+    assert ALLOW_DEVICE_USAGE or canonicalized_device.split(":")[0] in ["DISK", "TINYFS", "NPY", "PYTHON"], f"usage of device {canonicalized_device} disallowed"
+    package_name = (__package__ or __name__).split('.')[0]
+    canonicalized_device_normalized = canonicalized_device.split(":")[0].lower()
+    foo = inspect.getmembers(importlib.import_module(f'{package_name}.runtime.{canonicalized_device_normalized}_runtime'))
+    output = [cls for cname, cls in foo if (cname.lower() == canonicalized_device_normalized + "device")][0](canonicalized_device)
+    if DEBUG >= 1: print(f"opened device {canonicalized_device} from pid:{os.getpid()}")
+    self._opened_devices.add(canonicalized_device)
     return output
 
 Device = _Device()
