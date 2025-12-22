@@ -4,6 +4,7 @@ import itertools, time, base64, pickle
 
 from picograd.dtype import DType
 from picograd.engine.irparser import GroupedOpCode, OpCode
+from picograd.engine.compiler import Renderer
 from picograd.runtime.device import Allocator, Compiler, Runtime
 
 class HostDevice(Runtime):
@@ -41,5 +42,9 @@ class HostKernel:
         _emulate()
     return time.perf_counter() - st
 
+class HostRenderer(Renderer):
+  def __init__():
+    x = 1
+  
 class HostCompiler(Compiler):
   def compile(self, src:str) -> bytes: return base64.b64decode(src)

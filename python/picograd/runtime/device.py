@@ -1,9 +1,11 @@
+
 from __future__ import annotations
-from typing import Any, Generic, Self, Sequence, Iterator, TypeVar, cast
+from typing import Any, Callable, Generic, Self, Sequence, Iterator, TypeVar, cast
 import functools,  atexit, re, pathlib, contextlib, importlib, inspect, os, ctypes
 from picograd.dtype import DType, PtrDType
 from picograd.engine.compiler import Renderer
-from picograd.helpers import ALLOW_DEVICE_USAGE, DEBUG, LRU, MAX_BUFFER_SIZE, getenv
+from picograd import helpers
+from picograd.helpers import ALLOW_DEVICE_USAGE, DEBUG, LRU, MAX_BUFFER_SIZE, T, getenv
 
 # picograd to tinygrad bridge
 # - removed Device.Default
@@ -44,9 +46,25 @@ class Runtime:
   # TODO (picograd profiling): profile_events:list[ProfileEvent] = [ProfileDeviceEvent("CPU")] # NOTE: CPU is the default device.
   def __init__(self, device:str, allocator:Allocator, compilers:Sequence[CompilerPairT]|None, kernel, graph=None, group_id=None):
     self.device, self.allocator, self.kernel, self.graph, self.group_id = device, allocator, kernel, graph, group_id
-    self.renderer, self.compiler = compilers
-    if DEBUG >= 1: print(f"{self.device}: using {self.compiler.__class__.__name__}")
+    self.compilers = cast(list[CompilerPairT], compilers or [(Renderer, Compiler)])
+
+    envnames = [self._get_compiler_envvar(c) for r,c in self.compilers]
+    enable_comps = set((en, comp_pair) for en, comp_pair in zip(envnames, self.compilers) if en is not None and getenv(en, -1) == 1)
+    disable_comps = set((en, comp_pair) for en, comp_pair in zip(envnames, self.compilers) if en is not None and getenv(en, -1) == 0)
+    self.renderer, self.compiler = select_first_inited([list(enable_comps)[0][1]] if len(enable_comps) == 1 else self.compilers,
+                                                       f"No compiler for {self.device} is available")
+    if DEBUG >= 1: print(f"{self.device}: using {self.compilers.__class__.__name__}")
   def synchronize(self): raise NotImplementedError("need synchronize")
+  def _get_compiler_envvar(self, c):
+    compiler_name = f"{helpers.unwrap_class_type(c).__name__.upper().removesuffix('COMPILER').removeprefix(devname:=self.device.split(':')[0].upper())}"
+    return f"{devname}_{compiler_name if len(compiler_name) > 0 else helpers.unwrap_class_type(c).__name__.upper()}"
+
+def select_first_inited(candidates:Sequence[Callable[...,T]|Sequence[Callable[...,T]]], err_msg: str) -> tuple[T,...]|T:
+  excs = []
+  for typ in candidates:
+    try: return tuple([cast(Callable, t)() for t in typ]) if isinstance(typ, Sequence) else cast(Callable, typ)()
+    except Exception as e: excs.append(e)
+  raise ExceptionGroup(err_msg, excs)
 
 # **************** A Buffer from an Allocator ****************
 def from_mv(mv:memoryview, to_type:type[ctypes._SimpleCData]=ctypes.c_char) -> ctypes.Array:
