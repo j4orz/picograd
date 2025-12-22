@@ -60,7 +60,7 @@ class Buffer:
   Buffer provides an on-device handle of an OpNode's backing storage with a Runtime's Allocator
   picograd follows tinygrad's bent towards object-oriented organization where
   the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
-  similar to how the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .eval() returning an OpNode
+  similar to how the interpreter's evaluator lives *on* the OpNode, rather than a freestanding eval() returning an OpNode
   """
   def is_initialized(self) -> bool: return self.is_allocated() and hasattr(self, '_buf') # check if the underlying buffer is allocated and the current buffer/view is initialized
   def is_allocated(self) -> bool: return self.base.is_allocated() if self._basebuf is not None else hasattr(self, '_buf') # check if the underlying buffer is allocated, possibly from the base object

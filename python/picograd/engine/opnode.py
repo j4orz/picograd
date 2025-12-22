@@ -68,10 +68,10 @@ class recursive_property(property):
 @dataclass(eq=False, slots=True) # NOTE: this should be frozen, but frozen is slower
 class OpNode(GraphBuilder):
   """
-  OpNode structs (which Tensor's deusugar into) are vertices which form an expression graph G=(V,E) where V is a Set<Op> and E is a Set<(Op,Op)>
+  OpNode structs (which Tensor's deusugar into) are vertices that form an expression graph G=(V,E) where V is a Set<Op> and E is a Set<(Op,Op)>
   OpNodes store state for
-    1. specified compute (OpCode) aka the function type f
-    2. resulting virtual shape (.shape) aka the image of the function f: _ -> SHAPE
+    1. specified compute (OpCode) aka the function *type* of f
+    2. resulting virtual shape (.shape) aka the *image* of f: _ -> SHAPE
     c. mapped physical stoage (Buffer)
   """
   opcode: OpCode
@@ -88,15 +88,15 @@ class OpNode(GraphBuilder):
   """
   the graphbuilder overrides the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
   with ComputeOpCodeBuilder._apply_compute_opcode() and MovementOpCodeBuilder._apply_movement_opcode()
-  which act as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding IR OpCode
+  which acts as the embedded DSL's "parser" by coupling python dunder builtins to be aware of the corresponding IR OpCode
 
   *:  keep in mind that the semantics of these two methods are applying *ir op code*
       that is, to maintain parity in semantics with tinygrad (and a smooth pedagogical progression),
       the returned OpNode's are still un-{materialized/realized/evaluated}, and caller's (namely tensor.py)
       need to invoke .eval() on the OpNode for eager semantics.
 
-  **: if you're coming from a functional mindset, note the pythonic/object-oriented .apply_opcode is not a static method
-      that self is the OpNode that the OpCode ftype is operating on, to produce a new Self(OpNode)
+  **: if you're coming from a functional mindset, note that the pythonic/object-oriented .apply_opcode is not a static method.
+      that is, self is the OpNode that the OpCode ftype is operating on, to produce a new Self(OpNode)
       i.e the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .apply_opcode() returning an OpNode,
       i.e similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
   """
@@ -113,15 +113,15 @@ class OpNode(GraphBuilder):
 
     with the application of movement opcode's, there's a design decision to be made.
       1. following the numpy/torch model (like c++'s std::iterator/std::container), view operations are non-allocating and share the same underlying storage
-         tinygrad followed this design decision with their ShapeTracker/LazyBuffer abstractions, which tracked logical nd-indices to physical 1d-indices with a stack of views
+         tinygrad followed this design decision with their ShapeTracker/LazyBuffer abstractions, which tracked logical nd-indices to physical 1d-indices with a *stack* of views
         
           option 1 conflates, confuses, and couples the *algorithm* with it's *layout/organization*
           (see kelley's halide disertation: https://dspace.mit.edu/handle/1721.1/89996),
           and becomes problematic when you want to *vertically split* the shape for _____ optimizations.
 
       2. the alternative design decision is to *encode* and embed all movement semantics around a Tensor's shape *within* the dsl's IR itself,
-         to enable __________ about the shapes with the RANGIFY and POSTOPT abstractions,
-         inspired by halide and tvm paper (https://arxiv.org/abs/1802.04799).
+         to enable __________ about the shapes with the RANGIFY and POSTOPT op codes,
+         inspired by halide and tvm paper https://arxiv.org/abs/1802.04799.
          see: https://x.com/__tinygrad__/status/1964037572503752910
     
          so _apply_movement_opcode converts the *payload* (i.e python tuple) for the given movement *opcode* (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})

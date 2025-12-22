@@ -31,9 +31,9 @@ def get_shape(x) -> tuple[int, ...]:
 
 class Tensor(GraphBuilder):
   """
-  the Tensor class is a *sugared handle* to the expression graph of vertices V=Set<OpNode> and edges = Set<(OpNode,OpNode)>,
-  which represents picograd's primitive understanding (intermediate representation) of the specified expression f(x)
-  the data and functionality you expect to live on Tensor actually lives in OpNode because the Tensor class is actually a sugared handle
+  the Tensor class is a *sugared handle* to the expression graph of vertices V=Set<OpNode> and edges E=Set<(OpNode,OpNode)>,
+  which represents picograd's primitive understanding (intermediate representation) of the specified expression f(x).
+  the data and functionality you expect to live on Tensor actually lives in OpNode because the Tensor class is a sugared handle *to* the expression graph
   """
 
   # ************ Tensor Data + Constructors ************
@@ -72,18 +72,19 @@ class Tensor(GraphBuilder):
     Tensor.__init__() constructs the OpNode for the Tensor's given device and dtype
     """
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
-    if DEBUG >= 1: print("initializing tensor with dtype:", dtype, "on device:", device)
+    if DEBUG >= 1: print("START Tensor.__init__() initializing tensor with dtype:", dtype, "on device:", device, "...")
     dtype: DType | None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
     device: str | tuple[str, ...] = tuple(Device.canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize_device(device)
     self.grad: Tensor | None = None                                                            # tensors can have gradients if you have called .backward
     self.requires_grad: bool | None = requires_grad                                            # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
     self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)
     all_tensors[weakref.ref(self)] = None                                                      # add to all_tensors after construction succeeds
+    if DEBUG >= 1: print("DONE Tensor.__init__() initializing tensor with dtype:", dtype, "on device:", device, "...")
     return
   
   @staticmethod
   def _input_to_opnode(input: Const|bytes|list|tuple|OpNode|None, device: str, dtype: DType|None, force_unique) -> OpNode:
-    if DEBUG >= 1: print("constructing Tensor's OpNode...")
+    if DEBUG >= 1: print("START Tensor._input_to_opnode() constructing Tensor's OpNode...")
     if isinstance(input, OpNode):                                               raise NotImplementedError("todo")
     elif input is None:                                                         opnode = OpNode.const(dtype or dtypes.default_float, 0, device, (), unique=force_unique)
     elif isinstance(input, get_args(Const)):                                    opnode = OpNode.const(dtype or dtypes.from_py(input), input, device, (), unique=force_unique)
@@ -97,22 +98,21 @@ class Tensor(GraphBuilder):
       else:                                                                     opnode = Tensor._frompy(input, dtype)
 
     if not isinstance(opnode, OpNode): raise RuntimeError(f"can't create Tensor from {input!r} with type {type(input)}") # by this point it has to be a UOp
+    if DEBUG >= 1: print("DONE Tensor._input_to_opnode() constructing Tensor's OpNode...")
     return opnode if opnode.device == device else opnode.copy_to_device(device)                    # data might be on a different device
   
   @staticmethod
   def _frompy(input:list|tuple|bytes, dtype:DType) -> OpNode:
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
-    if DEBUG >= 1: print("START _frompy: constructing OpNode from python input", input)
-    if DEBUG >= 1: print("---------------------------------------------------------------------")
+    if DEBUG >= 1: print("START _frompy(): constructing OpNode from python input", input)
     output_opnode = OpNode.new_buffer("HOST", helpers.prod(shape:=get_shape(input)), dtype) # BUFFER
-    if DEBUG >= 1: print("1. created OpNode with OpCode.BUFFER")
+    if DEBUG >= 1: print("_frompy() 1. created OpNode with OpCode.BUFFER-------------------------")
     output_opnode = output_opnode.reshape(shape)                                              # RESHAPE
-    if DEBUG >= 1: print("2. applied OpCode.RESHAPE")
+    if DEBUG >= 1: print("_frompy() 2. applied OpCode.RESHAPE-------------------------")
     bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)]))
-    if DEBUG >= 1: print("3. allocating the buffer...")
+    if DEBUG >= 1: print("_frompy() 3. allocating the buffer-------------------------")
     output_opnode.buffer.allocate(bytes) # fake realize. calling .storage.allocate() and passing bytes/memoryview as pre-allocated buf
     # todo: actually realize(evaluate/materialize)
-    if DEBUG >= 1: print("---------------------------------------------------------------------")
     if DEBUG >= 1: print("DONE _frompy: constructing OpNode from python input", input)
 
     return output_opnode
@@ -124,9 +124,9 @@ class Tensor(GraphBuilder):
   # ************ Tensor Operations ************
   def _evaluate(self, *other: Tensor) -> Self:
     """
-    ._evaluate() is the method in which all evaluations funnel through, regardless of whether the operation is either
-      - sugar: directly calls ._evaluate() or
-      - primitive: indirectly calls ._evaluate() by _binop override
+    ._evaluate() is the method which all evaluations funnel through, regardless of whether the operation is either
+      1. sugar: directly calls ._evaluate() or
+      2. primitive: indirectly calls ._evaluate() by _binop override
     in either case, ._evaluate() evaluates f(x) by calling f, implemented by Op.eval(), which in turn, launches device kernels.
     ._evaluate() then wraps the new output Op in the expression graph with a Tensor handle
     """
@@ -137,9 +137,9 @@ class Tensor(GraphBuilder):
   def _forward(self, f: Callable, *other: Tensor) -> Self:
     """
     ._forward() is the internal graph(IR)-builder which constructs an OpNode
-    that represents the computation of f applied to the supplied Tensors
-    keep in mind that the Tensor returned is simply a handle to unevaluated, unmaterialized graph IR,
-    which internal call-sites evaluate with ._evaluate(), the teenygrad .realize() equivalent.
+    that represents the computation of f applied to the provided Tensors.
+    keep in mind that the Tensor returned is simply a *handle* to unevaluated, unmaterialized graph IR,
+    which internal call-sites evaluate with ._evaluate() — teenygrad's .realize() equivalent.
     """
     output_opnode: OpNode = f(*[t.opnode for t in (self,)+other]) # <------------ compiler pipeline: if EAGER ... elif GRAPH ... else ...
     needs_input_grad = [t.requires_grad for t in (self,)+other]
