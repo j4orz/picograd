@@ -29,11 +29,26 @@ def get_shape(x) -> tuple[int, ...]:
   if not all_same(subs:=[get_shape(xi) for xi in x]): raise ValueError(f"inhomogeneous shape from {x}")
   return (len(subs),) + (subs[0] if subs else ())
 
+
+
+
+
+
+
+
 class Tensor(GraphBuilder):
   """
   the Tensor class is a *sugared handle* to the expression graph of vertices V=Set<OpNode> and edges E=Set<(OpNode,OpNode)>,
   which represents picograd's primitive understanding (intermediate representation) of the specified expression f(x).
-  the data and functionality you expect to live on Tensor actually lives in OpNode because the Tensor class is a sugared handle *to* the expression graph
+  the data and functionality you expect to live on Tensor actually lives in OpNode because the Tensor class is a sugared handle *to* the expression graph.
+  all methods that framework users apply to Tensors are implemented by calling GraphBuilder's methods, which, in turn, call
+  ComputeOpCodeBuilder._apply_compute_opcode() and MovementOpCodeBuilder._apply_movement_opcode(), implemented by OpNode.
+  *:  keep in mind that the semantics of these two methods are applying *ir op code*
+      that is, to maintain parity in semantics with tinygrad (and a smooth pedagogical progression),
+      the returned OpNode's are still un-{materialized/realized/evaluated}, and caller's (namely tensor.py)
+      need to invoke .eval() on the OpNode for eager semantics.
+  **: if you are wondering where and how teenygrad's shape, strides, and storage work (i.e movement operations), continue reading through OpNode's source.
+      in short, shapes, strides, and storage is encoded *in* the IR!
   """
 
   # ************ Tensor Data + Constructors ************
@@ -69,7 +84,7 @@ class Tensor(GraphBuilder):
   def __init__(self, input: Const | bytes | list | tuple | None, # removed OpNode, np.ndarray, pathlib.Path support (for now).
                device: str |tuple | list | None=None, dtype: DTypeLike | None=None, requires_grad: bool | None=None, force_unique: bool=False): # kwargs
     """
-    Tensor.__init__() constructs the OpNode for the Tensor's given device and dtype
+    Tensor.__init__() initializes state for self, which includes metadata for device, dtype, gradients, and most importantly, the handle to an OpNode
     """
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
     if DEBUG >= 1: print("START Tensor.__init__() initializing tensor with dtype:", dtype, "on device:", device, "...")
@@ -105,12 +120,12 @@ class Tensor(GraphBuilder):
   def _frompy(input:list|tuple|bytes, dtype:DType) -> OpNode:
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
     if DEBUG >= 1: print("START _frompy(): constructing OpNode from python input", input)
-    output_opnode = OpNode.new_buffer("HOST", helpers.prod(shape:=get_shape(input)), dtype) # BUFFER
-    if DEBUG >= 1: print("_frompy() 1. created OpNode with OpCode.BUFFER-------------------------")
-    output_opnode = output_opnode.reshape(shape)                                              # RESHAPE
-    if DEBUG >= 1: print("_frompy() 2. applied OpCode.RESHAPE-------------------------")
+    output_opnode = OpNode.new_buffer("HOST", helpers.prod(shape:=get_shape(input)), dtype)
+    if DEBUG >= 1: print("_frompy() 1. created OpNode with OpCode.BUFFER---")
+    output_opnode = output_opnode.reshape(shape)
+    if DEBUG >= 1: print("_frompy() 2. applied OpCode.RESHAPE---")
+    if DEBUG >= 1: print("_frompy() 3. allocating Buffer---")
     bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)]))
-    if DEBUG >= 1: print("_frompy() 3. allocating the buffer-------------------------")
     output_opnode.buffer.allocate(bytes) # fake realize. calling .storage.allocate() and passing bytes/memoryview as pre-allocated buf
     # todo: actually realize(evaluate/materialize)
     if DEBUG >= 1: print("DONE _frompy: constructing OpNode from python input", input)

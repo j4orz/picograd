@@ -112,9 +112,10 @@ class OpNode(GraphBuilder):
     modify the *shape*, which is *logical/virtual* and needs to be mapped to *physical* memory.
 
     with the application of movement opcode's, there's a design decision to be made.
-      1. following the numpy/torch model (like c++'s std::iterator/std::container), view operations are non-allocating and share the same underlying storage
-         tinygrad followed this design decision with their ShapeTracker/LazyBuffer abstractions, which tracked logical nd-indices to physical 1d-indices with a *stack* of views
-        
+      1. following the numpy/torch model (like c++'s std::iterator/std::container and pytorch's c10::TensorImpl/c10::StorageImpl),
+         view operations are non-allocating and share the same underlying storage
+         tinygrad followed this design decision with their ShapeTracker/LazyBuffer abstractions, which mapped logical nd-indices to physical 1d-indices with a *stack* of views via strides
+         
           option 1 conflates, confuses, and couples the *algorithm* with it's *layout/organization*
           (see kelley's halide disertation: https://dspace.mit.edu/handle/1721.1/89996),
           and becomes problematic when you want to *vertically split* the shape for _____ optimizations.
