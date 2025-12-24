@@ -16,7 +16,7 @@ from picograd.helpers import ALLOW_DEVICE_USAGE, DEBUG, LRU, MAX_BUFFER_SIZE, T,
 ALL_DEVICES = ["HIP", "CUDA"] # "CPU", "CL", "MOJO"
 DeviceType = TypeVar('DeviceType', bound='Runtime')
 
-class _Device:
+class _DeviceRegistry:
   """
   device registry which maps device strings to device Runtimes
   """
@@ -35,8 +35,8 @@ class _Device:
     self._opened_devices.add(canonicalized_device)
     return output
 
-Device = _Device()
-atexit.register(lambda: [Device[dn].finalize() for dn in Device._opened_devices])
+DeviceRegistry = _DeviceRegistry()
+atexit.register(lambda: [DeviceRegistry[dn].finalize() for dn in DeviceRegistry._opened_devices])
 
 # **************** Runtime: Host Allocators + Device Compilers ****************
 class Runtime:
@@ -59,7 +59,7 @@ class Runtime:
     compiler_name = f"{helpers.unwrap_class_type(c).__name__.upper().removesuffix('COMPILER').removeprefix(devname:=self.device.split(':')[0].upper())}"
     return f"{devname}_{compiler_name if len(compiler_name) > 0 else helpers.unwrap_class_type(c).__name__.upper()}"
 
-def select_first_inited(candidates:Sequence[Callable[...,T]|Sequence[Callable[...,T]]], err_msg: str) -> tuple[T,...]|T:
+def select_first_inited(candidates: Sequence[Callable[...,T] | Sequence[Callable[...,T]]], err_msg: str) -> tuple[T,...]|T:
   excs = []
   for typ in candidates:
     try: return tuple([cast(Callable, t)() for t in typ]) if isinstance(typ, Sequence) else cast(Callable, typ)()
@@ -101,35 +101,33 @@ class Buffer:
     assert isinstance(dtype, DType) and not isinstance(dtype, PtrDType)
     self.device, self.size, self.dtype, = device, size, dtype
     self.options, self.offset, self.allocated_views = options, offset, 0
-    if DEBUG >=1: print("initializing Buffer with the following size, dtype, and device")
-    if DEBUG >= 1: print("blaa", device)
+    if DEBUG >=1: print("initializing Buffer on device", device)
 
     if base is None:
       assert offset == 0, "base buffers can't have offset"
       self._basebuf = None
       self._opnode_refcount = opnode_refcount
 
-      print("wolf")
+      print("base is None")
       if buf_opaque is not None:
-        print("deer")
+        print("buf opaque is not none")
         self.allocate(buf_opaque)
         if DEBUG >=1: print("allocated the Buffer with an opaque buf", buf_opaque)
       if initial_value is not None:
-        print("mooose")
+        print("initial value is not none")
         self.allocate()
         if DEBUG >=1: print("allocated the Buffer")
         self.copyin(memoryview(initial_value))
         if DEBUG >=1: print("memcpy'd a memoryview of initial values", initial_value)
-
-      print("bird")
     else:
       assert base._basebuf is None, "base can't have a base"
       assert device == base.device, "base must have the same device"
-      print("dog")
+      print("base is not none")
       self._basebuf = base
     if preallocate:
-      print("bark")
+      print("preallocate")
       self.allocate()
+    if DEBUG >=1: print("DONE initializing Buffer on device", device)
 
   @property
   def base(self) -> Buffer: return self._basebuf if self._basebuf is not None else self
@@ -137,15 +135,13 @@ class Buffer:
     self.base._opnode_refcount += count
     return self
 
-  """
-  
-  """
   def allocate(self, opaque=None, external_ptr=None) -> Self:
     assert not self.is_initialized(), "can't allocate already allocated buffer"
     if DEBUG >= 7: print(f"buffer: allocate {self.nbytes} bytes on {self.device}")
-    print("moosE", self.device)
     if not self.device.startswith("NULL") and self.size > MAX_BUFFER_SIZE > 0: raise RuntimeError(f"buffer of size {self.size/1e6:.2f}M is too large")
-    self.allocator: Allocator = Device[self.device].allocator
+
+    print("allocating the initialized Buffer on device", self.device)
+    self.allocator: Allocator = DeviceRegistry[self.device].allocator
 
     if external_ptr is not None:
       self.options = replace(self.options, external_ptr=external_ptr) if self.options else BufferSpec(external_ptr=external_ptr)

@@ -7,7 +7,7 @@ from picograd import helpers
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
 from picograd.engine.irparser import GroupedOpCode, OpCode, GraphBuilder
 if TYPE_CHECKING:
-  from picograd.runtime.device import Buffer, Device
+  from picograd.runtime.device import Buffer, DeviceRegistry
 from picograd.dtype import Const, ConstLike, DType, ImageDType, PtrDType, dtypes
 
 # picograd to tinygrad bridge
@@ -213,7 +213,7 @@ class OpNode(GraphBuilder):
     if shape is not None: output_opnode = output_opnode.reshape((1,)*len(shape)).expand(shape)
     return output_opnode
   
-  # **************** Virtual Shape ****************
+  # **************** Virtual/Logical Shape ****************
   @property
   def size(self) -> int: return helpers.prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
   
@@ -376,8 +376,6 @@ class OpNode(GraphBuilder):
   def buffer(self) -> Buffer:
     from picograd.runtime.device import Buffer
     if self is not self.base: assert self.opcode is OpCode.RESHAPE, f"can only be RESHAPE {self}"; return self.inputs[0].buffer
-    if self.opcode is OpCode.MSELECT: raise NotImplementedError("todo")
-    if self.opcode is OpCode.MSTACK: raise NotImplementedError("todo")
     assert self.opcode is OpCode.BUFFER, f"must be BUFFER {self.opcode}"  
     if (cret:=buffers.get(self)) is not None: return cret
     output_dtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base

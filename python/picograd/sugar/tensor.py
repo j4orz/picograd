@@ -7,7 +7,7 @@ import math, weakref, struct, pathlib
 from picograd import helpers
 from picograd.engine import OpCode, OpNode, GraphBuilder
 from picograd.helpers import DEBUG, EAGER, GRAPH
-from picograd.runtime import Device
+from picograd.runtime import DeviceRegistry
 from picograd.dtype import Const, DType, DTypeLike, dtypes
 import picograd.dtype
 
@@ -89,7 +89,7 @@ class Tensor(GraphBuilder):
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
     if DEBUG >= 1: print("START Tensor.__init__() initializing tensor with dtype:", dtype, "on device:", device, "...")
     dtype: DType | None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
-    device: str | tuple[str, ...] = tuple(Device.canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize_device(device)
+    device: str | tuple[str, ...] = tuple(DeviceRegistry.canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else DeviceRegistry.canonicalize_device(device)
     self.grad: Tensor | None = None                                                            # tensors can have gradients if you have called .backward
     self.requires_grad: bool | None = requires_grad                                            # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
     self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)
@@ -103,32 +103,36 @@ class Tensor(GraphBuilder):
     if isinstance(input, OpNode):                                               raise NotImplementedError("todo")
     elif input is None:                                                         opnode = OpNode.const(dtype or dtypes.default_float, 0, device, (), unique=force_unique)
     elif isinstance(input, get_args(Const)):                                    opnode = OpNode.const(dtype or dtypes.from_py(input), input, device, (), unique=force_unique)
-    elif isinstance(input, bytes):                                              opnode = Tensor._frompy(input, dtypes.uint8 if dtype is None else dtype)
+    elif isinstance(input, bytes):                                              opnode = Tensor._hostseq2dslopnode(input, dtypes.uint8 if dtype is None else dtype)
     elif isinstance(input, (list, tuple)):
       if dtype is None:
         if (d := fully_flatten(input)) and all(isinstance(s, bool) for s in d): dtype = dtypes.bool
         else:                                                                   dtype = dtypes.default_int if d and all_int(d) else dtypes.default_float # NOTE: this works because all_int([True, False]) is True
 
-      if dtype in [dtypes.bfloat16, *dtypes.fp8s]:                              opnode = Tensor(Tensor._frompy(input, dtypes.float32), device=device).cast(dtype).uop
-      else:                                                                     opnode = Tensor._frompy(input, dtype)
+      if dtype in [dtypes.bfloat16, *dtypes.fp8s]:                              opnode = Tensor(Tensor._hostseq2dslopnode(input, dtypes.float32), device=device).cast(dtype).uop
+      else:                                                                     opnode = Tensor._hostseq2dslopnode(input, dtype)
 
     if not isinstance(opnode, OpNode): raise RuntimeError(f"can't create Tensor from {input!r} with type {type(input)}") # by this point it has to be a UOp
-    if DEBUG >= 1: print("DONE Tensor._input_to_opnode() constructing Tensor's OpNode...")
     return opnode if opnode.device == device else opnode.copy_to_device(device)                    # data might be on a different device
   
   @staticmethod
-  def _frompy(input:list|tuple|bytes, dtype:DType) -> OpNode:
+  def _hostseq2dslopnode(input:list|tuple|bytes, dtype:DType) -> OpNode:
+    """
+    _host2d2l() takes in a python list, tuple, or bytearray and maps it into a teenygrad OpNode for the initialization call stack.
+    the resulting OpNode with OpCode.BUFFER is allocated on device "HOST".
+    callers must manually transfer the OpNode's backing storage with opnode.copy_to_device(device)
+    """
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
-    if DEBUG >= 1: print("START _frompy(): constructing OpNode from python input", input)
+    if DEBUG >= 1: print("START _hostseq2dslopnode(): constructing OpNode from python input", input)
     output_opnode = OpNode.new_buffer("HOST", helpers.prod(shape:=get_shape(input)), dtype)
-    if DEBUG >= 1: print("_frompy() 1. created OpNode with OpCode.BUFFER---")
+    if DEBUG >= 1: print("_hostseq2dslopnode() 1. created OpNode with OpCode.BUFFER---")
     output_opnode = output_opnode.reshape(shape)
-    if DEBUG >= 1: print("_frompy() 2. applied OpCode.RESHAPE---")
-    if DEBUG >= 1: print("_frompy() 3. allocating Buffer---")
-    bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(xi, dtype)) for xi in fully_flatten(input)]))
-    output_opnode.buffer.allocate(bytes) # fake realize. calling .storage.allocate() and passing bytes/memoryview as pre-allocated buf
+    if DEBUG >= 1: print("_hostseq2dslopnode() 2. applied OpCode.RESHAPE---")
+    if DEBUG >= 1: print("_hostseq2dslopnode() 3. allocating the OpNode with OpCode.BUFFER---")
+    bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(x, dtype)) for x in fully_flatten(input)]))
+    output_opnode.buffer.allocate(bytes) # fake realize. calling .buffer.allocate() and passing bytes/memoryview as pre-allocated buf
     # todo: actually realize(evaluate/materialize)
-    if DEBUG >= 1: print("DONE _frompy: constructing OpNode from python input", input)
+    if DEBUG >= 1: print("DONE _hostseq2dslopnode: constructing OpNode from python input", input)
 
     return output_opnode
 
