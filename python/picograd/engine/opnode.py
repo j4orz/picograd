@@ -345,32 +345,6 @@ class OpNode(GraphBuilder):
       for input in self.inputs:                                               # otherwise, recurse
         if input._device is not None:                                         return input._device
     return None
-  
-  @property
-  def buf_uop(self) -> OpNode:
-    if self.opcode is OpCode.BUFFER:                                        return self
-    if self.opcode is OpCode.MSELECT:                                       return self.inputs[0].buf_uop.mselect(self.payload)
-    if self.opcode is OpCode.MSTACK:                                        return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.buf_uop for x in self.inputs))
-    assert self.base.op is OpCode.AFTER, f"must be AFTER {self.base.op}"
-    return self.base.inputs[0].buf_uop.base
-
-  def as_buf(self) -> OpNode:
-    if self.opcode is OpCode.MSELECT:                                       return self.inputs[0].as_buf().mselect(self.payload)
-    if self.opcode is OpCode.MSTACK:                                        return OpNode(OpCode.MSTACK, self.dtype, src=tuple(x.as_buf() for x in self.inputs))
-    # TODO: this should be the only one of these. this is the one RANGEIFY uses
-    s = self
-    while len(s.inputs) and s.op not in {OpCode.BUFFER, OpCode.BUFFERIZE, OpCode.MSTACK}: s = s.inputs[0]
-    return s
-
-  def buf_target(self) -> OpNode:
-    # the buffer that's being loaded from or store to
-    match self.opcode:
-      case OpCode.DEFINE_GLOBAL | OpCode.DEFINE_LOCAL | OpCode.DEFINE_REG:  return self
-      case OpCode.AFTER | OpCode.INDEX | OpCode.STORE | OpCode.LOAD:        return self.inputs[0].buf_target()
-      case OpCode.VECTORIZE:
-        assert all_same(self.inputs)
-        return self.inputs[0].buf_target()
-      case _: raise RuntimeError(f"buf_target called on non load/index/store {self.opcode}")
 
   @property
   def buffer(self) -> Buffer:
@@ -378,14 +352,17 @@ class OpNode(GraphBuilder):
     if self is not self.base: assert self.opcode is OpCode.RESHAPE, f"can only be RESHAPE {self}"; return self.inputs[0].buffer
     assert self.opcode is OpCode.BUFFER, f"must be BUFFER {self.opcode}"  
     if (cret:=buffers.get(self)) is not None: return cret
+
     output_dtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base
-    output_buffer = Buffer(self.device, self.size, output_dtype).ref(1) # MultiBuffer(self.device, self.size, output_dtype).ref(1) if isinstance(self.device, tuple) else  Buffer(...)
+    output_buffer = Buffer(self.device, self.size, output_dtype).ref(1)
     buffers[self] = output_buffer
     return output_buffer
+  
   @property
   def realized(self) -> Buffer|MultiBuffer|None:
     # NOTE: this is used by the JIT to determine which inputs we capture
     return self.buffer if self.opcode in {OpCode.BUFFER, OpCode.MSTACK} and self.buffer.is_allocated() else None
+  
   @property
   def is_realized(self) -> bool:
     return all(x.base.realized is not None for x in self.base.inputs) if self.base.op is OpCode.MULTI else self.base.realized is not None

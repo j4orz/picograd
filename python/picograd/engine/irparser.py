@@ -179,19 +179,19 @@ class ComputeOpCodeBuilder:
 
 class MovementOpCodeBuilder:
   # required
-  def _apply_movement_opcode(self, op: OpCode, arg) -> Self: raise NotImplementedError
+  def _apply_movement_opcode(self, op: OpCode, payload) -> Self: raise NotImplementedError
   @property
   def shape(self) -> tuple[int, ...]: raise NotImplementedError
   
   # provided
   def expand(self) -> Self: raise NotImplementedError("todo")
-  def reshape(self, shape) -> Self:
+  def reshape(self, shape: tuple[int, ...]) -> Self:
     output_shape = tuple([dim_i if dim_i is not None else self.shape[i] for i, dim_i in enumerate(helpers.normalize_shape(shape))])                      # handle None and args
     if inferred_dim_count := output_shape.count(-1) >= 1:                                                                                                # handle -1 inferred dims
       if inferred_dim_count > 1: raise RuntimeError(f"only one dimension can be inferred using -1, getting {output_shape}")
       else: output_shape = tuple([-helpers.prod(self.shape) // helpers.prod(output_shape) if dim == -1 else dim for dim in output_shape])
-
     if helpers.prod(self.shape) != helpers.prod(output_shape): raise ValueError(f"size mismatch, can't reshape ({self.shape}) -> ({output_shape})")      # guard
+    
     output = self._apply_movement_opcode(OpCode.RESHAPE, payload=output_shape)                                                                           # apply
     return self if output.shape == self.shape else output                                                                                                # identity return
 
