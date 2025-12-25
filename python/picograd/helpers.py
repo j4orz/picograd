@@ -1,6 +1,19 @@
 import operator
 import functools, platform, sys, os, time, ctypes, subprocess
-from typing import Iterable, TypeVar, overload
+from typing import ClassVar, Iterable, TypeVar, overload
+
+class ContextVar:
+  _cache: ClassVar[dict[str, ContextVar]] = {}
+  value: int
+  key: str
+  def __init__(self, key, default_value):
+    if key in ContextVar._cache: raise RuntimeError(f"attempt to recreate ContextVar {key}")
+    ContextVar._cache[key] = self
+    self.value, self.key = getenv(key, default_value), key
+  def __bool__(self): return bool(self.value)
+  def __ge__(self, x): return self.value >= x
+  def __gt__(self, x): return self.value > x
+  def __lt__(self, x): return self.value < x
 
 EAGER, GRAPH = 1, 0 
 DEBUG = 1 # ContextVar("DEBUG", 0)

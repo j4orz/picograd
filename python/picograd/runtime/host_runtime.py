@@ -1,23 +1,23 @@
-# **************** Runtime: Host Allocators + Device Compilers ****************
+# **************** Runtime: Memory (Buffer Allocators) + Compute (Kernel Compilers) ****************
 from typing import Any
 import itertools, time, base64, pickle
 
 from picograd.dtype import DType
-from picograd.engine.irparser import GroupedOpCode, OpCode
+from picograd.engine.irparser import OpCode
 from picograd.engine.compiler import Generator
-from picograd.runtime.device import Allocator, Compiler, Runtime
+from picograd.runtime.device import Allocator, Compiler, CompilerPair, CompilerSet, Runtime
 
 class HostDevice(Runtime):
   def __init__(self, device:str):
-    super().__init__(device, HostAllocator(self), [(HostRenderer, HostCompiler)], HostKernel)
+    super().__init__(device, HostAllocator(self), CompilerSet([CompilerPair(HostGenerator, HostCompiler)]), HostKernel)
 
-# **************** Host Memory Allocation ****************
+# **************** MEMORY: Buffer Allocator ****************
 class HostAllocator(Allocator['HostDevice']):
   def _alloc(self, size, options):             return memoryview(bytearray(size))
   def _copyin(self, dest, src:memoryview):     dest[:] = src
   def _copyout(self, dest:memoryview, src):    dest[:] = src
 
-# **************** Device Kernel Compilation ****************
+# **************** COMPUTE: Kernel Compiler ****************
 def _emulate(opcode: OpCode, values: dict[int, Any], pbufs: list[memoryview], pvals: list[int]):
   raise NotImplementedError("todo")
 
@@ -42,7 +42,7 @@ class HostKernel:
         _emulate()
     return time.perf_counter() - st
 
-class HostRenderer(Generator):
+class HostGenerator(Generator):
   def __init__():
     x = 1
   
