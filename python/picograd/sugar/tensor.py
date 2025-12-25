@@ -109,10 +109,10 @@ class Tensor(GraphBuilder):
       if dtype in [dtypes.bfloat16, *dtypes.fp8s]:                              opnode = Tensor(Tensor._hostseq2dslopnode(input, dtypes.float32), device=device).cast(dtype).uop
       else:                                                                     opnode = Tensor._hostseq2dslopnode(input, dtype)
       if DEBUG >= 1: print("DONE _input_to_opnode converting hostseq to dslopnode...")
-      
-
     if not isinstance(opnode, OpNode): raise RuntimeError(f"can't create Tensor from {input!r} with type {type(input)}") # by this point it has to be a UOp
-    return opnode if opnode.device == device else opnode.copy_to_device(device)                    # data might be on a different device
+
+    print(f"opnode's device is {opnode.device}, specified device is {device}")
+    return opnode if opnode.device == device else opnode.copy_to_device(device)
   
   @staticmethod
   def _hostseq2dslopnode(input:list|tuple|bytes, dtype:DType) -> OpNode:

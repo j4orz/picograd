@@ -19,7 +19,7 @@ print("******** first, the runtime with it's memory and compute management  ****
 # assert val == 5 # check the data out
 
 print("******** second, the expression graph ***********")
-DEVICE = "HIP"
+DEVICE = "CUDA"
 # OpNodes are produced by the runtime's compute(kernel compiler) and memory(buffer allocator) 
 
 print("******** third, a tensor which is a sugared hanlde to the expression graph  ***********")

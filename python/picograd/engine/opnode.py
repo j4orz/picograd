@@ -160,10 +160,10 @@ class OpNode(GraphBuilder):
     inputs = (OpNode.unique(num), OpNode(OpCode.DEVICE, tuple(), dtypes.void, payload=device))
     return OpNode(OpCode.BUFFER, inputs, dtype, size)
   
-  def copy_to_device(self, device: str | tuple[str, ...] | OpNode, payload=None):
+  def copy_to_device(self, device: str|tuple[str, ...]|OpNode, payload=None):
     assert payload is None or isinstance(self.device, tuple)
     input_foo = self if payload is None else OpNode(OpCode.MSELECT, (self,), self.dtype, payload=payload)
-    input_bar = (input_foo, OpNode(OpCode.DEVICE, arg=device) if not isinstance(device, OpNode) else device)
+    input_bar = (input_foo, OpNode(OpCode.DEVICE, payload=device) if not isinstance(device, OpNode) else device)
     return OpNode(OpCode.COPY, input_bar, self.dtype)
 
   @property
