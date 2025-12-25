@@ -1,11 +1,10 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, Self, Sequence, Iterator, TypeVar, cast
-import functools,  atexit, re, pathlib, contextlib, importlib, inspect, os, ctypes
+from typing import Any, Generic, Self, TypeVar
+import functools,  atexit, re, pathlib, importlib, inspect, os, ctypes
 from picograd.dtype import DType, PtrDType
-from picograd.engine.compiler import Renderer
-from picograd import helpers
-from picograd.helpers import ALLOW_DEVICE_USAGE, DEBUG, LRU, MAX_BUFFER_SIZE, T, getenv
+from picograd.engine.compiler import Generator
+from picograd.helpers import ALLOW_DEVICE_USAGE, DEBUG, MAX_BUFFER_SIZE
 
 # picograd to tinygrad bridge
 # - removed Device.Default
@@ -23,16 +22,16 @@ class Runtime:
   # profile_events:list[ProfileEvent] = [ProfileDeviceEvent("CPU")] # NOTE: CPU is the default device.
 
   def __init__(self, device: str, allocator: Allocator, compilers: CompilerSet|None, kernel): # graph=None, group_id=None):
-    self.device, self.allocator, self.kernel, self.graph, self.group_id = device, allocator, kernel # , graph, group_id
+    self.device, self.allocator, self.kernel = device, allocator, kernel # , graph, group_id
 
     self.comps_ctrl_var = compilers.ctrl_var if compilers is not None else None
-    self.comp_sets: dict[Any, tuple[ContextVar|None, tuple[type[Renderer]|functools.partial, type[Compiler]|functools.partial]]] = {}
-    self.cached_pair: dict[Any, tuple[Renderer, Compiler]] = {}
-    for cpair in (compilers.cset if compilers is not None else [CompilerPair(Renderer, Compiler)]):
-      self.comp_sets[self._compiler_name(cpair.compiler)] = (cpair.ctrl_var, (cpair.renderer, cpair.compiler))
+    self.comp_sets: dict[Any, tuple[ContextVar|None, tuple[type[Generator]|functools.partial, type[Compiler]|functools.partial]]] = {}
+    self.cached_pair: dict[Any, tuple[Generator, Compiler]] = {}
+    for cpair in (compilers.cset if compilers is not None else [CompilerPair(Generator, Compiler)]):
+      self.comp_sets[self._compiler_name(cpair.compiler)] = (cpair.ctrl_var, (cpair.generator, cpair.compiler))
 
   @property
-  def renderer(self) -> Renderer: return self._select_compiler_pair()[0]
+  def generator(self) -> Generator: return self._select_compiler_pair()[0]
 
   @property
   def compiler(self) -> Compiler: return self._select_compiler_pair()[1]
@@ -40,7 +39,7 @@ class Runtime:
   def _compiler_name(self, c:type[Compiler]|functools.partial) -> str:
     return unwrap_class_type(c).__name__.upper().removesuffix("COMPILER").removeprefix(devname:=self.device.split(':')[0].upper()) or devname
 
-  def _select_compiler_pair(self) -> tuple[Renderer, Compiler]:
+  def _select_compiler_pair(self) -> tuple[Generator, Compiler]:
     # select forced compiler from global env var.
     forced_comps = set([self.comp_sets[val][1]] if self.comps_ctrl_var is not None and (val:=self.comps_ctrl_var.value) else [])
 
@@ -114,7 +113,7 @@ class Buffer:
     assert isinstance(dtype, DType) and not isinstance(dtype, PtrDType)
     self.device, self.size, self.dtype, = device, size, dtype
     self.offset, self.allocated_views = offset, 0
-    if DEBUG >=1: print("initializing Buffer on device", device)
+    if DEBUG >=1: print("START initializing Buffer on device", device)
 
     if base is not None:
       assert base._basebuf is None, "base can't have a base"
@@ -139,7 +138,7 @@ class Buffer:
     if DEBUG >= 7: print(f"buffer: allocate {self.nbytes} bytes on {self.device}")
     if not self.device.startswith("NULL") and self.size > MAX_BUFFER_SIZE > 0: raise RuntimeError(f"buffer of size {self.size/1e6:.2f}M is too large")
 
-    print("allocating the initialized Buffer on device", self.device)
+    print("START allocating the Buffer on device", self.device)
     self.allocator: Allocator = Device[self.device].allocator
 
     if external_ptr is not None:
@@ -152,7 +151,8 @@ class Buffer:
       self._basebuf.allocated_views += 1
       assert hasattr(self.allocator, "_offset"), "offset function required for view"
       self._buf: Any = self.allocator._offset(self.base._buf, self.nbytes, self.offset)
-      
+
+    print("DONE allocating the Buffer on device", self.device)
     return self
 
   def is_initialized(self) -> bool: return self.is_allocated() and hasattr(self, '_buf') # check if the underlying buffer is allocated and the current buffer/view is initialized
@@ -206,8 +206,14 @@ class Compiler:
   def disassemble(self, lib:bytes): pass
 
 class CompileError(Exception): pass
-@dataclass(frozen=True)
-class CompilerPair: renderer:type[Renderer]|functools.partial; compiler:type[Compiler]|functools.partial; ctrl_var:ContextVar|None = None # noqa: E702
 
 @dataclass(frozen=True)
-class CompilerSet: cset:list[CompilerPair]; ctrl_var:ContextVar|None = None # noqa: E702
+class CompilerPair:
+  generator: type[Generator]|functools.partial
+  compiler: type[Compiler]|functools.partial
+  ctrl_var: ContextVar|None = None # noqa: E702
+
+@dataclass(frozen=True)
+class CompilerSet:
+  cset: list[CompilerPair]
+  ctrl_var: ContextVar|None = None # noqa: E702

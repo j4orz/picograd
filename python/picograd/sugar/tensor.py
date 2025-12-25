@@ -127,7 +127,7 @@ class Tensor(GraphBuilder):
     if DEBUG >= 1: print("_hostseq2dslopnode() 2. applied OpCode.RESHAPE---")
     if DEBUG >= 1: print("_hostseq2dslopnode() 3. allocating OpCode.BUFFER with output_opnode.buffer.allocate---")
     bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(x, dtype)) for x in fully_flatten(input)]))
-    output_opnode.buffer.allocate(bytes) # fake realize. calling .buffer.allocate() and passing bytes/memoryview as pre-allocated buf
+    output_opnode.buffer.allocate(bytes) # fake realize by passing bytes/memoryview as pre-allocated buf
     # todo: actually realize(evaluate/materialize)
     if DEBUG >= 1: print("DONE _hostseq2dslopnode: constructing OpNode from python input", input)
 

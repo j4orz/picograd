@@ -84,7 +84,7 @@ class TensorCore: # D = A * B + C, A is (M x K), B is (K x N), C and D are (M x 
   # l<num> is the num axis of the locals, similar for u<num> and upcasts, r<num> and reduces
   swizzle: tuple[tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]], tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]]
 
-class Renderer:
+class Generator:
   """
   picograd follows tinygrad (and torch/xla and swift for tensorflow) with lazy graph capture, see (Suhan et al. https://arxiv.org/abs/2102.13267)
   and modifying the semantics of the programming model where users must explicitly materialize data with .realize(),
