@@ -33,9 +33,6 @@ def get_shape(x) -> tuple[int, ...]:
 
 
 
-
-
-
 class Tensor(GraphBuilder):
   """
   the Tensor class is a *sugared handle* to the expression graph of vertices V=Set<OpNode> and edges E=Set<(OpNode,OpNode)>,
