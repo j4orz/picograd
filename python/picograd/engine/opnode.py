@@ -35,35 +35,6 @@ class recursive_property(property):
       else: opnode.__dict__[self.nm] = self.fxn(opnode)
     return x.__dict__[self.nm]
 
-# we import this late
-
-# out_dtype = (self, *inputs)[-1].dtype
-# # if op in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: out_dtype = dtypes.bool.vec(out_dtype.count) if out_dtype.count > 1 else dtypes.bool
-# # return Op((self,)+inputs, ftype, out_dtype,)
-# match opcode:
-#   case OpCode.NEG: launch_neg(*inputs)
-#   case OpCode.ADD:
-#     # 1. memory: allocate and memcpy on device
-#     device = HIPDevice()
-#     a, b, c = [device.allocator.alloc(4), device.allocator.alloc(4), device.allocator.alloc(4)]
-#     device.allocator._copyin(a, memoryview(bytearray([2,0,0,0])))
-#     device.allocator._copyin(b, memoryview(bytearray([3,0,0,0])))
-#     # 2. compute: compile a kernel to a binary
-#     kernel = HIPCCCompiler().compile("__global__ void add(int *a, int *b, int *c) { int id = blockDim.x * blockIdx.x + threadIdx.x; if(id < N) c[id] = a[id] + b[id]; }")
-#     # 3. launch
-#     f = device.kernel("add", kernel)
-#     f(a, b, c) # HIPKernel
-
-#     print(val := device.allocator._as_buffer(c).cast("I").tolist()[0])
-#     assert val == 5 # check the data out
-#   case _: raise NotImplementedError(f"unsupported opcode {opcode!r}")
-
-# the derivative f'(x) is the sum of path products on the expression graph, where factors in the product are local derivatives.
-# selecting the optimal order to evaluate such path products (given that the operations represented by each vertex is *associative*) is NP-hard.
-# since the functions f(x) that need to be differentiated in the field of machine learning are loss functions of the form f: R^n -> R which fan-out,
-# the reverse direction is heuristically used with a reverse topological sort given that the time complexity is proportional to the number of outputs m which in this case is 1
-# for many deeplearning workloads that are a series of matrix-matrix multiplications with a final matrix-vector multiplication, multiplying in the reverse direction results in [(v,e)->(v,e)^2]
-
 # **************** Expression Graph ****************
 @dataclass(eq=False, slots=True) # NOTE: this should be frozen, but frozen is slower
 class OpNode(GraphBuilder):

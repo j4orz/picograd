@@ -7,7 +7,7 @@ import math, weakref, struct, pathlib
 from picograd import helpers
 from picograd.engine import OpCode, OpNode, GraphBuilder
 from picograd.helpers import DEBUG, EAGER, GRAPH
-from picograd.runtime import DeviceRegistry
+from picograd.runtime import Device
 from picograd.dtype import Const, DType, DTypeLike, dtypes
 import picograd.dtype
 
@@ -81,15 +81,15 @@ class Tensor(GraphBuilder):
     new_shape = (1, )*len(helpers.normalize_shape(shape))
     return Tensor(fill, force_unique=True).reshape(new_shape).expand(new_shape)._evaluate()
   
-  def __init__(self, input: Const | bytes | list | tuple | None, # removed OpNode, np.ndarray, pathlib.Path support (for now).
-               device: str |tuple | list | None=None, dtype: DTypeLike | None=None, requires_grad: bool | None=None, force_unique: bool=False): # kwargs
+  def __init__(self, input: Const|bytes|list|tuple|None, # removed OpNode, np.ndarray, pathlib.Path support (for now).
+               device: str |tuple|list|None=None, dtype: DTypeLike|None=None, requires_grad: bool|None=None, force_unique: bool=False): # kwargs
     """
     Tensor.__init__() initializes state for self, which includes metadata for device, dtype, gradients, and most importantly, the handle to an OpNode
     """
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
     if DEBUG >= 1: print("START Tensor.__init__() initializing tensor with dtype:", dtype, "on device:", device, "...")
     dtype: DType | None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
-    device: str | tuple[str, ...] = tuple(DeviceRegistry.canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else DeviceRegistry.canonicalize_device(device)
+    device: str | tuple[str, ...] = tuple(Device.canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize_device(device)
     self.grad: Tensor | None = None                                                            # tensors can have gradients if you have called .backward
     self.requires_grad: bool | None = requires_grad                                            # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
     self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)
@@ -128,7 +128,7 @@ class Tensor(GraphBuilder):
     if DEBUG >= 1: print("_hostseq2dslopnode() 1. created OpNode with OpCode.BUFFER---")
     output_opnode = output_opnode.reshape(shape)
     if DEBUG >= 1: print("_hostseq2dslopnode() 2. applied OpCode.RESHAPE---")
-    if DEBUG >= 1: print("_hostseq2dslopnode() 3. allocating the OpNode with OpCode.BUFFER---")
+    if DEBUG >= 1: print("_hostseq2dslopnode() 3. allocating OpCode.BUFFER with output_opnode.buffer.allocate---")
     bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(x, dtype)) for x in fully_flatten(input)]))
     output_opnode.buffer.allocate(bytes) # fake realize. calling .buffer.allocate() and passing bytes/memoryview as pre-allocated buf
     # todo: actually realize(evaluate/materialize)
