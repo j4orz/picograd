@@ -189,7 +189,7 @@ class OpNode(GraphBuilder):
     if self is not self.base: assert self.opcode is OpCode.RESHAPE, f"expected: OpCode.RESHAPE, actual: {self}"; return self.inputs[0].buffer
     assert self.opcode is OpCode.BUFFER, f"expected: OpCode.BUFFER, actual: {self.opcode}"  
 
-    if (cached := buffers.get(self)) is None: buffers[self] = cached = Buffer(self.device, self.size, self.dtype.base).ref(1)
+    if (cached := buffers.get(self)) is None: buffers[self] = cached = Buffer(self.device, self.dtype.base, self.size).ref(1)
     return cached
   
   @property # NOTE: this is used by the JIT to determine which inputs we capture
@@ -249,8 +249,7 @@ class OpNode(GraphBuilder):
     output_opnodes_inputs = OpNode._convert_movementopcode_payload_to_opnodeir_input(opcode, payload)
     if len(output_opnodes_inputs) == 0:                         output_opnode = OpNode(opcode, (self,), self.dtype, payload)
     else:                                                       output_opnode = OpNode(opcode, (self,) + helpers.normalize_shape(output_opnodes_inputs), self.dtype) # no .simplify() peephole on inputs
-                                                                                                                                            # i.e constant folding 2*3->6
-                                                                                                                                            # i.e VECTORIZE -> VCONST
+
     if DEBUG >= 1: print("constructed movement opnode with opcode", output_opnode.opcode)
     if output_opnode.shape == self.shape and same_shape_noop:   return self # for all movement ops, we check if the movement op results in an identiy no-op
     return                                                      output_opnode

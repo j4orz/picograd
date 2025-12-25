@@ -101,12 +101,6 @@ Device = _RuntimeRegistry()
 atexit.register(lambda: [Device[dn].finalize() for dn in Device._opened_devices])
 
 # **************** MEMORY: (Buffer Allocators) ****************
-def from_mv(mv:memoryview, to_type:type[ctypes._SimpleCData]=ctypes.c_char) -> ctypes.Array:
-  return ctypes.cast(ctypes.addressof(to_type.from_buffer(mv)), ctypes.POINTER(to_type * len(mv))).contents
-def to_mv(ptr:int, sz:int) -> memoryview: return memoryview((ctypes.c_uint8 * sz).from_address(ptr)).cast("B")
-def mv_address(mv): return ctypes.addressof(ctypes.c_char.from_buffer(mv))
-def flat_mv(mv:memoryview): return mv if len(mv) == 0 else mv.cast("B", shape=(mv.nbytes,))
-
 class Buffer:
   """
   Buffer provides an on-device handle of an OpNode's backing storage
@@ -116,27 +110,22 @@ class Buffer:
   def __init__(self, device:str, dtype:DType, size:int,
                buf_opaque:Any=None, initial_value: bytes|None=None,
                base:Buffer|None=None, offset:int=0, preallocate=False,
-               options:BufferSpec|None=None, opnode_refcount=0):
+               opnode_refcount=0): #options:BufferSpec|None=None,):
     assert isinstance(dtype, DType) and not isinstance(dtype, PtrDType)
     self.device, self.size, self.dtype, = device, size, dtype
-    self.options, self.offset, self.allocated_views = options, offset, 0
+    self.offset, self.allocated_views = offset, 0
     if DEBUG >=1: print("initializing Buffer on device", device)
 
-    if base is None:
-      assert offset == 0, "base buffers can't have offset"
-      self._basebuf = None
-      self._opnode_refcount = opnode_refcount
-
-      if buf_opaque is not None: self.allocate(buf_opaque) # if DEBUG >=1: print("allocated the Buffer with an opaque buf", buf_opaque)
-      if initial_value is not None:
-        self.allocate() # malloc
-        self.copyin(memoryview(initial_value)) # memcpy
-    else:
+    if base is not None:
       assert base._basebuf is None, "base can't have a base"
       assert device == base.device, "base must have the same device"
       self._basebuf = base
-    if preallocate:
-      self.allocate()
+    else:
+      assert offset == 0, "base buffers can't have offset"
+      self._basebuf, self._opnode_refcount = None, opnode_refcount
+      if buf_opaque is not None: self.allocate(buf_opaque) # if DEBUG >=1: print("allocated the Buffer with an opaque buf", buf_opaque)
+      if initial_value is not None: self.allocate(), self.copyin(memoryview(initial_value))
+    if preallocate: self.allocate()
     if DEBUG >=1: print("DONE initializing Buffer on device", device)
 
   @property
@@ -203,6 +192,12 @@ class Allocator(Generic[DeviceType]):
     return self._alloc(size)#, options if options is not None else self.default_buffer_spec)
   def free(self, opaque, size:int): # , options:BufferSpec|None=None):
     self._free(opaque) #, options if options is not None else self.default_buffer_spec)
+
+def from_mv(mv:memoryview, to_type:type[ctypes._SimpleCData]=ctypes.c_char) -> ctypes.Array:
+  return ctypes.cast(ctypes.addressof(to_type.from_buffer(mv)), ctypes.POINTER(to_type * len(mv))).contents
+def to_mv(ptr:int, sz:int) -> memoryview: return memoryview((ctypes.c_uint8 * sz).from_address(ptr)).cast("B")
+def mv_address(mv): return ctypes.addressof(ctypes.c_char.from_buffer(mv))
+def flat_mv(mv:memoryview): return mv if len(mv) == 0 else mv.cast("B", shape=(mv.nbytes,))
 
 # **************** COMPUTE: (Kernel Compilers) ****************
 class Compiler:
