@@ -1,3 +1,3 @@
-from .device import DeviceRegistry
+from .device import Device
 
-__all__ = ["DeviceRegistry"]
+__all__ = ["Device"]

@@ -7,7 +7,7 @@ from picograd import helpers
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
 from picograd.engine.irparser import GroupedOpCode, OpCode, GraphBuilder
 if TYPE_CHECKING:
-  from picograd.runtime.device import Buffer, DeviceRegistry
+  from picograd.runtime.device import Buffer, Device
 from picograd.dtype import Const, ConstLike, DType, ImageDType, PtrDType, dtypes
 
 # picograd to tinygrad bridge
