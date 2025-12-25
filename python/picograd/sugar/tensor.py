@@ -86,7 +86,7 @@ class Tensor(GraphBuilder):
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
     if DEBUG >= 1: print("START Tensor.__init__() initializing tensor with dtype:", dtype, "on device:", device, "...")
     dtype: DType | None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
-    device: str | tuple[str, ...] = tuple(Device.canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize_device(device)
+    device: str | tuple[str, ...] = tuple(Device._canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device._canonicalize_device(device)
     self.grad: Tensor | None = None                                                            # tensors can have gradients if you have called .backward
     self.requires_grad: bool | None = requires_grad                                            # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
     self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)
@@ -121,15 +121,22 @@ class Tensor(GraphBuilder):
     """
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
     if DEBUG >= 1: print("START _hostseq2dslopnode(): constructing OpNode from python input", input)
+
+    if DEBUG >= 1: print("\n_hostseq2dslopnode() 1. creating OpNode with OpCode.BUFFER")
+    if DEBUG >= 1: print("------------------------------------------------------------------------")
     output_opnode = OpNode.new_buffer("HOST", helpers.prod(shape:=get_shape(input)), dtype)
-    if DEBUG >= 1: print("_hostseq2dslopnode() 1. created OpNode with OpCode.BUFFER---")
+
+    if DEBUG >= 1: print("\n_hostseq2dslopnode() 2. applying OpCode.RESHAPE")
+    if DEBUG >= 1: print("------------------------------------------------------------------------")
     output_opnode = output_opnode.reshape(shape)
-    if DEBUG >= 1: print("_hostseq2dslopnode() 2. applied OpCode.RESHAPE---")
-    if DEBUG >= 1: print("_hostseq2dslopnode() 3. allocating OpCode.BUFFER with output_opnode.buffer.allocate---")
+
+    if DEBUG >= 1: print("\n_hostseq2dslopnode() 3. allocating OpCode.BUFFER with output_opnode.buffer.allocate")
+    if DEBUG >= 1: print("------------------------------------------------------------------------")
     bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(x, dtype)) for x in fully_flatten(input)]))
-    output_opnode.buffer.allocate(bytes) # fake realize by passing bytes/memoryview as pre-allocated buf
+    output_opnode.buffer.allocate(bytes) # fake realize by passing an opaque_preallocation
     # todo: actually realize(evaluate/materialize)
     if DEBUG >= 1: print("DONE _hostseq2dslopnode: constructing OpNode from python input", input)
+    print("\n\n\n")
 
     return output_opnode
 

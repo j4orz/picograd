@@ -13,7 +13,7 @@ class HostDevice(Runtime):
 
 # **************** MEMORY: Buffer Allocator ****************
 class HostAllocator(Allocator['HostDevice']):
-  def _alloc(self, size, options):             return memoryview(bytearray(size))
+  def _alloc(self, size, options):             print("HostAllocator._alloc returning mv!"); return memoryview(bytearray(size))
   def _copyin(self, dest, src:memoryview):     dest[:] = src
   def _copyout(self, dest:memoryview, src):    dest[:] = src
 

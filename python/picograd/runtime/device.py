@@ -21,26 +21,23 @@ class Runtime:
   """
   # profile_events:list[ProfileEvent] = [ProfileDeviceEvent("CPU")] # NOTE: CPU is the default device.
 
+  @property
+  def generator(self) -> Generator: return self._select_compiler()[0]
+  @property
+  def compiler(self) -> Compiler: return self._select_compiler()[1]
+
   def __init__(self, device: str, allocator: Allocator, compilers: CompilerSet|None, kernel): # graph=None, group_id=None):
     self.device, self.allocator, self.kernel = device, allocator, kernel # , graph, group_id
 
-    print("moose", compilers)
     self.compiler_ctrl_var = compilers.ctrl_var if compilers is not None else None
     self.compiler_sets: dict[Any, tuple[ContextVar|None, tuple[type[Generator]|functools.partial, type[Compiler]|functools.partial]]] = {}
-    self.compiler_pair_cached: dict[Any, tuple[Generator, Compiler]] = {}
+    # self.compiler_pair_cached: dict[Any, tuple[Generator, Compiler]] = {}
 
     for compiler_pair in (compilers.set if compilers is not None else [CompilerPair(Generator, Compiler)]):
       self.compiler_sets[self._compiler_name(compiler_pair.compiler)] = (compiler_pair.ctrl_var, (compiler_pair.generator, compiler_pair.compiler))
 
-  @property
-  def generator(self) -> Generator: return self._select_compiler_pair()[0]
-
-  @property
-  def compiler(self) -> Compiler: return self._select_compiler_pair()[1]
-
   def _compiler_name(self, c:type[Compiler]|functools.partial) -> str: return unwrap_class_type(c).__name__.upper().removesuffix("COMPILER").removeprefix(devname:=self.device.split(':')[0].upper()) or devname
-
-  def _select_compiler_pair(self) -> tuple[Generator, Compiler]:
+  def _select_compiler(self) -> tuple[Generator, Compiler]:
     # select forced compiler from global env var.
     forced_comps = set([self.compiler_sets[val][1]] if self.compiler_ctrl_var is not None and (val:=self.compiler_ctrl_var.value) else [])
 
@@ -96,7 +93,7 @@ class _RuntimeRegistry:
     runtime_python_module = inspect.getmembers(importlib.import_module(runtime_filename))
     runtime_object = [cls for clsname, cls in runtime_python_module if (clsname.lower() == canonicalized_device_lowercased + "device")][0](canonicalized_device)
     self._opened_devices.add(canonicalized_device)
-    if DEBUG >= 1: print(f"opened device {canonicalized_device} from pid:{os.getpid()}"); print("")
+    if DEBUG >= 1: print(f"opened device {canonicalized_device} from pid:{os.getpid()}")
 
     return runtime_object
 
@@ -140,24 +137,26 @@ class Buffer:
   @property
   def nbytes(self): return self.size*self.dtype.itemsize
 
-  def allocate(self, opaque=None, external_ptr=None) -> Self:
+  def allocate(self, opaque_preallocation=None, external_ptr=None) -> Self:
     assert not self.is_initialized(), "can't allocate already allocated buffer"
-    if DEBUG >= 1: print(f"START Buffer.allocate()ing {self.nbytes} bytes on {self.device}")
     if not self.device.startswith("NULL") and self.size > MAX_BUFFER_SIZE > 0: raise RuntimeError(f"buffer of size {self.size/1e6:.2f}M is too large")
 
+    if DEBUG >= 1: print(f"Buffer.allocate() is retrieving the Runtime's Allocator...")
     self.allocator: Allocator = Device[self.device].allocator
+    if DEBUG >= 1: print(f"Buffer.allocate() successfully retrieevd the Runtime's Allocator"); print("")
 
-    if external_ptr is not None: self.options = replace(self.options, external_ptr=external_ptr) if self.options else BufferSpec(external_ptr=external_ptr)
-
+    # if external_ptr is not None: self.options = replace(self.options, external_ptr=external_ptr) if self.options else BufferSpec(external_ptr=external_ptr)
     if self._basebuf is None:
-      self._buf = opaque if opaque is not None else self.allocator.alloc(self.nbytes, self.options)
+      if DEBUG >= 1: print(f"moose: Buffer.allocate() is now calling runtime.allocator.allocate()...")
+      print(opaque_preallocation)
+      self._buf = opaque_preallocation if opaque_preallocation is not None else self.allocator.alloc(self.nbytes, self.options)
     else:
+      if DEBUG >= 1: print(f"deer: Buffer.allocate() is now calling runtime.allocator.allocate()...")
       self._basebuf.ensure_allocated()
       self._basebuf.allocated_views += 1
       assert hasattr(self.allocator, "_offset"), "offset function required for view"
       self._buf: Any = self.allocator._offset(self.base._buf, self.nbytes, self.offset)
 
-    if DEBUG >= 1: print(f"DONE Buffer.allocate()ing {self.nbytes} bytes on {self.device}")
     return self
 
   def is_initialized(self) -> bool: return self.is_allocated() and hasattr(self, '_buf') # check if the underlying buffer is allocated and the current buffer/view is initialized
