@@ -72,147 +72,13 @@ class OpNode(GraphBuilder):
   OpNodes store state for
     1. specified compute (OpCode) aka the function *type* of f
     2. resulting virtual shape (.shape) aka the *image* of f: _ -> SHAPE
-    c. mapped physical stoage (Buffer)
+    3. mapped physical stoage (Buffer)
   """
   opcode: OpCode
   inputs: tuple[OpNode, ...]
   dtype: DType
   payload: Any=None
   # shape, storage (and it's device) are embedded in the IR as opcode's with payloads
-  # see .shape, .buffer and .device @properties *below* the required graphbuilder's ir/opcode applier methods
-
-  @property
-  def size(self) -> int: return helpers.prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
-
-  # **************** GraphBuilder Required Methods ****************
-  """
-  the graphbuilder overrides the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
-  with ComputeOpCodeBuilder._apply_compute_opcode() and MovementOpCodeBuilder._apply_movement_opcode()
-  which acts as the embedded DSL's "parser" by coupling python dunder builtins to be aware of the corresponding IR OpCode
-
-  *:  keep in mind that the semantics of these two methods are applying *ir op code*
-      that is, to maintain parity in semantics with tinygrad (and a smooth pedagogical progression),
-      the returned OpNode's are still un-{materialized/realized/evaluated}, and caller's (namely tensor.py)
-      need to invoke .eval() on the OpNode for eager semantics.
-
-  **: if you're coming from a functional mindset, note that the pythonic/object-oriented .apply_opcode is not a static method.
-      that is, self is the OpNode that the OpCode ftype is operating on, to produce a new Self(OpNode)
-      i.e the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .apply_opcode() returning an OpNode,
-      i.e similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
-  """
-  def _apply_compute_opcode(self, opcode: OpCode, *inputs:OpNode) -> Self:
-    output_dtype = (self, *inputs)[-1].dtype # use the last input's dtype 
-    if opcode in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: output_dtype = dtypes.bool.vec(output_dtype.count) if output_dtype.count > 1 else dtypes.bool
-    return OpNode(opcode, (self,)+inputs, output_dtype,)
-
-  def _apply_movement_opcode(self, opcode: OpCode, payload, same_shape_noop: bool=False) -> Self:
-    """
-    _apply_movement_opcode is much more involved compared to _apply_compute_opcode.
-    this is largely because movement opcode's (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
-    modify the *shape*, which is *logical/virtual* and needs to be mapped to *physical* memory.
-
-    with the application of movement opcode's, there's a design decision to be made.
-      1. following the numpy/torch model (like c++'s std::iterator/std::container and pytorch's c10::TensorImpl/c10::StorageImpl),
-         view operations are non-allocating and share the same underlying storage
-         tinygrad followed this design decision with their ShapeTracker/LazyBuffer abstractions, which mapped logical nd-indices to physical 1d-indices with a *stack* of views via strides
-         
-          option 1 conflates, confuses, and couples the *algorithm* with it's *layout/organization*
-          (see kelley's halide disertation: https://dspace.mit.edu/handle/1721.1/89996),
-          and becomes problematic when you want to *vertically split* the shape for _____ optimizations.
-
-      2. the alternative design decision is to *encode* and embed all movement semantics around a Tensor's shape *within* the dsl's IR itself,
-         to enable __________ about the shapes with the RANGIFY and POSTOPT op codes,
-         inspired by halide and tvm paper https://arxiv.org/abs/1802.04799.
-         see: https://x.com/__tinygrad__/status/1964037572503752910
-    
-         so _apply_movement_opcode converts the *payload* (i.e python tuple) for the given movement *opcode* (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
-         *into* the embedded dsl's IR with OpNode's that have OpCode.{VECTORIZE/VCONST} which are subsequently used as input OpNode's to the originally specified movement OpNode.
-         and any subsequent logic that needs to access the embedded payload will use .movementopcode_payload() and .gep(), which are aware of how to extract the payload from the IR
-    """
-    output_opnodes_inputs = OpNode._convert_movementopcode_payload_to_opnodeir_input(opcode, payload)
-    if len(output_opnodes_inputs) == 0:                         output_opnode = OpNode(opcode, (self,), self.dtype, payload)
-    else:                                                       output_opnode = OpNode(opcode, (self,) + helpers.normalize_shape(output_opnodes_inputs), self.dtype) # no .simplify() peephole on inputs
-                                                                                                                                            # i.e constant folding 2*3->6
-                                                                                                                                            # i.e VECTORIZE -> VCONST
-    if DEBUG >= 1: print("constructed movement opnode with opcode", output_opnode.opcode)
-    if output_opnode.shape == self.shape and same_shape_noop:   return self # for all movement ops, we check if the movement op results in an identiy no-op
-    return                                                      output_opnode
-  
-  @staticmethod
-  def _convert_movementopcode_payload_to_opnodeir_input(opcode: OpCode, payload):
-    if DEBUG >= 1: print("converting movementopcode payload to opnode inputs...")
-    match opcode:
-      case OpCode.RESHAPE | OpCode.EXPAND:                      decoded_payload = [payload]
-      case OpCode.PAD | OpCode.SHRINK:                          decoded_payload = list(zip(*payload))
-      case OpCode.PERMUTE | OpCode.FLIP:                        decoded_payload = []
-      case _: raise RuntimeError(f"{opcode} is not a MovementOp")
-
-    if DEBUG >= 1: print("decoded movementopcode payload is", decoded_payload)
-    output_opnodes_inputs = []
-    for payload in decoded_payload:
-      if len(payload) == 0:                                     output_opnodes_inputs.append(OpNode(OpCode.VECTORIZE, tuple(), dtypes.index.vec(0)))       # empty payload => empty index vector
-      elif all(isinstance(x, int) for x in payload):            output_opnodes_inputs.append(OpNode.const(payload, dtypes.index.vec(len(payload))))        # all int payload => constant index vector
-      else:                                                     output_opnodes_inputs.append(OpNode(OpCode.VECTORIZE, tuple(OpNode.const(dtypes.index, x) if isinstance(x, int) else x for x in payload))), dtypes.index.vec(len(payload)), # mized int/OpNode payload => 
-                                                                                                    
-    if DEBUG >= 1: print("output opnodes inputs are:", output_opnodes_inputs)
-    return output_opnodes_inputs
-  
-  @property
-  def base(self) -> OpNode:
-    if self.opcode in GroupedOpCode.Movement:       return self.inputs[0].base
-    if self.opcode is OpCode.MULTI:                 return self.inputs[0].base  # MULTI is really a VIEW
-    return self
-  
-  def gep(self, i:int) -> int: # like gep, but might return an integer
-    match self.opcode:
-      case OpCode.CONST:                            return self.payload # TODO: this won't hit on non-peepholed expressions because i'm not .simplfying() on _apply_movementopcode??
-      case OpCode.VCONST:                           return self.payload[i]
-      case OpCode.VECTORIZE:                        return self.inputs[i].sintify()
-      case _: raise RuntimeError(f"no sgep on {self.op}")
-  
-  @property
-  def movementopcode_payload(self):
-    match self.opcode:
-      case OpCode.RESHAPE | OpCode.EXPAND:          return tuple(self.inputs[1].gep(i) for i in range(self.inputs[1].dtype.count))
-      case OpCode.PAD | OpCode.SHRINK:              return tuple((self.inputs[1].gep(i), self.inputs[2].gep(i)) for i in range(self.inputs[1].dtype.count))
-      case OpCode.PERMUTE | OpCode.FLIP:            return self.arg
-      case _:                                       raise RuntimeError(f"{self.op} is not a MovementOp")
-
-  # **************** Peephole (evaluation) ****************
-  def simplify(self, tracked=False):
-    # late import!
-    from tinygrad.uop.symbolic import symbolic
-    with Context(TRACK_MATCH_STATS=0 if not tracked else TRACK_MATCH_STATS.value):
-      return graph_rewrite(self, symbolic, name="simplify")
-  def ssimplify(self) -> OpNode|Const: return ret.arg if (ret:=self.simplify()).op is OpCode.CONST else ret
-  def sintify(self) -> int: return self.arg if self.op is OpCode.CONST else self
-
-  # **************** Sugar ****************
-  def sink(*srcs:OpNode|None, **kwargs):  # pylint: disable=no-self-argument
-    return OpNode(OpCode.SINK, dtypes.void, tuple([x for x in srcs if x is not None]), **kwargs)
-
-  def const_like(self, b:ConstLike): return OpNode.const(self.dtype, b, device=self._device, shape=self._shape) # constants can optionally have a DEVICE source
-
-  @staticmethod
-  def const(c: ConstLike, dtype: DType,
-            device: str | tuple[str, ...] | None = None,
-            shape: tuple[int, ...] | None=None,
-            inputs=None,
-            unique: bool | int=False):
-    if isinstance(c, OpNode):                                   return c.unbind()[0] if c.op is OpCode.BIND else c
-    if isinstance(c, tuple) and helpers.all_same(c):            c = c[0]     # doesn't have to be a VCONST if they are all the same
-    if isinstance(c, float) and math.isnan(c):                  c = math.nan # NOTE: float('nan') != float('nan'), so we canonicalize here
-
-    opcode = OpCode.VCONST if isinstance(c, tuple) else OpCode.CONST
-    output_opnode = OpNode(opcode, () if inputs is None else (inputs,), dtype, payload=dtypes.as_const(c, dtype),)
-    if device is not None:
-      if unique or not isinstance(unique, bool):                output_opnode = output_opnode.replace(src=(OpNode(OpCode.DEVICE, arg=device), OpNode.unique(None if unique is True else unique)))
-      else:                                                     output_opnode = output_opnode.replace(src=(OpNode(OpCode.DEVICE, arg=device),))
-    elif unique or not isinstance(unique, bool):                raise RuntimeError("unique consts only with DEVICE")
-
-    if shape is not None: output_opnode = output_opnode.reshape((1,)*len(shape)).expand(shape)
-    return output_opnode
-  
   # **************** Virtual/Logical Shape ****************
   @property
   def size(self) -> int: return helpers.prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
@@ -349,22 +215,148 @@ class OpNode(GraphBuilder):
   @property
   def buffer(self) -> Buffer:
     from picograd.runtime.device import Buffer
-    if self is not self.base: assert self.opcode is OpCode.RESHAPE, f"can only be RESHAPE {self}"; return self.inputs[0].buffer
-    assert self.opcode is OpCode.BUFFER, f"must be BUFFER {self.opcode}"  
-    if (cret:=buffers.get(self)) is not None: return cret
+    if self is not self.base: assert self.opcode is OpCode.RESHAPE, f"expected: OpCode.RESHAPE, actual: {self}"; return self.inputs[0].buffer
+    assert self.opcode is OpCode.BUFFER, f"expected: OpCode.BUFFER, actual: {self.opcode}"  
 
-    output_dtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base
-    output_buffer = Buffer(self.device, self.size, output_dtype).ref(1)
-    buffers[self] = output_buffer
-    return output_buffer
+    if (cached := buffers.get(self)) is None: buffers[self] = cached = Buffer(self.device, self.size, self.dtype.base).ref(1)
+    return cached
+  
+  @property # NOTE: this is used by the JIT to determine which inputs we capture
+  def realized(self) -> Buffer|MultiBuffer|None: return self.buffer if self.opcode in {OpCode.BUFFER, OpCode.MSTACK} and self.buffer.is_allocated() else None
+  @property
+  def is_realized(self) -> bool: return all(x.base.realized is not None for x in self.base.inputs) if self.base.op is OpCode.MULTI else self.base.realized is not None
+
+
+
+
+
+  # **************** GraphBuilder Required Methods ****************
+  """
+  the graphbuilder overrides the semantics of the host language with a nonstandard interpretation (device acceleration of f(x), automatic differentiation of f'(x))
+  with ComputeOpCodeBuilder._apply_compute_opcode() and MovementOpCodeBuilder._apply_movement_opcode()
+  which acts as the embedded DSL's "parser" by coupling python dunder builtins to be aware of the corresponding IR OpCode
+
+  *:  keep in mind that the semantics of these two methods are applying *ir op code*
+      that is, to maintain parity in semantics with tinygrad (and a smooth pedagogical progression),
+      the returned OpNode's are still un-{materialized/realized/evaluated}, and caller's (namely tensor.py)
+      need to invoke .eval() on the OpNode for eager semantics.
+
+  **: if you're coming from a functional mindset, note that the pythonic/object-oriented .apply_opcode is not a static method.
+      that is, self is the OpNode that the OpCode ftype is operating on, to produce a new Self(OpNode)
+      i.e the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .apply_opcode() returning an OpNode,
+      i.e similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
+  """
+  def _apply_compute_opcode(self, opcode: OpCode, *inputs:OpNode) -> Self:
+    output_dtype = (self, *inputs)[-1].dtype # use the last input's dtype 
+    if opcode in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: output_dtype = dtypes.bool.vec(output_dtype.count) if output_dtype.count > 1 else dtypes.bool
+    return OpNode(opcode, (self,)+inputs, output_dtype,)
+
+  def _apply_movement_opcode(self, opcode: OpCode, payload, same_shape_noop: bool=False) -> Self:
+    """
+    _apply_movement_opcode is much more involved compared to _apply_compute_opcode.
+    this is largely because movement opcode's (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
+    modify the *shape*, which is *logical/virtual* and needs to be mapped to *physical* memory.
+
+    with the application of movement opcode's, there's a design decision to be made.
+      1. following the numpy/torch model (like c++'s std::iterator/std::container and pytorch's c10::TensorImpl/c10::StorageImpl),
+         view operations are non-allocating and share the same underlying storage
+         tinygrad followed this design decision with their ShapeTracker/LazyBuffer abstractions, which mapped logical nd-indices to physical 1d-indices with a *stack* of views via strides
+         
+          option 1 conflates, confuses, and couples the *algorithm* with it's *layout/organization*
+          (see kelley's halide disertation: https://dspace.mit.edu/handle/1721.1/89996),
+          and becomes problematic when you want to *vertically split* the shape for _____ optimizations.
+
+      2. the alternative design decision is to *encode* and embed all movement semantics around a Tensor's shape *within* the dsl's IR itself,
+         to enable __________ about the shapes with the RANGIFY and POSTOPT op codes,
+         inspired by halide and tvm paper https://arxiv.org/abs/1802.04799.
+         see: https://x.com/__tinygrad__/status/1964037572503752910
+    
+         so _apply_movement_opcode converts the *payload* (i.e python tuple) for the given movement *opcode* (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
+         *into* the embedded dsl's IR with OpNode's that have OpCode.{VECTORIZE/VCONST} which are subsequently used as input OpNode's to the originally specified movement OpNode.
+         and any subsequent logic that needs to access the embedded payload will use .movementopcode_payload() and .gep(), which are aware of how to extract the payload from the IR
+    """
+    output_opnodes_inputs = OpNode._convert_movementopcode_payload_to_opnodeir_input(opcode, payload)
+    if len(output_opnodes_inputs) == 0:                         output_opnode = OpNode(opcode, (self,), self.dtype, payload)
+    else:                                                       output_opnode = OpNode(opcode, (self,) + helpers.normalize_shape(output_opnodes_inputs), self.dtype) # no .simplify() peephole on inputs
+                                                                                                                                            # i.e constant folding 2*3->6
+                                                                                                                                            # i.e VECTORIZE -> VCONST
+    if DEBUG >= 1: print("constructed movement opnode with opcode", output_opnode.opcode)
+    if output_opnode.shape == self.shape and same_shape_noop:   return self # for all movement ops, we check if the movement op results in an identiy no-op
+    return                                                      output_opnode
+  
+  @staticmethod
+  def _convert_movementopcode_payload_to_opnodeir_input(opcode: OpCode, payload):
+    if DEBUG >= 1: print("converting movementopcode payload to opnode inputs...")
+    match opcode:
+      case OpCode.RESHAPE | OpCode.EXPAND:                      decoded_payload = [payload]
+      case OpCode.PAD | OpCode.SHRINK:                          decoded_payload = list(zip(*payload))
+      case OpCode.PERMUTE | OpCode.FLIP:                        decoded_payload = []
+      case _: raise RuntimeError(f"{opcode} is not a MovementOp")
+
+    if DEBUG >= 1: print("decoded movementopcode payload is", decoded_payload)
+    output_opnodes_inputs = []
+    for payload in decoded_payload:
+      if len(payload) == 0:                                     output_opnodes_inputs.append(OpNode(OpCode.VECTORIZE, tuple(), dtypes.index.vec(0)))       # empty payload => empty index vector
+      elif all(isinstance(x, int) for x in payload):            output_opnodes_inputs.append(OpNode.const(payload, dtypes.index.vec(len(payload))))        # all int payload => constant index vector
+      else:                                                     output_opnodes_inputs.append(OpNode(OpCode.VECTORIZE, tuple(OpNode.const(dtypes.index, x) if isinstance(x, int) else x for x in payload))), dtypes.index.vec(len(payload)), # mized int/OpNode payload => 
+                                                                                                    
+    if DEBUG >= 1: print("output opnodes inputs are:", output_opnodes_inputs)
+    return output_opnodes_inputs
   
   @property
-  def realized(self) -> Buffer|MultiBuffer|None:
-    # NOTE: this is used by the JIT to determine which inputs we capture
-    return self.buffer if self.opcode in {OpCode.BUFFER, OpCode.MSTACK} and self.buffer.is_allocated() else None
+  def base(self) -> OpNode:
+    if self.opcode in GroupedOpCode.Movement:       return self.inputs[0].base
+    if self.opcode is OpCode.MULTI:                 return self.inputs[0].base  # MULTI is really a VIEW
+    return self
+  
+  def gep(self, i:int) -> int: # like gep, but might return an integer
+    match self.opcode:
+      case OpCode.CONST:                            return self.payload # TODO: this won't hit on non-peepholed expressions because i'm not .simplfying() on _apply_movementopcode??
+      case OpCode.VCONST:                           return self.payload[i]
+      case OpCode.VECTORIZE:                        return self.inputs[i].sintify()
+      case _: raise RuntimeError(f"no sgep on {self.op}")
   
   @property
-  def is_realized(self) -> bool:
-    return all(x.base.realized is not None for x in self.base.inputs) if self.base.op is OpCode.MULTI else self.base.realized is not None
+  def movementopcode_payload(self):
+    match self.opcode:
+      case OpCode.RESHAPE | OpCode.EXPAND:          return tuple(self.inputs[1].gep(i) for i in range(self.inputs[1].dtype.count))
+      case OpCode.PAD | OpCode.SHRINK:              return tuple((self.inputs[1].gep(i), self.inputs[2].gep(i)) for i in range(self.inputs[1].dtype.count))
+      case OpCode.PERMUTE | OpCode.FLIP:            return self.arg
+      case _:                                       raise RuntimeError(f"{self.op} is not a MovementOp")
+
+  # **************** Peephole (evaluation) ****************
+  def simplify(self, tracked=False):
+    # late import!
+    from tinygrad.uop.symbolic import symbolic
+    with Context(TRACK_MATCH_STATS=0 if not tracked else TRACK_MATCH_STATS.value):
+      return graph_rewrite(self, symbolic, name="simplify")
+  def ssimplify(self) -> OpNode|Const: return ret.arg if (ret:=self.simplify()).op is OpCode.CONST else ret
+  def sintify(self) -> int: return self.arg if self.op is OpCode.CONST else self
+
+  # **************** Sugar ****************
+  def sink(*srcs:OpNode|None, **kwargs):  # pylint: disable=no-self-argument
+    return OpNode(OpCode.SINK, dtypes.void, tuple([x for x in srcs if x is not None]), **kwargs)
+
+  def const_like(self, b:ConstLike): return OpNode.const(self.dtype, b, device=self._device, shape=self._shape) # constants can optionally have a DEVICE source
+
+  @staticmethod
+  def const(c: ConstLike, dtype: DType,
+            device: str | tuple[str, ...] | None = None,
+            shape: tuple[int, ...] | None=None,
+            inputs=None,
+            unique: bool | int=False):
+    if isinstance(c, OpNode):                                   return c.unbind()[0] if c.op is OpCode.BIND else c
+    if isinstance(c, tuple) and helpers.all_same(c):            c = c[0]     # doesn't have to be a VCONST if they are all the same
+    if isinstance(c, float) and math.isnan(c):                  c = math.nan # NOTE: float('nan') != float('nan'), so we canonicalize here
+
+    opcode = OpCode.VCONST if isinstance(c, tuple) else OpCode.CONST
+    output_opnode = OpNode(opcode, () if inputs is None else (inputs,), dtype, payload=dtypes.as_const(c, dtype),)
+    if device is not None:
+      if unique or not isinstance(unique, bool):                output_opnode = output_opnode.replace(src=(OpNode(OpCode.DEVICE, arg=device), OpNode.unique(None if unique is True else unique)))
+      else:                                                     output_opnode = output_opnode.replace(src=(OpNode(OpCode.DEVICE, arg=device),))
+    elif unique or not isinstance(unique, bool):                raise RuntimeError("unique consts only with DEVICE")
+
+    if shape is not None: output_opnode = output_opnode.reshape((1,)*len(shape)).expand(shape)
+    return output_opnode
   
-buffers:weakref.WeakKeyDictionary[OpNode, Buffer] = weakref.WeakKeyDictionary() # this maps BUFFER uops to their device Buffers
+buffers: weakref.WeakKeyDictionary[OpNode, Buffer] = weakref.WeakKeyDictionary() # this maps BUFFER uops to their device Buffers
