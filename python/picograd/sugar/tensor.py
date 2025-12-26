@@ -199,13 +199,10 @@ class Tensor(GraphBuilder):
     if reverse: self, other = other, self
 
     # 4. broadcast NOTE: the backward cast is no-op in forward and uses sum_acc_dtype in the backward sum
-    output_shape = Tensor._broadcast_shape(self.shape, other.shape) # compute the output shape
-    return self.cast(sum_acc_dtype(self.dtype) if backward_cast else self.dtype)._broadcast_to(output_shape).cast(self.dtype), \
-           other.cast(sum_acc_dtype(other.dtype) if backward_cast else other.dtype)._broadcast_to(output_shape).cast(other.dtype)
-  
-  @staticmethod
-  def _broadcast_shape(*shapes:tuple[int, ...]) -> tuple[int, ...]:
-    return tuple(0 if 0 in nth_dim_sizes else smax(nth_dim_sizes) for nth_dim_sizes in zip(*_align_left(*shapes)))
+    broadcasted_shape = tuple(0 if 0 in nth_dim_sizes else smax(nth_dim_sizes) for nth_dim_sizes in zip(*_align_left(*[self.shape, other.shape])))
+    
+    return self.cast(sum_acc_dtype(self.dtype) if backward_cast else self.dtype)._broadcast_to(broadcasted_shape).cast(self.dtype), \
+           other.cast(sum_acc_dtype(other.dtype) if backward_cast else other.dtype)._broadcast_to(broadcasted_shape).cast(other.dtype)
 
   def _forward(self, f: Callable, *other: Tensor) -> Self:
     """
