@@ -91,7 +91,9 @@ class Tensor(GraphBuilder):
     self.requires_grad: bool | None = requires_grad                                            # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
     self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)
     all_tensors[weakref.ref(self)] = None                                                      # add to all_tensors after construction succeeds
-    if DEBUG >= 1: print("DONE Tensor.__init__() initializing tensor with dtype:", dtype, "on device:", device, "...")
+
+    print(f"DONE Tensor.__init__() initializing tensor with dtype: {dtype} on device {device} with input {input}")
+    print(f"Tensor.opnode is now: {self.opnode}")
     return
   
   @staticmethod
@@ -111,7 +113,7 @@ class Tensor(GraphBuilder):
       if DEBUG >= 1: print("DONE _input_to_opnode converting hostseq to dslopnode...")
     if not isinstance(opnode, OpNode): raise RuntimeError(f"can't create Tensor from {input!r} with type {type(input)}") # by this point it has to be a UOp
 
-    print(f"opnode's device is {opnode.device}, specified device is {device}")
+    if DEBUG >= 1: print(f"opnode's device is {opnode.device}, specified device is {device}")
     return opnode if opnode.device == device else opnode.copy_to_device(device)
   
   @staticmethod
@@ -122,31 +124,43 @@ class Tensor(GraphBuilder):
     callers must manually transfer the OpNode's backing storage with opnode.copy_to_device(device)
     """
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
-    if DEBUG >= 1: print("START _hostseq2dslopnode(): constructing OpNode from python input", input)
-
-    if DEBUG >= 1: print("\n_hostseq2dslopnode() 1. creating OpNode with OpCode.BUFFER")
-    if DEBUG >= 1: print("------------------------------------------------------------------------")
     output_opnode = OpNode.new_buffer("HOST", helpers.prod(shape:=get_shape(input)), dtype)
-
-    if DEBUG >= 1: print("\n_hostseq2dslopnode() 2. applying OpCode.RESHAPE")
-    if DEBUG >= 1: print("------------------------------------------------------------------------")
     output_opnode = output_opnode.reshape(shape)
-
-    if DEBUG >= 1: print("\n_hostseq2dslopnode() 3. allocating OpCode.BUFFER with output_opnode.buffer.allocate")
-    if DEBUG >= 1: print("------------------------------------------------------------------------")
     bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(x, dtype)) for x in fully_flatten(input)]))
     output_opnode.buffer.allocate(bytes) # fake realize by passing an opaque_preallocation
     # todo: actually realize(evaluate/materialize)
-    if DEBUG >= 1: print("DONE _hostseq2dslopnode: constructing OpNode from python input")
-    if DEBUG >= 1: print(f"input: {input}")
-    if DEBUG >= 1: print(f"->output: {output_opnode}")
-    print("\n\n\n")
-
     return output_opnode
+
+
+
+
 
   # **************** GraphBuilder Required Methods ****************
   def _apply_compute_opcode(self, ftype: OpCode, *inputs): raise NotImplementedError("todo")
   def _apply_movement_opcode(self, ftype: OpCode, *inputs): return self._forward(OpNode._apply_movement_opcode, extra_args=(op,), arg=arg)
+
+  # ************ Tensor Sugar ************
+  def recip(self) -> Self: return self._forward(OpNode.recip)._evaluate()
+  def sigmoid(self) -> Self: return (1 + (self * (-1/math.log(2))).exp2()).recip()._evaluate()
+  def tanh(self) -> Self: return (2.0 * ((2.0 * self).sigmoid()) - 1.0)._evaluate()
+  def exp2(self) -> Self: return self._forward(OpNode.exp2)._evaluate()
+  def log2(self) -> Self: return self._forward(OpNode.log2)._evaluate()
+  def fa(self) -> Self: raise NotImplementedError("todo")
+  def mm(self) -> Self: raise NotImplementedError("todo")
+  # the builtin primitives (i.e add) which do not need to be desugared will call provided OpMixin._binop() to __________
+  # which is overrided to ____________
+  def _apply_compute_binopcode(self, op, x, reverse):
+    return self._apply_broadcasted_uop(lambda *u: OpNode.alu(u[0], op, *u[1:]), x, reverse) # _binop is used by MathTrait
+  def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|Const, reverse=False) -> Self:
+    lhs,rhs = self._broadcasted(x, reverse)
+    return lhs.evaluate(fxn, rhs)
+
+  # reduce ops
+  # movement ops
+  # --high level: gather, cat, stack, repeat, split, chunk, unfold, squeeze, unsqueeze
+  # --low level: view, reshape, expand, permute, flip, shrink, pad
+
+
 
   # ************ Tensor Operations ************
   def _evaluate(self, *other: Tensor) -> Self:
@@ -230,29 +244,5 @@ class Tensor(GraphBuilder):
         #     all_metadata[bw_uop] = all_metadata.get(bw_uop, ())+backward_metadata
 
     return tens2grads
-
-
-
-
-  # ************ Tensor Sugar ************
-  def recip(self) -> Self: return self._forward(OpNode.recip)._evaluate()
-  def sigmoid(self) -> Self: return (1 + (self * (-1/math.log(2))).exp2()).recip()._evaluate()
-  def tanh(self) -> Self: return (2.0 * ((2.0 * self).sigmoid()) - 1.0)._evaluate()
-  def exp2(self) -> Self: return self._forward(OpNode.exp2)._evaluate()
-  def log2(self) -> Self: return self._forward(OpNode.log2)._evaluate()
-  def fa(self) -> Self: raise NotImplementedError("todo")
-  def mm(self) -> Self: raise NotImplementedError("todo")
-  # the builtin primitives (i.e add) which do not need to be desugared will call provided OpMixin._binop() to __________
-  # which is overrided to ____________
-  def _apply_compute_binopcode(self, op, x, reverse):
-    return self._apply_broadcasted_uop(lambda *u: OpNode.alu(u[0], op, *u[1:]), x, reverse) # _binop is used by MathTrait
-  def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|Const, reverse=False) -> Self:
-    lhs,rhs = self._broadcasted(x, reverse)
-    return lhs.evaluate(fxn, rhs)
-
-  # reduce ops
-  # movement ops
-  # --high level: gather, cat, stack, repeat, split, chunk, unfold, squeeze, unsqueeze
-  # --low level: view, reshape, expand, permute, flip, shrink, pad
 
 __all__ = ["Tensor"]

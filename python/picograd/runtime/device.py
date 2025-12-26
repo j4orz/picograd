@@ -148,7 +148,7 @@ class Buffer:
     # if external_ptr is not None: self.options = replace(self.options, external_ptr=external_ptr) if self.options else BufferSpec(external_ptr=external_ptr)
     if self._basebuf is None:
       if DEBUG >= 1: print(f"Buffer.allocate() is calling runtime.allocator.allocate()...")
-      if opaque_preallocation: print(f"caller passed in opaque_preallocation: {opaque_preallocation}...shortcircuiting call to runtime.allocator.allocate()!")
+      if DEBUG >= 1 and opaque_preallocation: print(f"caller passed in opaque_preallocation: {opaque_preallocation}...shortcircuiting call to runtime.allocator.allocate()!")
       self._buf = opaque_preallocation if opaque_preallocation is not None else self.allocator.alloc(self.nbytes, self.options)
     else:
       if DEBUG >= 1: print(f"deer: Buffer.allocate() is now calling runtime.allocator.allocate()...")

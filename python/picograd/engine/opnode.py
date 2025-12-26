@@ -39,11 +39,15 @@ class recursive_property(property):
 @dataclass(eq=False, slots=True) # NOTE: this should be frozen, but frozen is slower
 class OpNode(GraphBuilder):
   """
-  OpNode structs (which Tensor's deusugar into) are vertices that form an expression graph G=(V,E) where V is a Set<Op> and E is a Set<(Op,Op)>
-  OpNodes store state for
-    1. specified compute (OpCode) aka the function *type* of f
-    2. resulting virtual shape (.shape) aka the *image* of f: _ -> SHAPE
-    3. mapped physical stoage (Buffer)
+  OpNode structs (which Tensor's deusugar into) are vertices that form an
+  expression graph G=(V,E) where V is a Set<Op> and E is a Set<(Op,Op)>
+
+  OpNodes structs store state for the
+    1. static specification of the function being applied to the expression graph
+      a. specified function type of f (OpCode)
+      b. resulting *image* of f: _ -> R^(d0xd1x...xdn) (Shape)
+    2. dynamic evaluation of the function being applied to the expression graph
+      a. arguments passed in (OpNode.inputs)
   """
   opcode: OpCode
   inputs: tuple[OpNode, ...]
@@ -141,11 +145,10 @@ class OpNode(GraphBuilder):
     inputs = (OpNode.unique(num), OpNode(OpCode.DEVICE, tuple(), dtypes.void, payload=device))
     return OpNode(OpCode.BUFFER, inputs, dtype, size)
   
-  def copy_to_device(self, device: str|tuple[str, ...]|OpNode, payload=None):
-    assert payload is None or isinstance(self.device, tuple)
-    input_foo = self if payload is None else OpNode(OpCode.MSELECT, (self,), self.dtype, payload=payload)
-    input_bar = (input_foo, OpNode(OpCode.DEVICE, payload=device) if not isinstance(device, OpNode) else device)
-    return OpNode(OpCode.COPY, input_bar, self.dtype)
+  def copy_to_device(self: Self, device: str|tuple[str, ...]|OpNode):
+    if DEBUG >= 1: print(f"OpNode.copy_to_device for opnode {self} to device {device}")
+    device_opnode = OpNode(OpCode.DEVICE, (), dtypes.void, payload=device) if not isinstance(device, OpNode) else device
+    return OpNode(OpCode.COPY, (self, device_opnode), self.dtype)
 
   @property
   def device(self) -> str|tuple[str, ...]:                                    return helpers.unwrap(self._device)
