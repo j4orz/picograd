@@ -96,7 +96,7 @@ class ComputeOpCodeBuilder:
   def const_like(self, b: Const) -> Self: raise NotImplementedError
 
   # provided
-  def _apply_compute_binopcode(self, op: OpCode, other: Self|Const, reverse: bool) -> Self:
+  def _apply_compute_binopcode(self, other: Self|Const, op: OpCode, reverse: bool) -> Self:
     return self.ufix(other)._apply_compute_opcode(op, self) if reverse else self._apply_compute_opcode(op, self.ufix(other))
   def ufix(self, other: Self|Const) -> Self:
     return self.const_like(other) if not isinstance(other, ComputeOpCodeBuilder) else x
@@ -105,11 +105,11 @@ class ComputeOpCodeBuilder:
     if (dtype := getattr(self, "dtype")) is None:
       raise TypeError(f"MathTraits __neg__ requires a dtype, {self=}")
     return self.logical_not() if dtype.scalar() == dtypes.bool else self * (-1)
-  def add(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(OpCode.ADD, other, reverse)
+  def add(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(other, OpCode.ADD, reverse)
   def sub(self, other: Self|Const, reverse: bool=False):                                                     return self.ufix(other)._apply_compute_opcode(OpCode.ADD, -self) if reverse else self._apply_compute_opcode(OpCode.ADD, self.ufix(-x))
-  def mul(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(OpCode.MUL, other, reverse)
-  def idiv(self, other: Self|Const, reverse: bool=False):                                                    return self._apply_compute_binopcode(OpCode.IDIV, other, reverse)
-  def mod(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(OpCode.MOD, other, reverse)
+  def mul(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(other, OpCode.MUL, reverse)
+  def idiv(self, other: Self|Const, reverse: bool=False):                                                    return self._apply_compute_binopcode(other, OpCode.IDIV, reverse)
+  def mod(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(other, OpCode.MOD, reverse)
   def div(self, other: Self|Const, reverse: bool=False): return (self.ufix(other) * self._apply_compute_opcode(OpCode.RECIP)) if reverse else (self * self.ufix(other)._apply_compute_opcode(OpCode.RECIP))
   def recip(self):                                                                                           return self._apply_compute_opcode(OpCode.RECIP)
   def trunc(self):                                                                                           return self._apply_compute_opcode(OpCode.TRUNC)
@@ -118,14 +118,14 @@ class ComputeOpCodeBuilder:
   def log2(self):                                                                                            return self._apply_compute_opcode(OpCode.LOG2)
   def exp2(self):                                                                                            return self._apply_compute_opcode(OpCode.EXP2)
   def pow(self, other: Self|Const):                                                                            return self._apply_compute_opcode(OpCode.POW, self.ufix(other))
-  def maximum(self, other: Self|Const):                                                                        return self._apply_compute_opcode(OpCode.MAother, self.ufix(other))
+  def maximum(self, other: Self|Const):                                                                        return self._apply_compute_opcode(OpCode.MAX, self.ufix(other))
   def minimum(self, other: Self|Const): return -(-self).maximum(-x)
   def threefry(self, seed: Self): return self._apply_compute_opcode(OpCode.THREEFRY, seed)
   def bitwise_and(self, other: Self|Const, reverse: bool=False): self._check_dtype();                        return self._apply_compute_binopcode(OpCode.AND, other, reverse)
   def bitwise_or(self, other: Self|Const, reverse: bool=False): self._check_dtype();                         return self._apply_compute_binopcode(OpCode.OR, other, reverse)
   def bitwise_xor(self, other: Self|Const, reverse: bool=False): self._check_dtype();                        return self._apply_compute_binopcode(OpCode.XOR, other, reverse)
-  def lshift(self, x: Self | int, reverse: bool=False): return self._apply_compute_binopcode(OpCode.SHL, other, reverse)
-  def rshift(self, x: Self | int, reverse: bool=False): return self._apply_compute_binopcode(OpCode.SHR, other, reverse)
+  def lshift(self, other: Self|int, reverse: bool=False): return self._apply_compute_binopcode(other, OpCode.SHL, reverse)
+  def rshift(self, other: Self|int, reverse: bool=False): return self._apply_compute_binopcode(other, OpCode.SHR, reverse)
   def where(self, x: Self|Const, y: Self|Const):
     if isinstance(x, type(self)):
       return self._apply_compute_opcode(OpCode.WHERE, x, x.ufix(y))

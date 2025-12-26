@@ -1,5 +1,5 @@
 # inspired by https://github.com/karpathy/micrograd/blob/master/micrograd/engine.py
-#         and https://github.com/tinygrad/tinygrad/blob/master/tinygrad/tensor.py
+#          and https://github.com/tinygrad/tinygrad/blob/master/tinygrad/tensor.py
 from __future__ import annotations
 from typing import Any, Callable, Self, Sequence, TypeGuard,  cast, get_args
 import math, weakref, struct, pathlib
@@ -164,37 +164,48 @@ class Tensor(GraphBuilder):
     return self
 
   # **************** ComputeOpCodeBuilder/MovementOpCodeBuilder Required Methods ****************
-  def _apply_compute_opcode(self, opcode: OpCode, *inputs): return self._forward(lambda *u: u[0].alu(opcode, *u[1:]), *inputs)
-  def _apply_movement_opcode(self, opcode: OpCode, *inputs): return self._forward(OpNode._apply_movement_opcode, extra_args=(op,), arg=arg)
+  def _apply_compute_opcode(self, opcode: OpCode, *inputs):
+    f = lambda *input_opnodes: input_opnodes[0]._apply_compute_opcode(opcode, *input_opnodes[1:])
+    return self._forward(f, *inputs)
+  # def _apply_movement_opcode(self, opcode: OpCode, *inputs):
+  #   return self._forward(OpNode._apply_movement_opcode, extra_args=(opcode,), arg=arg)
 
-  # **************** ComputeOpCodeBuilder/MovementOpCodeBuilder Overriding Provided Methods ****************
-  def _apply_compute_binopcode(self, op, x, reverse): return self._forward_broadcasted(lambda *u: OpNode.alu(u[0], op, *u[1:]), x, reverse) # overriding the provided method
-  def _forward_broadcasted(self, f:Callable, x:Tensor|Const, reverse=False) -> Self:
-    lhs, rhs = self._broadcasted(x, reverse)
-    return lhs._forward(f, rhs)
-  def _broadcasted(self, y:Tensor|ConstType|UOp, reverse:bool=False, match_dtype:bool=True, backward_cast:bool=True) -> tuple[Tensor, Tensor]:
-    x: Tensor = self
-    if not isinstance(y, Tensor):
-      # make y a Tensor
-      assert isinstance(y, (*get_args(ConstType), UOp)), f"{type(y)=}, {y=}"
-      if isinstance(x.dtype, ImageDType) or dtypes.is_float(x.dtype) or (dtypes.is_int(x.dtype) and isinstance(y, int)): y_dtype = x.dtype
-      elif not isinstance(y, UOp): y_dtype = dtypes.from_py(y)
-      if isinstance(y, UOp): y = Tensor.from_uop(y, device=x.device)
-      else: y = Tensor(dtypes.as_const(y, y_dtype), x.device, y_dtype, requires_grad=False)
+  # **************** Overriding ComputeOpCodeBuilder Provided ._apply_compute_binopcode ****************
+  #                  ---> so that operations on Tensors go through dtype and broacasting logic below
+  def _apply_compute_binopcode(self, other: Self|Const, opcode: OpCode, reverse):
+    f = lambda *input_opnodes: OpNode._apply_compute_opcode(input_opnodes[0], opcode, *input_opnodes[1:])
+    self, other = self._broadcasted(other, reverse) # <----------------- MOOSE.
+    return self._forward(f, other)
+  
+  def _broadcasted(self, other: Tensor|Const|OpNode, reverse: bool=False,
+                   match_dtype: bool=True, backward_cast: bool=True) -> tuple[Tensor, Tensor]:
+    """
+    ...
+    """
+    # 1. normalize other: Const|OpNodes -> Tensors
+    if not isinstance(other, Tensor):
+      assert isinstance(other, (*get_args(Const), OpNode)), f"{type(other)=}, {other=}"
+      if dtypes.is_float(self.dtype) or (dtypes.is_int(self.dtype) and isinstance(other, int)): other_dtype = self.dtype
+      elif not isinstance(other, OpNode):                                                       other_dtype = dtypes.from_py(other)
+      if isinstance(other, OpNode):                                                             other = Tensor.from_uop(other, device=self.device)
+      else:                                                                                     other = Tensor(dtypes.as_const(other, other_dtype), self.device, other_dtype, requires_grad=False)
 
-    if match_dtype and x.dtype != y.dtype:
-      output_dtype = least_upper_dtype(x.dtype, y.dtype)
-      x, y = x.cast(output_dtype), y.cast(output_dtype)
+    # 2. normalize dtypes
+    if match_dtype and self.dtype != other.dtype:
+      output_dtype = least_upper_dtype(self.dtype, other.dtype)
+      self, other = self.cast(output_dtype), other.cast(output_dtype)
 
-    if reverse: x, y = y, x
+    # 3. reverse
+    if reverse: self, other = other, self
 
-    # compute the output shape
-    out_shape = _broadcast_shape(x.shape, y.shape)
-
-    # broadcast
-    # NOTE: the backward cast is no-op in forward and uses sum_acc_dtype in the backward sum
-    return x.cast(sum_acc_dtype(x.dtype) if backward_cast else x.dtype)._broadcast_to(out_shape).cast(x.dtype), \
-           y.cast(sum_acc_dtype(y.dtype) if backward_cast else y.dtype)._broadcast_to(out_shape).cast(y.dtype)
+    # 4. broadcast NOTE: the backward cast is no-op in forward and uses sum_acc_dtype in the backward sum
+    output_shape = Tensor._broadcast_shape(self.shape, other.shape) # compute the output shape
+    return self.cast(sum_acc_dtype(self.dtype) if backward_cast else self.dtype)._broadcast_to(output_shape).cast(self.dtype), \
+           other.cast(sum_acc_dtype(other.dtype) if backward_cast else other.dtype)._broadcast_to(output_shape).cast(other.dtype)
+  
+  @staticmethod
+  def _broadcast_shape(*shapes:tuple[int, ...]) -> tuple[int, ...]:
+    return tuple(0 if 0 in nth_dim_sizes else smax(nth_dim_sizes) for nth_dim_sizes in zip(*_align_left(*shapes)))
 
   def _forward(self, f: Callable, *other: Tensor) -> Self:
     """
@@ -237,7 +248,7 @@ class Tensor(GraphBuilder):
     """
     tens2grads = {root: root_grad}
 
-    # 1. topological sort ordering is NP-complete?????????? <--------------------------- MOOOOOOOOOOOOOOOOOOSEEEEEE
+    # 1. topological sort ordering is NP-complete??????????
     in_target_path: dict[OpNode, bool] = {}
     for u in root.toposort(): in_target_path[u] = any(x in targets or in_target_path[x] for x in u.inputs)
     dfs = list(root.toposort()) # lambda node: node.op not in {OpCode.DETACH, OpCode.ASSIGN} and in_target_path[node])) # don't flow through DETACH/ASSIGN or anything not in target path
@@ -250,7 +261,7 @@ class Tensor(GraphBuilder):
       if local_grads is None: raise RuntimeError(f"failed to compute gradient for {tensor.op}\n\nin {str(tensor)[0:1000]}...")
       assert len(local_grads) == len(tensor.inputs), f"got {len(local_grads)} gradient, expected {len(tensor.inputs)}"
 
-      for tensor,local_grad in zip(tensor.inputs, local_grads): # <--------------------- MOOOSE: why are we accumulating inside ad()? don't we do it in backward()??
+      for tensor,local_grad in zip(tensor.inputs, local_grads): # TODO: why are we accumulating inside ad()? don't we do it in backward()??
         if local_grad is None: continue
         if tensor in tens2grads: tens2grads[tensor] = tens2grads[tensor] + local_grad # accumulate if tensor exists
         else: tens2grads[tensor] = local_grad # o/w initialize
