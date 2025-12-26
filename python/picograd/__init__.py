@@ -15,18 +15,32 @@ mmMMmm .gP"Ya   .gP"Ya `7MMpMMMb.`7M'   `MF'.P"Ybmmm `7Mb,od8 ,6"Yb.   ,M""bMM
   `Mbmo`Mbmmd'  `Mbmmd'.JMML  JMML.  ,V     YMMMMMb  .JMML.  `Moo9^Yo.`Wbmd"MML.
                                     ,V     6'     dP                            
                                  OOb"      Ybmmmd'
-teenygrad is a teaching deep learning framework that bridges micograd to tinygrad which consists of a
-1. sugar: domain specific ndarray language (python `Tensor`) that provides automatic differentiation, optimizers, and neural network layers
-2. engine: an interpreter and compiler pipeline for an abstract compute language (`OpNode`/\OpCode`) that the tensor frontend desugars/lowers to.
-    a. interpreter pipeline "pt1's age of researcH":
-      when evaluating the model, a graph of those decomposed ops will be traced dynamically at runtime (as opposed to just-in-time source to source transform like autograd/jax),
-      which then serves as the data structure for automatic differentiation to apply backpropagation and route gradients throughout the graph
-    b. compiler pipeline "pt2's age of scaling":
-      which modifies the language implementation strategy from eager interpretation to just-in-time/lazy compilation
-      in order to obtain a global view of the computational graph, and to apply optimizations; the primary one being fusion.
-    
-    gpu accelerated kernels (cuda c/hip c)
-3. runtime: memory (`Buffer` `Allocator`) and compute (`Kernel` `Compiler`)
+
+teenygrad is a teaching deep learning framework that is the bridge from micrograd to tinygrad
+see: https://github.com/karpathy/micrograd and https://github.com/tinygrad/tinygrad
+
+teenygrad comes with a free opensource textbook
+"The Struture and Interpretation of Tensor Programs"
+see: : https://j4orz.ai/sitp/
+
+in *CHAPTER 1* of the SITP book: https://j4orz.ai/sitp/1
+you will develop all the required machinery for the `ndarray`/`Tensor` abstraction including:
+  1. domain specific language
+    0. intermediate representation with `OpNode` graph vertices and their `OpCode` function types
+    1. frontend sugar with `Tensor` ndarray
+    2. middleend engine with an `.evaluate`or that implements BLAS-like CPU kernels
+  2. device runtimes: `Buffer` `Allocator` memory management and `Kernel` `Compiler` compute management
+
+in *CHAPTER 2* of the SITP book: https://j4orz.ai/sitp/2
+you will develop the two primary pytorch1 abstractions for training deep `torch.nn`s in the "age of research" including:
+  1. optimization and differentiation with `optim.sgd` and `Tensor.backward()`
+  2. parallel acceleration with cuBLAS-like GPU kernels
+
+in *CHAPTER 3* of the SITP book: https://j4orz.ai/sitp/3
+you will modify the engine in order to train deep `torch.nn`s in the "age of scaling by updating
+  1. middleend engine's eager interpreter to just-in-time/lazy compiler
+    A. optimizer: todo..
+    B. generator: todo..
 """
 from .sugar import nn, optim
 from .sugar.tensor import Tensor
