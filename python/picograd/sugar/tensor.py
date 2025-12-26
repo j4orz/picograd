@@ -164,12 +164,37 @@ class Tensor(GraphBuilder):
     return self
 
   # **************** ComputeOpCodeBuilder/MovementOpCodeBuilder Required Methods ****************
-  def _apply_compute_opcode(self, ftype: OpCode, *inputs): return self._forward(OpNode._apply_compute_opcode, extra_args=(op,), arg=arg)
-  def _apply_compute_binopcode(self, op, x, reverse): return self._apply_broadcasted_uop(lambda *u: OpNode.alu(u[0], op, *u[1:]), x, reverse) # _binop is used by MathTrait
-  def _apply_movement_opcode(self, ftype: OpCode, *inputs): return self._forward(OpNode._apply_movement_opcode, extra_args=(op,), arg=arg)
-  def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|Const, reverse=False) -> Self:
-    lhs,rhs = self._broadcasted(x, reverse)
-    return lhs.evaluate(fxn, rhs)
+  def _apply_compute_opcode(self, opcode: OpCode, *inputs): return self._forward(lambda *u: u[0].alu(opcode, *u[1:]), *inputs)
+  def _apply_movement_opcode(self, opcode: OpCode, *inputs): return self._forward(OpNode._apply_movement_opcode, extra_args=(op,), arg=arg)
+
+  # **************** ComputeOpCodeBuilder/MovementOpCodeBuilder Overriding Provided Methods ****************
+  def _apply_compute_binopcode(self, op, x, reverse): return self._forward_broadcasted(lambda *u: OpNode.alu(u[0], op, *u[1:]), x, reverse) # overriding the provided method
+  def _forward_broadcasted(self, f:Callable, x:Tensor|Const, reverse=False) -> Self:
+    lhs, rhs = self._broadcasted(x, reverse)
+    return lhs._forward(f, rhs)
+  def _broadcasted(self, y:Tensor|ConstType|UOp, reverse:bool=False, match_dtype:bool=True, backward_cast:bool=True) -> tuple[Tensor, Tensor]:
+    x: Tensor = self
+    if not isinstance(y, Tensor):
+      # make y a Tensor
+      assert isinstance(y, (*get_args(ConstType), UOp)), f"{type(y)=}, {y=}"
+      if isinstance(x.dtype, ImageDType) or dtypes.is_float(x.dtype) or (dtypes.is_int(x.dtype) and isinstance(y, int)): y_dtype = x.dtype
+      elif not isinstance(y, UOp): y_dtype = dtypes.from_py(y)
+      if isinstance(y, UOp): y = Tensor.from_uop(y, device=x.device)
+      else: y = Tensor(dtypes.as_const(y, y_dtype), x.device, y_dtype, requires_grad=False)
+
+    if match_dtype and x.dtype != y.dtype:
+      output_dtype = least_upper_dtype(x.dtype, y.dtype)
+      x, y = x.cast(output_dtype), y.cast(output_dtype)
+
+    if reverse: x, y = y, x
+
+    # compute the output shape
+    out_shape = _broadcast_shape(x.shape, y.shape)
+
+    # broadcast
+    # NOTE: the backward cast is no-op in forward and uses sum_acc_dtype in the backward sum
+    return x.cast(sum_acc_dtype(x.dtype) if backward_cast else x.dtype)._broadcast_to(out_shape).cast(x.dtype), \
+           y.cast(sum_acc_dtype(y.dtype) if backward_cast else y.dtype)._broadcast_to(out_shape).cast(y.dtype)
 
   def _forward(self, f: Callable, *other: Tensor) -> Self:
     """

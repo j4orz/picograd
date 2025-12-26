@@ -64,7 +64,7 @@ class OpCode(FastEnum):
 
 class GroupedOpCode:
   Unary =        {OpCode.EXP2, OpCode.LOG2, OpCode.SIN, OpCode.SQRT, OpCode.RECIPROCAL, OpCode.NEG, OpCode.TRUNC}
-  Binary =       {OpCode.ADD, OpCode.MUL, OpCode.IDIV, OpCode.MAother, OpCode.MOD, OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ,
+  Binary =       {OpCode.ADD, OpCode.MUL, OpCode.IDIV, OpCode.MAX, OpCode.MOD, OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ,
                   OpCode.XOR, OpCode.SHL, OpCode.SHR, OpCode.OR, OpCode.AND, OpCode.THREEFRY, OpCode.SUB, OpCode.FDIV, OpCode.POW}
   Ternary =      {OpCode.WHERE, OpCode.MULACC}
   Compute =      set.union(Unary, Binary, Ternary)
@@ -75,7 +75,7 @@ class GroupedOpCode:
   Movement =     {OpCode.RESHAPE, OpCode.EXPAND, OpCode.PERMUTE, OpCode.PAD, OpCode.SHRINK, OpCode.FLIP}
   Buffer =       {OpCode.LOAD, OpCode.STORE, OpCode.CONST, OpCode.DEFINE_VAR}
 
-  Commutative =  {OpCode.ADD, OpCode.MUL, OpCode.MAother, OpCode.CMPNE, OpCode.CMPEQ, OpCode.XOR, OpCode.AND, OpCode.OR} # BinaryOps that can be flipped
+  Commutative =  {OpCode.ADD, OpCode.MUL, OpCode.MAX, OpCode.CMPNE, OpCode.CMPEQ, OpCode.XOR, OpCode.AND, OpCode.OR} # BinaryOps that can be flipped
   Associative =  {OpCode.ADD, OpCode.MUL, OpCode.AND, OpCode.OR, OpCode.MAX}                                         # BinaryOps where f(f(a,b),c) = f(a,f(b,c))
   Idempotent =   {OpCode.OR, OpCode.AND, OpCode.MAX}                                                                 # BinaryOps where f(other,x)=x
   Comparison =   {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}                                                          # These can change the dtype to bool
@@ -92,7 +92,7 @@ GraphBuilder (at the bottom of the file) is a ComputeOpCodeBuilder and MovementO
 
 class ComputeOpCodeBuilder:
   # required
-  def _apply_compute_opcode(self, ftype: OpCode, *inputs: Self) -> Self: raise NotImplementedError
+  def _apply_compute_opcode(self, opcode: OpCode, *inputs: Self) -> Self: raise NotImplementedError
   def const_like(self, b: Const) -> Self: raise NotImplementedError
 
   # provided
