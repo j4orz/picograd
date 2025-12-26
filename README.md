@@ -1,6 +1,16 @@
-![](./flammarion.jpeg)
+```
+                                                                            ,,  
+  mm                                                                      `7MM  
+  MM                                                                        MM  
+mmMMmm .gP"Ya   .gP"Ya `7MMpMMMb.`7M'   `MF'.P"Ybmmm `7Mb,od8 ,6"Yb.   ,M""bMM  
+  MM  ,M'   Yb ,M'   Yb  MM    MM  VA   ,V :MI  I8     MM' "'8)   MM ,AP    MM  
+  MM  8M"""""" 8M""""""  MM    MM   VA ,V   WmmmP"     MM     ,pm9MM 8MI    MM  
+  MM  YM.    , YM.    ,  MM    MM    VVV   8M          MM    8M   MM `Mb    MM  
+  `Mbmo`Mbmmd'  `Mbmmd'.JMML  JMML.  ,V     YMMMMMb  .JMML.  `Moo9^Yo.`Wbmd"MML.
+                                    ,V     6'     dP                            
+                                 OOb"      Ybmmmd'                              
+```
 
-# teenygrad
 *a teaching deep learning framework: the bridge from [micrograd](https://github.com/karpathy/micrograd) to [tinygrad](https://github.com/tinygrad/tinygrad)*
 
 Take a whirlwind tour with the [SITP lectures and textbook](https://j4orz.ai/sitp/)
