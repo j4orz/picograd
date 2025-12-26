@@ -64,7 +64,7 @@ class OpCode(FastEnum):
 
 class GroupedOpCode:
   Unary =        {OpCode.EXP2, OpCode.LOG2, OpCode.SIN, OpCode.SQRT, OpCode.RECIPROCAL, OpCode.NEG, OpCode.TRUNC}
-  Binary =       {OpCode.ADD, OpCode.MUL, OpCode.IDIV, OpCode.MAX, OpCode.MOD, OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ,
+  Binary =       {OpCode.ADD, OpCode.MUL, OpCode.IDIV, OpCode.MAother, OpCode.MOD, OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ,
                   OpCode.XOR, OpCode.SHL, OpCode.SHR, OpCode.OR, OpCode.AND, OpCode.THREEFRY, OpCode.SUB, OpCode.FDIV, OpCode.POW}
   Ternary =      {OpCode.WHERE, OpCode.MULACC}
   Compute =      set.union(Unary, Binary, Ternary)
@@ -75,15 +75,15 @@ class GroupedOpCode:
   Movement =     {OpCode.RESHAPE, OpCode.EXPAND, OpCode.PERMUTE, OpCode.PAD, OpCode.SHRINK, OpCode.FLIP}
   Buffer =       {OpCode.LOAD, OpCode.STORE, OpCode.CONST, OpCode.DEFINE_VAR}
 
-  Commutative =  {OpCode.ADD, OpCode.MUL, OpCode.MAX, OpCode.CMPNE, OpCode.CMPEQ, OpCode.XOR, OpCode.AND, OpCode.OR} # BinaryOps that can be flipped
+  Commutative =  {OpCode.ADD, OpCode.MUL, OpCode.MAother, OpCode.CMPNE, OpCode.CMPEQ, OpCode.XOR, OpCode.AND, OpCode.OR} # BinaryOps that can be flipped
   Associative =  {OpCode.ADD, OpCode.MUL, OpCode.AND, OpCode.OR, OpCode.MAX}                                         # BinaryOps where f(f(a,b),c) = f(a,f(b,c))
-  Idempotent =   {OpCode.OR, OpCode.AND, OpCode.MAX}                                                                 # BinaryOps where f(x,x)=x
+  Idempotent =   {OpCode.OR, OpCode.AND, OpCode.MAX}                                                                 # BinaryOps where f(other,x)=x
   Comparison =   {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}                                                          # These can change the dtype to bool
   UnsafePad =    {OpCode.RECIPROCAL, OpCode.LOG2, OpCode.EXP2, OpCode.IDIV, OpCode.POW}                              # do not preserve f(0) = 0
   All =          set(OpCode)
 
 
-# **************** GraphBuilder: ComputeOpCodeBuilder * MovementOpCodeBuilder ****************
+# **************** GraphBuilder: ComputeOpCodeBuilder + MovementOpCodeBuilder ****************
 """
 GraphBuilder (at the bottom of the file) is a ComputeOpCodeBuilder and MovementOpCodeBuilder which effectively
 1. removes the repetition between sugared and desugared Tensor/Op
@@ -96,37 +96,37 @@ class ComputeOpCodeBuilder:
   def const_like(self, b: Const) -> Self: raise NotImplementedError
 
   # provided
-  def _apply_compute_binopcode(self, op: OpCode, x: Self | Const, reverse: bool) -> Self:
-    return self.ufix(x)._apply_compute_opcode(op, self) if reverse else self._apply_compute_opcode(op, self.ufix(x))
-  def ufix(self, x: Self | Const) -> Self:
-    return self.const_like(x) if not isinstance(x, ComputeOpCodeBuilder) else x
+  def _apply_compute_binopcode(self, op: OpCode, other: Self|Const, reverse: bool) -> Self:
+    return self.ufix(other)._apply_compute_opcode(op, self) if reverse else self._apply_compute_opcode(op, self.ufix(other))
+  def ufix(self, other: Self|Const) -> Self:
+    return self.const_like(other) if not isinstance(other, ComputeOpCodeBuilder) else x
 
   def neg(self):
     if (dtype := getattr(self, "dtype")) is None:
       raise TypeError(f"MathTraits __neg__ requires a dtype, {self=}")
     return self.logical_not() if dtype.scalar() == dtypes.bool else self * (-1)
-  def add(self, x: Self | Const, reverse: bool = False):                                                     return self._apply_compute_binopcode(OpCode.ADD, x, reverse)
-  def sub(self, x: Self | Const, reverse: bool = False):                                                     return self.ufix(x)._apply_compute_opcode(OpCode.ADD, -self) if reverse else self._apply_compute_opcode(OpCode.ADD, self.ufix(-x))
-  def mul(self, x: Self | Const, reverse: bool = False):                                                     return self._apply_compute_binopcode(OpCode.MUL, x, reverse)
-  def idiv(self, x: Self | Const, reverse: bool = False):                                                    return self._apply_compute_binopcode(OpCode.IDIV, x, reverse)
-  def mod(self, x: Self | Const, reverse: bool = False):                                                     return self._apply_compute_binopcode(OpCode.MOD, x, reverse)
-  def div(self, x: Self | Const, reverse: bool = False): return (self.ufix(x) * self._apply_compute_opcode(OpCode.RECIP)) if reverse else (self * self.ufix(x)._apply_compute_opcode(OpCode.RECIP))
+  def add(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(OpCode.ADD, other, reverse)
+  def sub(self, other: Self|Const, reverse: bool=False):                                                     return self.ufix(other)._apply_compute_opcode(OpCode.ADD, -self) if reverse else self._apply_compute_opcode(OpCode.ADD, self.ufix(-x))
+  def mul(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(OpCode.MUL, other, reverse)
+  def idiv(self, other: Self|Const, reverse: bool=False):                                                    return self._apply_compute_binopcode(OpCode.IDIV, other, reverse)
+  def mod(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(OpCode.MOD, other, reverse)
+  def div(self, other: Self|Const, reverse: bool=False): return (self.ufix(other) * self._apply_compute_opcode(OpCode.RECIP)) if reverse else (self * self.ufix(other)._apply_compute_opcode(OpCode.RECIP))
   def recip(self):                                                                                           return self._apply_compute_opcode(OpCode.RECIP)
   def trunc(self):                                                                                           return self._apply_compute_opcode(OpCode.TRUNC)
   def sqrt(self):                                                                                            return self._apply_compute_opcode(OpCode.SQRT)
   def sin(self):                                                                                             return self._apply_compute_opcode(OpCode.SIN)
   def log2(self):                                                                                            return self._apply_compute_opcode(OpCode.LOG2)
   def exp2(self):                                                                                            return self._apply_compute_opcode(OpCode.EXP2)
-  def pow(self, x: Self | Const):                                                                            return self._apply_compute_opcode(OpCode.POW, self.ufix(x))
-  def maximum(self, x: Self | Const):                                                                        return self._apply_compute_opcode(OpCode.MAX, self.ufix(x))
-  def minimum(self, x: Self | Const): return -(-self).maximum(-x)
+  def pow(self, other: Self|Const):                                                                            return self._apply_compute_opcode(OpCode.POW, self.ufix(other))
+  def maximum(self, other: Self|Const):                                                                        return self._apply_compute_opcode(OpCode.MAother, self.ufix(other))
+  def minimum(self, other: Self|Const): return -(-self).maximum(-x)
   def threefry(self, seed: Self): return self._apply_compute_opcode(OpCode.THREEFRY, seed)
-  def bitwise_and(self, x: Self | Const, reverse: bool = False): self._check_dtype();                        return self._apply_compute_binopcode(OpCode.AND, x, reverse)
-  def bitwise_or(self, x: Self | Const, reverse: bool = False): self._check_dtype();                         return self._apply_compute_binopcode(OpCode.OR, x, reverse)
-  def bitwise_xor(self, x: Self | Const, reverse: bool = False): self._check_dtype();                        return self._apply_compute_binopcode(OpCode.XOR, x, reverse)
-  def lshift(self, x: Self | int, reverse: bool = False): return self._apply_compute_binopcode(OpCode.SHL, x, reverse)
-  def rshift(self, x: Self | int, reverse: bool = False): return self._apply_compute_binopcode(OpCode.SHR, x, reverse)
-  def where(self, x: Self | Const, y: Self | Const):
+  def bitwise_and(self, other: Self|Const, reverse: bool=False): self._check_dtype();                        return self._apply_compute_binopcode(OpCode.AND, other, reverse)
+  def bitwise_or(self, other: Self|Const, reverse: bool=False): self._check_dtype();                         return self._apply_compute_binopcode(OpCode.OR, other, reverse)
+  def bitwise_xor(self, other: Self|Const, reverse: bool=False): self._check_dtype();                        return self._apply_compute_binopcode(OpCode.XOR, other, reverse)
+  def lshift(self, x: Self | int, reverse: bool=False): return self._apply_compute_binopcode(OpCode.SHL, other, reverse)
+  def rshift(self, x: Self | int, reverse: bool=False): return self._apply_compute_binopcode(OpCode.SHR, other, reverse)
+  def where(self, x: Self|Const, y: Self|Const):
     if isinstance(x, type(self)):
       return self._apply_compute_opcode(OpCode.WHERE, x, x.ufix(y))
     if isinstance(y, type(self)):
@@ -135,40 +135,40 @@ class ComputeOpCodeBuilder:
   def logical_not(self): return self.ne(True)
   
   def __neg__(self):                                                                                         return self.neg()
-  def __add__(self, x: Self | Const):                                                                        return self.add(x)
-  def __radd__(self, x: Self | Const):                                                                       return self.add(x, True)
-  def __sub__(self, x: Self | Const):                                                                        return self.sub(x)
-  def __rsub__(self, x: Self | Const):                                                                       return self.sub(x, True)
-  def __mul__(self, x: Self | Const):                                                                        return self.mul(x)
-  def __rmul__(self, x: Self | Const):                                                                       return self.mul(x, True)
-  def __pow__(self, x: Self | Const):                                                                        return self.pow(x)
-  def __truediv__(self, x: Self | Const):                                                                    return self.div(x)
-  def __rtruediv__(self, x: Self | Const):                                                                   return self.div(x, True)
-  def __floordiv__(self, x: Self | Const):                                                                   return self.idiv(x)  # TODO: idiv is trunc div, not floordiv
-  def __rfloordiv__(self, x: Self | Const):                                                                  return self.idiv(x, True)
-  def __mod__(self, x: Self | Const):                                                                        return self.mod(x)
-  def __rmod__(self, x: Self | Const):                                                                       return self.mod(x, True)
+  def __add__(self, other: Self|Const):                                                                        return self.add(other)
+  def __radd__(self, other: Self|Const):                                                                       return self.add(other, True)
+  def __sub__(self, other: Self|Const):                                                                        return self.sub(other)
+  def __rsub__(self, other: Self|Const):                                                                       return self.sub(other, True)
+  def __mul__(self, other: Self|Const):                                                                        return self.mul(other)
+  def __rmul__(self, other: Self|Const):                                                                       return self.mul(other, True)
+  def __pow__(self, other: Self|Const):                                                                        return self.pow(other)
+  def __truediv__(self, other: Self|Const):                                                                    return self.div(other)
+  def __rtruediv__(self, other: Self|Const):                                                                   return self.div(other, True)
+  def __floordiv__(self, other: Self|Const):                                                                   return self.idiv(other)  # TODO: idiv is trunc div, not floordiv
+  def __rfloordiv__(self, other: Self|Const):                                                                  return self.idiv(other, True)
+  def __mod__(self, other: Self|Const):                                                                        return self.mod(other)
+  def __rmod__(self, other: Self|Const):                                                                       return self.mod(other, True)
   
-  def __lt__(self, x: Self | Const):                                                                         return self._apply_compute_opcode(OpCode.CMPLT, self.ufix(x))
-  def __gt__(self, x: Self | Const):                                                                         return self.ufix(x)._apply_compute_opcode(OpCode.CMPLT, self)
-  def __ge__(self, x: Self | Const):                                                                         return (self < x).logical_not()
-  def __le__(self, x: Self | Const):                                                                         return (self > x).logical_not()
-  def ne(self, x: Self | Const):                                                                             return self._apply_compute_opcode(OpCode.CMPNE, self.ufix(x))
-  def eq(self, x: Self | Const):                                                                             return self.ne(x).logical_not()
-  def __ne__(self, x: Self | Const):                                                                         return self.ne(x)  # type: ignore[override]
+  def __lt__(self, other: Self|Const):                                                                         return self._apply_compute_opcode(OpCode.CMPLT, self.ufix(other))
+  def __gt__(self, other: Self|Const):                                                                         return self.ufix(other)._apply_compute_opcode(OpCode.CMPLT, self)
+  def __ge__(self, other: Self|Const):                                                                         return (self < other).logical_not()
+  def __le__(self, other: Self|Const):                                                                         return (self > other).logical_not()
+  def ne(self, other: Self|Const):                                                                             return self._apply_compute_opcode(OpCode.CMPNE, self.ufix(other))
+  def eq(self, other: Self|Const):                                                                             return self.ne(other).logical_not()
+  def __ne__(self, other: Self|Const):                                                                         return self.ne(other)  # type: ignore[override]
   # NOTE: __eq__ isn't overridden, and means the same thing as is b default
 
-  def __and__(self, x: Self | Const):                                                                        return self.bitwise_and(x)
-  def __or__(self, x: Self | Const):                                                                         return self.bitwise_or(x)
-  def __xor__(self, x: Self | Const):                                                                        return self.bitwise_xor(x)
-  def __rand__(self, x: Self | Const):                                                                       return self.bitwise_and(x, True)
-  def __ror__(self, x: Self | Const):                                                                        return self.bitwise_or(x, True)
-  def __rxor__(self, x: Self | Const):                                                                       return self.bitwise_xor(x, True)
+  def __and__(self, other: Self|Const):                                                                        return self.bitwise_and(other)
+  def __or__(self, other: Self|Const):                                                                         return self.bitwise_or(other)
+  def __xor__(self, other: Self|Const):                                                                        return self.bitwise_xor(other)
+  def __rand__(self, other: Self|Const):                                                                       return self.bitwise_and(other, True)
+  def __ror__(self, other: Self|Const):                                                                        return self.bitwise_or(other, True)
+  def __rxor__(self, other: Self|Const):                                                                       return self.bitwise_xor(other, True)
 
-  def __lshift__(self, x: Self | int):                                                                       return self.lshift(x)
-  def __rshift__(self, x: Self | int):                                                                       return self.rshift(x)
-  def __rlshift__(self, x: Self | int):                                                                      return self.lshift(x, True)
-  def __rrshift__(self, x: Self | int):                                                                      return self.rshift(x, True)
+  def __lshift__(self, other: Self|int):                                                                       return self.lshift(other)
+  def __rshift__(self, other: Self|int):                                                                       return self.rshift(other)
+  def __rlshift__(self, other: Self|int):                                                                      return self.lshift(other, True)
+  def __rrshift__(self, other: Self|int):                                                                      return self.rshift(other, True)
 
   def _check_dtype(self):
     if (dtype := getattr(self, "dtype")) is not None:

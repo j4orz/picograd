@@ -67,7 +67,11 @@ class Tensor(GraphBuilder):
   def item(self) -> Const:
     assert self.numel() == 1, "must have one element for item"
     return self.data()[(0,) * len(self.shape)]
-  
+
+
+
+
+
   # high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
   @staticmethod
   def zeros(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 0.0)._evaluate()
@@ -77,7 +81,7 @@ class Tensor(GraphBuilder):
   def full(shape: tuple[int, ...], fill: Const) -> Self:
     new_shape = (1, )*len(helpers.normalize_shape(shape))
     return Tensor(fill, force_unique=True).reshape(new_shape).expand(new_shape)._evaluate()
-  
+
   def __init__(self, input: Const|bytes|list|tuple|None, # removed OpNode, np.ndarray, pathlib.Path support (for now).
                device: str |tuple|list|None=None, dtype: DTypeLike|None=None, requires_grad: bool|None=None, force_unique: bool=False): # kwargs
     """
@@ -126,7 +130,8 @@ class Tensor(GraphBuilder):
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
     output_opnode = OpNode.new_buffer("HOST", helpers.prod(shape:=get_shape(input)), dtype)
     output_opnode = output_opnode.reshape(shape)
-    bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *[picograd.dtype.truncate[dtype](dtypes.as_const(x, dtype)) for x in fully_flatten(input)]))
+    something = [picograd.dtype.truncate[dtype](dtypes.as_const(x, dtype)) for x in fully_flatten(input)]
+    bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *something))
     output_opnode.buffer.allocate(bytes) # fake realize by passing an opaque_preallocation
     # todo: actually realize(evaluate/materialize)
     return output_opnode
@@ -135,34 +140,18 @@ class Tensor(GraphBuilder):
 
 
 
-  # **************** GraphBuilder Required Methods ****************
-  def _apply_compute_opcode(self, ftype: OpCode, *inputs): raise NotImplementedError("todo")
-  def _apply_movement_opcode(self, ftype: OpCode, *inputs): return self._forward(OpNode._apply_movement_opcode, extra_args=(op,), arg=arg)
-
   # ************ Tensor Sugar ************
+  # # the builtin primitives (i.e add) will call provided GraphBuilder._apply_compute_opcode
+  def fa(self) -> Self: raise NotImplementedError("todo")
+  def mm(self) -> Self: raise NotImplementedError("todo")
   def recip(self) -> Self: return self._forward(OpNode.recip)._evaluate()
   def sigmoid(self) -> Self: return (1 + (self * (-1/math.log(2))).exp2()).recip()._evaluate()
   def tanh(self) -> Self: return (2.0 * ((2.0 * self).sigmoid()) - 1.0)._evaluate()
   def exp2(self) -> Self: return self._forward(OpNode.exp2)._evaluate()
   def log2(self) -> Self: return self._forward(OpNode.log2)._evaluate()
-  def fa(self) -> Self: raise NotImplementedError("todo")
-  def mm(self) -> Self: raise NotImplementedError("todo")
-  # the builtin primitives (i.e add) which do not need to be desugared will call provided OpMixin._binop() to __________
-  # which is overrided to ____________
-  def _apply_compute_binopcode(self, op, x, reverse):
-    return self._apply_broadcasted_uop(lambda *u: OpNode.alu(u[0], op, *u[1:]), x, reverse) # _binop is used by MathTrait
-  def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|Const, reverse=False) -> Self:
-    lhs,rhs = self._broadcasted(x, reverse)
-    return lhs.evaluate(fxn, rhs)
-
   # reduce ops
-  # movement ops
-  # --high level: gather, cat, stack, repeat, split, chunk, unfold, squeeze, unsqueeze
-  # --low level: view, reshape, expand, permute, flip, shrink, pad
+  # movement ops high level: gather, cat, stack, repeat, split, chunk, unfold, squeeze, unsqueeze, movement ops low level: view, reshape, expand, permute, flip, shrink, pad
 
-
-
-  # ************ Tensor Operations ************
   def _evaluate(self, *other: Tensor) -> Self:
     """
     ._evaluate() is the method which all evaluations funnel through, regardless of whether the operation is either
@@ -174,21 +163,25 @@ class Tensor(GraphBuilder):
     unrealized_tensors = [tensor for tensor in (self,)+other if not tensor.opnode.is_contiguous()]
     return self
 
-  # f(x) forward
+  # **************** ComputeOpCodeBuilder/MovementOpCodeBuilder Required Methods ****************
+  def _apply_compute_opcode(self, ftype: OpCode, *inputs): return self._forward(OpNode._apply_compute_opcode, extra_args=(op,), arg=arg)
+  def _apply_compute_binopcode(self, op, x, reverse): return self._apply_broadcasted_uop(lambda *u: OpNode.alu(u[0], op, *u[1:]), x, reverse) # _binop is used by MathTrait
+  def _apply_movement_opcode(self, ftype: OpCode, *inputs): return self._forward(OpNode._apply_movement_opcode, extra_args=(op,), arg=arg)
+  def _apply_broadcasted_uop(self, fxn:Callable, x:Tensor|Const, reverse=False) -> Self:
+    lhs,rhs = self._broadcasted(x, reverse)
+    return lhs.evaluate(fxn, rhs)
+
   def _forward(self, f: Callable, *other: Tensor) -> Self:
     """
-    ._forward() is the internal graph(IR)-builder which constructs an OpNode
-    that represents the computation of f applied to the provided Tensors.
-    keep in mind that the Tensor returned is simply a *handle* to unevaluated, unmaterialized graph IR,
-    which internal call-sites evaluate with ._evaluate() — teenygrad's .realize() equivalent.
+    ._forward() is the internal graph(IR)-builder which constructs a Tensor handle to OpNode IR
+    after the function f is specified with OpNode IR via .forward(), internal callsites must evaluate with .evaluate()
     """
-    output_opnode: OpNode = f(*[t.opnode for t in (self,)+other]) # <------------ compiler pipeline: if EAGER ... elif GRAPH ... else ...
     needs_input_grad = [t.requires_grad for t in (self,)+other]
-    requires_grad=True if any(needs_input_grad) else None if None in needs_input_grad else False
+    requires_grad = True if any(needs_input_grad) else None if None in needs_input_grad else False
+    output_opnode: OpNode = f(*[t.opnode for t in (self,)+other]) # <------------ compiler pipeline: if EAGER ... elif GRAPH ... else ...
     output_tensor = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
     return output_tensor
   
-  # f'(x) backward
   def backward(self, grad: Tensor|None=None) -> Self:
     """
     backward performs by collecting tensors, computing gradients with automatic differentiation, and updating said tensors.
