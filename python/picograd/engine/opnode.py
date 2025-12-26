@@ -130,25 +130,6 @@ class OpNode(GraphBuilder):
 
     raise NotImplementedError(f"no shape handling for {self.opcode} with {self.dtype}") # all OpCodes must be explicitly handled
 
-  def ended_ranges(self):
-    if self.opcode in range_start: return self.inputs[range_start[self.opcode]:]
-    return ()
-
-  # determine what ranges this is in
-  def _ranges(self) -> dict[OpNode, None]:
-    ret: dict[OpNode, None] = {}
-    for s in self.inputs: ret.update(s.ranges)
-    for er in self.ended_ranges:
-      if er.op is Ops.RANGE:
-        # if it's a single RANGE, we don't flow through it.
-        if er in ret: del ret[er]
-      else:
-        # if it's not a RANGE, we include all ranges in srcs.
-        # technically we shouldn't flow through these ranges either, but this is pre pm_add_control_flow so it's the same.
-        for s in er.ranges:
-          if s in ret: del ret[s]
-    return ret
-  
   # **************** Physical Storage (uses runtime/) ****************
   unique_num = itertools.count(0)
   @staticmethod
