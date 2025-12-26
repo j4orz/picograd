@@ -196,10 +196,8 @@ class OpNode(GraphBuilder):
       the returned OpNode's are still un-{materialized/realized/evaluated}, and caller's (namely tensor.py)
       need to invoke .eval() on the OpNode for eager semantics.
 
-  **: if you're coming from a functional mindset, note that the pythonic/object-oriented .apply_opcode is not a static method.
-      that is, self is the OpNode that the OpCode ftype is operating on, to produce a new Self(OpNode)
-      i.e the interpreter's evaluator lives *on* the OpNode, rather than a freestanding .apply_opcode() returning an OpNode,
-      i.e similar to how the Allocator lives *on* the Buffer, rather than an freestanding pure Allocator.allocate() returning a Buffer,
+  **: teenygrad follows tinygrad's bent towards object-oriented organization where containers are lazily initialied
+      i.e Tensor, OpNode, and Buffer are all non-allocating/evalauting/materializing, and only do so on Tensor.evaluate(), OpNode.evaluate(), and a Buffer.allocate()
   """
   def _apply_compute_opcode(self, opcode: OpCode, *inputs:OpNode) -> Self:
     output_dtype = (self, *inputs)[-1].dtype # use the last input's dtype 
@@ -208,22 +206,21 @@ class OpNode(GraphBuilder):
 
   def _apply_movement_opcode(self, opcode: OpCode, payload, same_shape_noop: bool=False) -> Self:
     """
-    _apply_movement_opcode is much more involved compared to _apply_compute_opcode.
+    _apply_movement_opcode is more involved compared to _apply_compute_opcode.
     this is largely because movement opcode's (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})
     modify the *shape*, which is *logical/virtual* and needs to be mapped to *physical* memory.
 
     with the application of movement opcode's, there's a design decision to be made.
-      1. following the numpy/torch model (like c++'s std::iterator/std::container and pytorch's c10::TensorImpl/c10::StorageImpl),
-         view operations are non-allocating and share the same underlying storage
-         tinygrad followed this design decision with their ShapeTracker/LazyBuffer abstractions, which mapped logical nd-indices to physical 1d-indices with a *stack* of views via strides
-         
-          option 1 conflates, confuses, and couples the *algorithm* with it's *layout/organization*
-          (see kelley's halide disertation: https://dspace.mit.edu/handle/1721.1/89996),
-          and becomes problematic when you want to *vertically split* the shape for _____ optimizations.
+      1. following the numpy/torch model i.e torch's c10::TensorImpl/c10::StorageImpl like c++'s std::iterator/std::container
+         where view operations (movement opcodes) are non-allocating and share the same underlying storage
+         tinygrad followed this design decision with their ShapeTracker/LazyBuffer abstractions,
+         which mapped logical nd-indices to physical 1d-indices with a *stack* of views via strides
 
-      2. the alternative design decision is to *encode* and embed all movement semantics around a Tensor's shape *within* the dsl's IR itself,
-         to enable __________ about the shapes with the RANGIFY and POSTOPT op codes,
-         inspired by halide and tvm paper https://arxiv.org/abs/1802.04799.
+      2. the alternative design decision is to *encode* and embed all shape/movement semantics for a given Tensor *within* the dsl's IR itself
+         in order to enable __________ about the shapes with the RANGIFY/POSTOPT op codes, which decouples the *algorithm* with it's *layout/organization*
+         and inspired by the dissertations of halide (https://dspace.mit.edu/handle/1721.1/89996) and tvm (https://arxiv.org/abs/1802.04799).
+         conflating the algorithm with it's organization (i.e mapping logical shape to physical storage via strides)
+         becomes problematic when you want to *vertically split* the shape for _____ optimizations.
          see: https://x.com/__tinygrad__/status/1964037572503752910
     
          so _apply_movement_opcode converts the *payload* (i.e python tuple) for the given movement *opcode* (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})

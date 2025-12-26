@@ -104,7 +104,7 @@ atexit.register(lambda: [Device[d].finalize() for d in Device._opened_devices])
 class Buffer:
   """
   Buffer provides an on-device handle of an OpNode's backing storage
-  picograd follows tinygrad's bent towards object-oriented organization where containers are lazily initialied
+  teenygrad follows tinygrad's bent towards object-oriented organization where containers are lazily initialied
   i.e Tensor, OpNode, and Buffer are all non-allocating/evalauting/materializing, and only do so on Tensor.evaluate(), OpNode.evaluate(), and a Buffer.allocate()
   """
   def __init__(self, device:str, dtype:DType, size:int,
