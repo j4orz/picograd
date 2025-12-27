@@ -172,43 +172,46 @@ class Tensor(GraphBuilder):
 
   # **************** Overriding ComputeOpCodeBuilder Provided ._apply_compute_binopcode ****************
   #                  ---> so that operations on Tensors go through dtype and broacasting logic below
-  def _apply_compute_binopcode(self, other: Self|Const, opcode: OpCode, reverse):
-    # 0. retrieve lambda
+  def _apply_compute_binopcode(self, other: Self, opcode: OpCode, reverse): # todo: other is Self. not Const or OpNode
+    # 0. construct f, which when applied with y = f(x), produces the opnode y. the call is delegated to OpNode's _apply_compute_opcode
     f = lambda *input_opnodes: OpNode._apply_compute_opcode(input_opnodes[0], opcode, *input_opnodes[1:])
 
     # 1. normalize other: Const|OpNodes -> Tensors
-    if not isinstance(other, Tensor):
-      assert isinstance(other, (*get_args(Const), OpNode)), f"{type(other)=}, {other=}"
-      if dtypes.is_float(self.dtype) or (dtypes.is_int(self.dtype) and isinstance(other, int)): other_dtype = self.dtype
-      elif not isinstance(other, OpNode):                                                       other_dtype = dtypes.from_py(other)
-      if isinstance(other, OpNode):                                                             other = Tensor.from_uop(other, device=self.device)
-      else:                                                                                     other = Tensor(dtypes.as_const(other, other_dtype), self.device, other_dtype, requires_grad=False)
+    # if not isinstance(other, Tensor):
+    #   assert isinstance(other, (*get_args(Const), OpNode)), f"{type(other)=}, {other=}"
+    #   if dtypes.is_float(self.dtype) or (dtypes.is_int(self.dtype) and isinstance(other, int)): other_dtype = self.dtype
+    #   elif not isinstance(other, OpNode):                                                       other_dtype = dtypes.from_py(other)
+    #   if isinstance(other, OpNode):                                                             other = Tensor.from_uop(other, device=self.device)
+    #   else:                                                                                     other = Tensor(dtypes.as_const(other, other_dtype), self.device, other_dtype, requires_grad=False)
 
     # 2. normalize dtypes
-    match_dtype = True # 
-    if match_dtype and self.dtype != other.dtype:
-      output_dtype = least_upper_dtype(self.dtype, other.dtype)
-      self, other = self.cast(output_dtype), other.cast(output_dtype)
+    # match_dtype, mismatched_dtype = True, self.dtype != other.dtype
+    # if match_dtype and mismatched_dtype:
+    #   output_dtype = least_upper_dtype(self.dtype, other.dtype)
+    #   self, other = self.cast(output_dtype), other.cast(output_dtype)
 
     # 3. reverse
-    if reverse: self, other = other, self
+    # if reverse: self, other = other, self
   
     # 4. broadcast NOTE: the backward cast is no-op in forward and uses sum_acc_dtype in the backward sum
-    broadcasted_shape = tuple(0 if 0 in nth_dim_sizes else smax(nth_dim_sizes) for nth_dim_sizes in zip(*_align_left(*[self.shape, other.shape])))
+    # broadcasted_shape = tuple(0 if 0 in nth_dim_sizes else smax(nth_dim_sizes) for nth_dim_sizes in zip(*_align_left(*[self.shape, other.shape])))
     
-    self, other = self.cast(sum_acc_dtype(self.dtype) if backward_cast else self.dtype)._broadcast_to(broadcasted_shape).cast(self.dtype), \
-           other.cast(sum_acc_dtype(other.dtype) if backward_cast else other.dtype)._broadcast_to(broadcasted_shape).cast(other.dtype)
+    # backward_cast = True
+    # self, other = self.cast(sum_acc_dtype(self.dtype) if backward_cast else self.dtype)._broadcast_to(broadcasted_shape).cast(self.dtype), \
+    #        other.cast(sum_acc_dtype(other.dtype) if backward_cast else other.dtype)._broadcast_to(broadcasted_shape).cast(other.dtype)
     
+    print(f"self: {self}",)
+    print(f"other: {other}",)
     return self._forward(f, other)
 
   def _forward(self, f: Callable, *other: Tensor) -> Self:
     """
     ._forward() is the internal graph(IR)-builder which constructs a Tensor handle to OpNode IR
-    after the function f is specified with OpNode IR via .forward(), internal callsites must evaluate with .evaluate()
+    after the IR for function f is applied to the expression graph with .forward(), internal callsites must evaluate with .evaluate()
     """
     needs_input_grad = [t.requires_grad for t in (self,)+other]
     requires_grad = True if any(needs_input_grad) else None if None in needs_input_grad else False
-    output_opnode: OpNode = f(*[t.opnode for t in (self,)+other]) # <------------ compiler pipeline: if EAGER ... elif GRAPH ... else ...
+    output_opnode: OpNode = f(*[t.opnode for t in (self,)+other])
     output_tensor = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
     return output_tensor
   
