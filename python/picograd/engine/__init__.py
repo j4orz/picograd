@@ -1,6 +1,6 @@
 from .irparser import OpCode, GraphBuilder
 from .opnode import OpNode
+from .interpreter import Interpreter
 # from .compiler import Pattern, PatternMatcher
-# from . import evaluator
 
-__all__ = ["OpCode", "GraphBuilder", "OpNode"]
+__all__ = ["GraphBuilder", "OpCode", "OpNode", "Interpreter"]

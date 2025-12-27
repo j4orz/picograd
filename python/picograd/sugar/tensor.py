@@ -6,6 +6,7 @@ import math, weakref, struct, pathlib
 
 from picograd import helpers
 from picograd.engine import OpCode, OpNode, GraphBuilder
+from picograd.engine.interpreter import Interpreter
 from picograd.helpers import DEBUG, EAGER, GRAPH
 from picograd.runtime import Device
 from picograd.dtype import Const, DType, DTypeLike, dtypes
@@ -159,7 +160,7 @@ class Tensor(GraphBuilder):
   # reduce ops
   # movement ops high level: gather, cat, stack, repeat, split, chunk, unfold, squeeze, unsqueeze, movement ops low level: view, reshape, expand, permute, flip, shrink, pad
 
-  def _evaluate(self, *other: Tensor) -> Self:
+  def _evaluate(self) -> Self:
     """
     ._evaluate() is the method which all evaluations funnel through, regardless of whether the operation is either
       1. sugar: directly calls ._evaluate() or
@@ -167,13 +168,16 @@ class Tensor(GraphBuilder):
     in either case, ._evaluate() evaluates f(x) by calling f, implemented by Op.eval(), which in turn, launches device kernels.
     ._evaluate() then wraps the new output Op in the expression graph with a Tensor handle
     """
-    unrealized_tensors = [tensor for tensor in (self,)+other if not tensor.opnode.is_contiguous()]
-    return self
+    # unrealized_tensors = [tensor for tensor in (self,)+other if not tensor.opnode.is_contiguous()]
+    print("evaluating graph ir..")
+    return Interpreter.evaluate(self)
 
   # **************** ComputeOpCodeBuilder/MovementOpCodeBuilder Required Methods ****************
   def _apply_compute_opcode(self, opcode: OpCode, *inputs):
     f = lambda *input_opnodes: input_opnodes[0]._apply_compute_opcode(opcode, *input_opnodes[1:])
-    return self._forward(f, *inputs)
+    graph = self._forward(f, *inputs)
+    return graph._evaluate()
+  
   # def _apply_movement_opcode(self, opcode: OpCode, *inputs):
   #   return self._forward(OpNode._apply_movement_opcode, extra_args=(opcode,), arg=arg)
 
@@ -209,7 +213,8 @@ class Tensor(GraphBuilder):
     
     print(f"self: {self}",)
     print(f"other: {other}",)
-    return self._forward(f, other)
+    graph = self._forward(f, other)
+    return Interpreter.evaluate(self)
 
   def _forward(self, f: Callable, *other: Tensor) -> Self:
     """
