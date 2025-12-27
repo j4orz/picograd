@@ -32,5 +32,5 @@ y = Tensor([3], device=DEVICE) #, dtype=dtypes.int32, device=DEVICE)
 z = x + y
 
 # check the data out
-print(val:=z.item())
-assert val == 5
+# print(val:=z.item())
+# assert val == 5

@@ -96,15 +96,15 @@ class Tensor(GraphBuilder):
     self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)
     all_tensors[weakref.ref(self)] = None                                                      # add to all_tensors after construction succeeds
 
-    print(f"DONE Tensor.__init__() initializing tensor with dtype: {dtype} on device {device} with input {input}")
+    print(f"DONE Tensor.__init__() initializing tensor with dtype: {dtype} on device {device} with input {input}\n")
     print(f"Tensor.opnode is now: {self.opnode}\n\n\n")
     return
   
   @staticmethod
   def _input_to_opnode(input: Const|bytes|list|tuple|OpNode|None, device: str, dtype: DType|None, force_unique) -> OpNode:
     if DEBUG >= 1: print("START Tensor._input_to_opnode() constructing Tensor's OpNode...")
-    if isinstance(input, OpNode):                                               raise NotImplementedError("todo")
-    elif input is None:                                                         opnode = OpNode.const(dtype or dtypes.default_float, 0, device, (), unique=force_unique)
+    
+    if input is None:                                                           opnode = OpNode.const(dtype or dtypes.default_float, 0, device, (), unique=force_unique)
     elif isinstance(input, get_args(Const)):                                    opnode = OpNode.const(dtype or dtypes.from_py(input), input, device, (), unique=force_unique)
     elif isinstance(input, bytes):                                              opnode = Tensor._hostseq2dslopnode(input, dtypes.uint8 if dtype is None else dtype)
     elif isinstance(input, (list, tuple)):
@@ -115,6 +115,13 @@ class Tensor(GraphBuilder):
       if dtype in [dtypes.bfloat16, *dtypes.fp8s]:                              opnode = Tensor(Tensor._hostseq2dslopnode(input, dtypes.float32), device=device).cast(dtype).uop
       else:                                                                     opnode = Tensor._hostseq2dslopnode(input, dtype)
       if DEBUG >= 1: print("DONE _input_to_opnode converting hostseq to dslopnode...")
+    elif isinstance(input, OpNode):
+      assert dtype is None or dtype==input.dtype, f"dtype doesn't match ({dtype} vs {input.dtype}), and casting isn't supported"
+      # if input is dtype.index that means that this is a symbolic int and we need to lower it to something we can make a Tensor out of
+      # if input.dtype==dtypes.index: input = _index_to_concrete_int(input)
+      # if input.opcode is OpCode.BIND:
+      opnode = input
+
     if not isinstance(opnode, OpNode): raise RuntimeError(f"can't create Tensor from {input!r} with type {type(input)}") # by this point it has to be a UOp
 
     if DEBUG >= 1: print(f"opnode's device is {opnode.device}, specified device is {device}")
