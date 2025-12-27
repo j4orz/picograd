@@ -5,8 +5,7 @@ from typing import Any, Callable, Self, Sequence, TypeGuard,  cast, get_args
 import math, weakref, struct, pathlib
 
 from picograd import helpers
-from picograd.engine import OpCode, OpNode, GraphBuilder
-from picograd.engine.interpreter import Interpreter
+from picograd.engine import OpCode, OpNode, GraphBuilder, Interpreter
 from picograd.helpers import DEBUG, EAGER, GRAPH
 from picograd.runtime import Device
 from picograd.dtype import Const, DType, DTypeLike, dtypes
