@@ -173,15 +173,9 @@ class Tensor(GraphBuilder):
   # **************** Overriding ComputeOpCodeBuilder Provided ._apply_compute_binopcode ****************
   #                  ---> so that operations on Tensors go through dtype and broacasting logic below
   def _apply_compute_binopcode(self, other: Self|Const, opcode: OpCode, reverse):
+    # 0. retrieve lambda
     f = lambda *input_opnodes: OpNode._apply_compute_opcode(input_opnodes[0], opcode, *input_opnodes[1:])
-    self, other = self._broadcasted(other, reverse) # <----------------- MOOSE.
-    return self._forward(f, other)
-  
-  def _broadcasted(self, other: Tensor|Const|OpNode, reverse: bool=False,
-                   match_dtype: bool=True, backward_cast: bool=True) -> tuple[Tensor, Tensor]:
-    """
-    ...
-    """
+
     # 1. normalize other: Const|OpNodes -> Tensors
     if not isinstance(other, Tensor):
       assert isinstance(other, (*get_args(Const), OpNode)), f"{type(other)=}, {other=}"
@@ -191,18 +185,21 @@ class Tensor(GraphBuilder):
       else:                                                                                     other = Tensor(dtypes.as_const(other, other_dtype), self.device, other_dtype, requires_grad=False)
 
     # 2. normalize dtypes
+    match_dtype = True # 
     if match_dtype and self.dtype != other.dtype:
       output_dtype = least_upper_dtype(self.dtype, other.dtype)
       self, other = self.cast(output_dtype), other.cast(output_dtype)
 
     # 3. reverse
     if reverse: self, other = other, self
-
+  
     # 4. broadcast NOTE: the backward cast is no-op in forward and uses sum_acc_dtype in the backward sum
     broadcasted_shape = tuple(0 if 0 in nth_dim_sizes else smax(nth_dim_sizes) for nth_dim_sizes in zip(*_align_left(*[self.shape, other.shape])))
     
-    return self.cast(sum_acc_dtype(self.dtype) if backward_cast else self.dtype)._broadcast_to(broadcasted_shape).cast(self.dtype), \
+    self, other = self.cast(sum_acc_dtype(self.dtype) if backward_cast else self.dtype)._broadcast_to(broadcasted_shape).cast(self.dtype), \
            other.cast(sum_acc_dtype(other.dtype) if backward_cast else other.dtype)._broadcast_to(broadcasted_shape).cast(other.dtype)
+    
+    return self._forward(f, other)
 
   def _forward(self, f: Callable, *other: Tensor) -> Self:
     """
