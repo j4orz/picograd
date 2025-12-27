@@ -97,7 +97,7 @@ class Tensor(GraphBuilder):
     all_tensors[weakref.ref(self)] = None                                                      # add to all_tensors after construction succeeds
 
     print(f"DONE Tensor.__init__() initializing tensor with dtype: {dtype} on device {device} with input {input}")
-    print(f"Tensor.opnode is now: {self.opnode}")
+    print(f"Tensor.opnode is now: {self.opnode}\n\n\n")
     return
   
   @staticmethod

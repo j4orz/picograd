@@ -16,6 +16,16 @@ from picograd.dtype import Const, ConstLike, DType, ImageDType, PtrDType, dtypes
 # - rename OpMixin.alu() -> OpMixin.eval()
 # - retrofit an eager interpreter in OpMixin.eval()
 
+def pretty_print(opnode:OpNode, cache=None, d=0)->str:
+  def dfs(opnode:OpNode, cache:dict):
+    for s in opnode.inputs:
+      cache.setdefault(s, [len(cache), 0, False])[1] += 1
+      if cache[s][1] == 1: dfs(s, cache)
+  if cache is None: dfs(opnode, cache:={})
+  if (cx:=cache.setdefault(opnode, [0,0,False]))[2]: return f"{' '*d} x{cx[0]}"
+  cx[2], inputs = True, (''.join(f'\n{pretty_print(s, cache, d+2)},' for s in opnode.inputs))
+  return f"{' '*d}{f'x{cx[0]}:=' * (cx[1]>1)}{type(opnode).__name__}({opnode.opcode}, {opnode.dtype}, payload={opnode.payloadstr()}, inputs=({inputs}))"
+
 # recursive_property replaces functools.cached_property in recursive UOp functions to prevent RecursionError
 class recursive_property(property):
   def __init__(self, fxn):
@@ -54,6 +64,11 @@ class OpNode(GraphBuilder):
   dtype: DType
   payload: Any=None
   # shape, storage (and it's device) are embedded in the IR as opcode's with payloads
+
+  def __repr__(self): return pretty_print(self)
+  def payloadstr(self): return f'({", ".join(map(str, self.payload))})' if self.opcode is OpCode.REDUCE_AXIS else repr(self.payload)
+  # def tagstr(self): return f", tag={self.tag}" if self.tag is not None else ""
+
   # **************** Virtual/Logical Shape ****************
   @property
   def size(self) -> int: return helpers.prod([int(x.vmax) if isinstance(x, OpNode) else x for x in self.shape])
