@@ -25,7 +25,7 @@ DEVICE = "CUDA"
 print("******** third, a tensor which is a sugared hanlde to the expression graph  ***********")
 
 from picograd import Tensor
-from picograd.dtype import dtypes
+# from picograd.dtype import dtypes
 
 x = Tensor([2], device=DEVICE) #, dtype=dtypes.int32, device=DEVICE)
 y = Tensor([3], device=DEVICE) #, dtype=dtypes.int32, device=DEVICE)

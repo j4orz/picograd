@@ -183,9 +183,6 @@ class Tensor(GraphBuilder):
   # **************** Overriding ComputeOpCodeBuilder Provided ._apply_compute_binopcode ****************
   #                  ---> so that operations on Tensors go through dtype and broacasting logic below
   def _apply_compute_binopcode(self, other: Self, opcode: OpCode, reverse): # todo: other is Self. not Const or OpNode
-    # 0. construct f, which when applied with y = f(x), produces the opnode y. the call is delegated to OpNode's _apply_compute_opcode
-    f = lambda *input_opnodes: OpNode._apply_compute_opcode(input_opnodes[0], opcode, *input_opnodes[1:])
-
     # 1. normalize other: Const|OpNodes -> Tensors
     # if not isinstance(other, Tensor):
     #   assert isinstance(other, (*get_args(Const), OpNode)), f"{type(other)=}, {other=}"
@@ -208,12 +205,16 @@ class Tensor(GraphBuilder):
     
     # backward_cast = True
     # self, other = self.cast(sum_acc_dtype(self.dtype) if backward_cast else self.dtype)._broadcast_to(broadcasted_shape).cast(self.dtype), \
-    #        other.cast(sum_acc_dtype(other.dtype) if backward_cast else other.dtype)._broadcast_to(broadcasted_shape).cast(other.dtype)
-    
+    #        other.cast(sum_acc_dtype(other.dtype) if backward_cast else other.dtype)._broadcast_to(broadcasted_shape).cast(other.dtype)    
     print(f"self: {self}",)
     print(f"other: {other}",)
-    graph = self._forward(f, other)
-    return Interpreter.evaluate(self)
+
+    # 0. construct f, which when applied with y = f(x), produces the opnode y. the call is delegated to OpNode's _apply_compute_opcode
+    f = lambda *input_opnodes: OpNode._apply_compute_opcode(input_opnodes[0], opcode, *input_opnodes[1:])
+    graph = self._forward(f, other); print("applied opnode to expression graph with tensor._forward()")
+    schedule = graph.opnode.toposort(); print("linearized opnode graph into opnode schedule with opnode.toposort()")
+    Interpreter.evaluate(schedule); print("evaluated schedule with Interpreter.evaluate()")
+    return graph
 
   def _forward(self, f: Callable, *other: Tensor) -> Self:
     """

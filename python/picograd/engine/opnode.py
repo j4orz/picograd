@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, List, Self
 from dataclasses import dataclass
 import math, itertools, weakref
 
@@ -268,7 +268,21 @@ class OpNode(GraphBuilder):
                                                                                                     
     if DEBUG >= 1: print("output opnodes inputs are:", output_opnodes_inputs)
     return output_opnodes_inputs
-  
+
+  def toposort(self, gate:Callable|None=None) -> dict[OpNode, None]:
+    output: dict[OpNode, None] = {}
+    stack: list[tuple[OpNode, bool]] = [(self, False)] # each stack entry is (node, visited_flag)
+
+    while stack:
+      opnode, visited = stack.pop()
+      if opnode in output: continue
+      if not visited:
+        if gate is None or gate(opnode):
+          stack.append((opnode, True))  # push node back on stack to process after its srcs
+          for input in reversed(opnode.inputs): stack.append((input, False)) # push srcs on the stack
+      else: output[opnode] = None # second time i'm seeing this node, add it to returned toposort
+    return output
+
   @property
   def base(self) -> OpNode:
     if self.opcode in GroupedOpCode.Movement:       return self.inputs[0].base
@@ -324,5 +338,14 @@ class OpNode(GraphBuilder):
 
     if shape is not None: output_opnode = output_opnode.reshape((1,)*len(shape)).expand(shape)
     return output_opnode
-  
+
+# **************** Expression Graph Linearizer (Scheduler) ****************
+# Graph<OpNode> not runnable bc it still contains control/ordering nodes (AFTER, RANGE, BIND),
+# no concrete buffer assignments, and no memory layout; device sharding and buffer views have to be expanded;
+# and many steps are non-kernel operations like copies/encodes.
+
+# Scheduling linearizes the graph, binds range values, applies multi-device splits, assigns/reuses buffers via
+# the memory planner, and then lowers each step to a device-specific runner. Only after ExecItems exist can
+# tinygrad optionally fuse batches into device graphs (see GraphRunner/JIT in tinygrad/engine/jit.py)
+
 buffers: weakref.WeakKeyDictionary[OpNode, Buffer] = weakref.WeakKeyDictionary() # this maps BUFFER uops to their device Buffers
