@@ -1,9 +1,9 @@
 from __future__ import annotations
 import re
 import functools, ctypes, hashlib, pathlib, subprocess, tempfile
-import gpuctypes.hip as cuda
-from picograd.runtime.device import Allocator, BufferSpec, Compiler, CompilerPairT, Runtime
-from picograd.helpers import DEBUG, colored, init_c_struct_t, init_c_var, mv_address, suppress_finalizing, system
+import gpuctypes.cuda as cuda
+from picograd.runtime.device import Allocator, Compiler, Runtime
+from picograd.helpers import DEBUG, colored, suppress_finalizing, system
 
 # **************** Python/C Foreign Function Helpers  ****************
 """
@@ -52,10 +52,10 @@ class CUDADevice(Runtime):
     CUDADevice.devices.append(self)
 
     from tinygrad.runtime.graph.cuda import CUDAGraph
-    compilers:list[CompilerPairT] = [(functools.partial(CUDARenderer, self.arch), functools.partial(CUDACompiler, self.arch)),
-                                     (functools.partial(PTXRenderer, self.arch), functools.partial(PTXCompiler, self.arch)),
-                                     (functools.partial(CUDARenderer, self.arch), functools.partial(NVCCCompiler, self.arch))]
-    super().__init__(device, CUDAAllocator(self), compilers, functools.partial(CUDAKernel, self), None if MOCKGPU else CUDAGraph)
+    compilers = CompilerSet([CompilerPair(functools.partial(CUDARenderer, self.arch), functools.partial(CUDACompiler, self.arch)),
+                             CompilerPair(functools.partial(PTXRenderer, self.arch), functools.partial(PTXCompiler, self.arch), CUDA_PTX),
+                             CompilerPair(functools.partial(CUDARenderer, self.arch), functools.partial(NVCCCompiler, self.arch))], ctrl_var=CUDA_CC)
+    super().__init__(device, CUDAAllocator(self), compilers, functools.partial(CUDAProgram, self), None if MOCKGPU else CUDAGraph)
 
   def synchronize(self):
     check(cuda.cuCtxSetCurrent(self.context))
@@ -79,16 +79,19 @@ class CUDAAllocator(Allocator['CUDADevice']):
       if options.host: check(cuda.cuMemFreeHost(opaque))
       else: check(cuda.cuMemFree_v2(opaque))
     except (TypeError, AttributeError): pass
+
   def _copyin(self, dest, src:memoryview):
     check(cuda.cuCtxSetCurrent(self.dev.context))
     host_mem = self.alloc(len(src), BufferSpec(host=True))
     self.dev.pending_copyin.append((host_mem, len(src), BufferSpec(host=True)))
     ctypes.memmove(host_mem, mv_address(src), len(src))
     check(cuda.cuMemcpyHtoDAsync_v2(dest, host_mem, len(src), None))
+
   def _copyout(self, dest:memoryview, src):
     CUDADevice.synchronize_system()
     check(cuda.cuCtxSetCurrent(self.dev.context))
     check(cuda.cuMemcpyDtoH_v2(mv_address(dest), src, len(dest)))
+
   def _transfer(self, dest, src, sz:int, src_dev, dest_dev):
     check(cuda.cuCtxSetCurrent(src_dev.context))
     check(cuda.cuEventCreate(ctypes.byref(sync_event := cuda.CUevent()), 0))
@@ -147,9 +150,6 @@ class NVCCCompiler(Compiler):
       return libf.read()
   def disassemble(self, lib:bytes): cuda_disassemble(lib, self.arch)
 
-# TODO: (picograd ptx compiler)
-# class PTXCompiler(Compiler):
-# class NVPTXCompiler(PTXCompiler):
 
 def cuda_disassemble(lib:bytes, arch:str):
   try:

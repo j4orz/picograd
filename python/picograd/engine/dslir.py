@@ -110,7 +110,7 @@ class ComputeOpCodeStrategy:
   def mul(self, other: Self|Const, reverse: bool=False):                                                     return self._forward_computebinop(other, OpCode.MUL, reverse)
   def idiv(self, other: Self|Const, reverse: bool=False):                                                    return self._forward_computebinop(other, OpCode.IDIV, reverse)
   def mod(self, other: Self|Const, reverse: bool=False):                                                     return self._forward_computebinop(other, OpCode.MOD, reverse)
-  def div(self, other: Self|Const, reverse: bool=False): return (self.ufix(other) * self._forward_computeop(OpCode.RECIP)) if reverse else (self * self.ufix(other)._forward_computeop(OpCode.RECIP))
+  def div(self, other: Self|Const, reverse: bool=False):                                                     return (self.ufix(other) * self._forward_computeop(OpCode.RECIP)) if reverse else (self * self.ufix(other)._forward_computeop(OpCode.RECIP))
   def recip(self):                                                                                           return self._forward_computeop(OpCode.RECIP)
   def trunc(self):                                                                                           return self._forward_computeop(OpCode.TRUNC)
   def sqrt(self):                                                                                            return self._forward_computeop(OpCode.SQRT)

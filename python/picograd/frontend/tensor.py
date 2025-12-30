@@ -160,14 +160,14 @@ class Tensor(TensorDSL):
 
 
   # ************ Tensor Sugar ************
-  # # the builtin primitives (i.e add) will call provided GraphBuilder._apply_compute_opcode
+  # the builtin primitives (i.e add) will call provided GraphBuilder._apply_compute_opcode
   def fa(self) -> Self: raise NotImplementedError("todo")
   def mm(self) -> Self: raise NotImplementedError("todo")
-  def recip(self) -> Self: return self._forward_computeop(OpNode.recip)._evaluate()
-  def sigmoid(self) -> Self: return (1 + (self * (-1/math.log(2))).exp2()).recip()._evaluate()
-  def tanh(self) -> Self: return (2.0 * ((2.0 * self).sigmoid()) - 1.0)._evaluate()
-  def exp2(self) -> Self: return self._forward_computeop(OpNode.exp2)._evaluate()
-  def log2(self) -> Self: return self._forward_computeop(OpNode.log2)._evaluate()
+  def recip(self) -> Self: return self._forward_computeop(OpNode.recip)
+  def sigmoid(self) -> Self: return (1 + (self * (-1/math.log(2))).exp2()).recip()
+  def tanh(self) -> Self: return (2.0 * ((2.0 * self).sigmoid()) - 1.0)
+  def exp2(self) -> Self: return self._forward_computeop(OpNode.exp2)
+  def log2(self) -> Self: return self._forward_computeop(OpNode.log2)
   # reduce ops
   # movement ops high level: gather, cat, stack, repeat, split, chunk, unfold, squeeze, unsqueeze, movement ops low level: view, reshape, expand, permute, flip, shrink, pad
 
@@ -184,16 +184,19 @@ class Tensor(TensorDSL):
     return Interpreter.evaluate(self)
 
   # **************** ComputeOpCodeBuilder/MovementOpCodeBuilder Methods ****************
-  def _forward_computeop(self, f: Callable, *inputs) -> Self: ## required
+  def _forward_computeop(self, opcode: OpCode, *inputs: Self) -> Self: ## required
     """
     ._forward() is the internal graph(IR)-builder which constructs a Tensor handle to OpNode IR
     after the IR for function f is applied to the expression graph with .forward(), internal callsites must evaluate with .evaluate()
     """
     if helpers.EAGER:
-      other_tensor = inputs[0]
-      output_tensor = Tensor(None, self.device)
-      output_tensor.buf = self.device.launch_add_kernel(self.buf, other_tensor.buf)
-      foo = Device[self.device]
+      self_tensor, other_tensor, output_tensor = self, inputs[0], Tensor(None, self.device)
+      if   opcode is OpCode.ADD:    kernel = CUDAKernel(Device[self.device], "my_add_kernel")
+      elif opcode is OpCode.MUL:    kernel = CUDAKernel(Device[self.device], "my_mul_kernel")
+      elif opcode is OpCode.MATMUL: kernel = CUDAKernel(Device[self.device], "my_mul_kernel")
+      else: raise NotImplementedError("todo")
+      kernel(output_tensor.buf, self_tensor.buf, other_tensor.buf, global_size=(1024, 1, 1), local_size=(256, 1, 1), vals=(1024,))
+
       return output_tensor
     elif helpers.GRAPH:
       f = lambda *input_opnodes: input_opnodes[0]._apply_compute_opcode(opcode, *input_opnodes[1:])
@@ -213,8 +216,11 @@ class Tensor(TensorDSL):
     print(f"other: {other}",)
 
     if helpers.EAGER:
-      output_tensor = Tensor(None, self.device)
-      output_tensor.buf = self.device.launch_add_kernel(self.buf, other.buf)
+      self_tensor, other_tensor, output_tensor = self, other, Tensor(None, self.device)
+      kernel = CUDAKernel(Device[self.device], "my_add_kernel")
+      kernel(output_tensor.buf, self_tensor.buf, other_tensor.buf,
+             global_size=(1024, 1, 1), local_size=(256, 1, 1), vals=(1024,))
+
       return output_tensor
     elif helpers.GRAPH:
       # 0. construct f, which when applied with y = f(x), produces the opnode y. the call is delegated to OpNode's _apply_compute_opcode
