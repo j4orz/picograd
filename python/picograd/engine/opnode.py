@@ -214,12 +214,12 @@ class OpNode(GraphBuilder):
   **: teenygrad follows tinygrad's bent towards object-oriented organization where containers are lazily initialied
       i.e Tensor, OpNode, and Buffer are all non-allocating/evalauting/materializing, and only do so on Tensor.evaluate(), OpNode.evaluate(), and a Buffer.allocate()
   """
-  def _apply_compute_opcode(self, opcode: OpCode, *inputs:OpNode) -> Self:
+  def _forward_computeop(self, opcode: OpCode, *inputs:OpNode) -> Self:
     output_dtype = (self, *inputs)[-1].dtype # use the last input's dtype 
     if opcode in {OpCode.CMPLT, OpCode.CMPNE, OpCode.CMPEQ}: output_dtype = dtypes.bool.vec(output_dtype.count) if output_dtype.count > 1 else dtypes.bool
     return OpNode(opcode, (self,)+inputs, output_dtype,)
 
-  def _apply_movement_opcode(self, opcode: OpCode, payload, same_shape_noop: bool=False) -> Self:
+  def _forward_movementop(self, opcode: OpCode, payload, same_shape_noop: bool=False) -> Self:
     """
     _apply_movement_opcode is more involved compared to _apply_compute_opcode.
     this is largely because movement opcode's (i.e OpCode.{RESHAPE/EXPAND/PAD/PERMUTE/FLIP/etc...})

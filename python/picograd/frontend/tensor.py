@@ -89,7 +89,6 @@ class Tensor(GraphBuilder):
     assert self.numel() == 1, "must have one element for item"
     return self.data()[(0,) * len(self.shape)]
 
-
   # high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
   @staticmethod
   def zeros(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 0.0)._evaluate()
@@ -151,11 +150,11 @@ class Tensor(GraphBuilder):
   # # the builtin primitives (i.e add) will call provided GraphBuilder._apply_compute_opcode
   def fa(self) -> Self: raise NotImplementedError("todo")
   def mm(self) -> Self: raise NotImplementedError("todo")
-  def recip(self) -> Self: return self._forward(OpNode.recip)._evaluate()
+  def recip(self) -> Self: return self._forward_computeop(OpNode.recip)._evaluate()
   def sigmoid(self) -> Self: return (1 + (self * (-1/math.log(2))).exp2()).recip()._evaluate()
   def tanh(self) -> Self: return (2.0 * ((2.0 * self).sigmoid()) - 1.0)._evaluate()
-  def exp2(self) -> Self: return self._forward(OpNode.exp2)._evaluate()
-  def log2(self) -> Self: return self._forward(OpNode.log2)._evaluate()
+  def exp2(self) -> Self: return self._forward_computeop(OpNode.exp2)._evaluate()
+  def log2(self) -> Self: return self._forward_computeop(OpNode.log2)._evaluate()
   # reduce ops
   # movement ops high level: gather, cat, stack, repeat, split, chunk, unfold, squeeze, unsqueeze, movement ops low level: view, reshape, expand, permute, flip, shrink, pad
 
@@ -171,8 +170,12 @@ class Tensor(GraphBuilder):
     print("evaluating graph ir..")
     return Interpreter.evaluate(self)
 
-  # **************** ComputeOpCodeBuilder/MovementOpCodeBuilder Required Methods ****************
-  def _apply_compute_opcode(self, opcode: OpCode, *inputs) -> Self:
+  # **************** ComputeOpCodeBuilder/MovementOpCodeBuilder Methods ****************
+  def _forward_computeop(self, f: Callable, *inputs) -> Self: ## required
+    """
+    ._forward() is the internal graph(IR)-builder which constructs a Tensor handle to OpNode IR
+    after the IR for function f is applied to the expression graph with .forward(), internal callsites must evaluate with .evaluate()
+    """
     if helpers.EAGER:
       other_tensor = inputs[0]
       output_tensor = Tensor(None, self.device)
@@ -180,16 +183,36 @@ class Tensor(GraphBuilder):
       return output_tensor
     elif helpers.GRAPH:
       f = lambda *input_opnodes: input_opnodes[0]._apply_compute_opcode(opcode, *input_opnodes[1:])
-      self.opnode = self._forward(f, *inputs)
+      self.opnode = self._forward_computeop(f, *inputs)
+
+      needs_input_grad = [t.requires_grad for t in (self,)+other]
+      requires_grad = True if any(needs_input_grad) else None if None in needs_input_grad else False
+      output_opnode: OpNode = f(*[t.opnode for t in (self,)+other])
+      output_tensor = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
+      return output_tensor
+    else:
+      raise NotImplementedError("todo")
+
+   # todo: other is Self. not Const or OpNode
+  def _forward_computebinop(self, other: Self, opcode: OpCode, reverse): # overriding provided, so Tensor operations go through dtype and broacasting logic below
+    print(f"self: {self}",)
+    print(f"other: {other}",)
+
+    if helpers.EAGER:
+      other_tensor = inputs[0]
+      output_tensor = Tensor(None, self.device)
+      output_tensor.buf = self.device.launch_add_kernel(self.buf, other_tensor.buf)
+      return output_tensor
+    elif helpers.GRAPH:
+      # 0. construct f, which when applied with y = f(x), produces the opnode y. the call is delegated to OpNode's _apply_compute_opcode
+      f = lambda *input_opnodes: OpNode._forward_computeop(input_opnodes[0], opcode, *input_opnodes[1:])
+      graph = self._forward_computeop(f, other); print("applied opnode to expression graph with tensor._forward()")
+      schedule = graph.opnode.toposort(); print("linearized opnode graph into opnode schedule with opnode.toposort()")
+      Interpreter.evaluate(schedule); print("evaluated schedule with Interpreter.evaluate()")
+      return graph
     else:
       raise NotImplementedError("todo")
   
-  # def _apply_movement_opcode(self, opcode: OpCode, *inputs):
-  #   return self._forward(OpNode._apply_movement_opcode, extra_args=(opcode,), arg=arg)
-
-  # **************** Overriding ComputeOpCodeBuilder Provided ._apply_compute_binopcode ****************
-  #                  ---> so that operations on Tensors go through dtype and broacasting logic below
-  def _apply_compute_binopcode(self, other: Self, opcode: OpCode, reverse): # todo: other is Self. not Const or OpNode
     # 1. normalize other: Const|OpNodes -> Tensors
     # if not isinstance(other, Tensor):
     #   assert isinstance(other, (*get_args(Const), OpNode)), f"{type(other)=}, {other=}"
@@ -213,28 +236,11 @@ class Tensor(GraphBuilder):
     # backward_cast = True
     # self, other = self.cast(sum_acc_dtype(self.dtype) if backward_cast else self.dtype)._broadcast_to(broadcasted_shape).cast(self.dtype), \
     #        other.cast(sum_acc_dtype(other.dtype) if backward_cast else other.dtype)._broadcast_to(broadcasted_shape).cast(other.dtype)    
-    print(f"self: {self}",)
-    print(f"other: {other}",)
-
-    # 0. construct f, which when applied with y = f(x), produces the opnode y. the call is delegated to OpNode's _apply_compute_opcode
-    f = lambda *input_opnodes: OpNode._apply_compute_opcode(input_opnodes[0], opcode, *input_opnodes[1:])
-    graph = self._forward(f, other); print("applied opnode to expression graph with tensor._forward()")
-    schedule = graph.opnode.toposort(); print("linearized opnode graph into opnode schedule with opnode.toposort()")
-    Interpreter.evaluate(schedule); print("evaluated schedule with Interpreter.evaluate()")
-    return graph
-
-  def _forward(self, f: Callable, *other: Tensor) -> Self:
-    """
-    ._forward() is the internal graph(IR)-builder which constructs a Tensor handle to OpNode IR
-    after the IR for function f is applied to the expression graph with .forward(), internal callsites must evaluate with .evaluate()
-    """
-    needs_input_grad = [t.requires_grad for t in (self,)+other]
-    requires_grad = True if any(needs_input_grad) else None if None in needs_input_grad else False
-    output_opnode: OpNode = f(*[t.opnode for t in (self,)+other])
-    output_tensor = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
-    return output_tensor
   
-  def backward(self, grad: Tensor|None=None) -> Self:
+  # def _apply_movement_opcode(self, opcode: OpCode, *inputs):
+  #   return self._forward(OpNode._apply_movement_opcode, extra_args=(opcode,), arg=arg)
+
+  def _backward(self, grad: Tensor|None=None) -> Self:
     """
     backward performs by collecting tensors, computing gradients with automatic differentiation, and updating said tensors.
     """

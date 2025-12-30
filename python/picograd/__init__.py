@@ -42,8 +42,8 @@ you will modify the engine in order to train deep `torch.nn`s in the "age of sca
     A. optimizer: todo..
     B. generator: todo..
 """
-from .sugar import nn, optim
-from .sugar.tensor import Tensor
+from .frontend import nn, optim
+from .frontend.tensor import Tensor
 __all__ = ["Tensor"]
 
 from importlib import import_module as _import_module

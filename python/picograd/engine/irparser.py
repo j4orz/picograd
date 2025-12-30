@@ -92,12 +92,12 @@ GraphBuilder (at the bottom of the file) is a ComputeOpCodeBuilder and MovementO
 
 class ComputeOpCodeBuilder:
   # required
-  def _apply_compute_opcode(self, opcode: OpCode, *inputs: Self) -> Self: raise NotImplementedError
+  def _forward_computeop(self, opcode: OpCode, *inputs: Self) -> Self: raise NotImplementedError
   def const_like(self, b: Const) -> Self: raise NotImplementedError
 
   # provided
-  def _apply_compute_binopcode(self, other: Self|Const, op: OpCode, reverse: bool) -> Self:
-    return self.ufix(other)._apply_compute_opcode(op, self) if reverse else self._apply_compute_opcode(op, self.ufix(other))
+  def _forward_computebinop(self, other: Self|Const, op: OpCode, reverse: bool) -> Self:
+    return self.ufix(other)._forward_computeop(op, self) if reverse else self._forward_computeop(op, self.ufix(other))
   def ufix(self, other: Self|Const) -> Self:
     return self.const_like(other) if not isinstance(other, ComputeOpCodeBuilder) else x
 
@@ -105,32 +105,32 @@ class ComputeOpCodeBuilder:
     if (dtype := getattr(self, "dtype")) is None:
       raise TypeError(f"MathTraits __neg__ requires a dtype, {self=}")
     return self.logical_not() if dtype.scalar() == dtypes.bool else self * (-1)
-  def add(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(other, OpCode.ADD, reverse)
-  def sub(self, other: Self|Const, reverse: bool=False):                                                     return self.ufix(other)._apply_compute_opcode(OpCode.ADD, -self) if reverse else self._apply_compute_opcode(OpCode.ADD, self.ufix(-x))
-  def mul(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(other, OpCode.MUL, reverse)
-  def idiv(self, other: Self|Const, reverse: bool=False):                                                    return self._apply_compute_binopcode(other, OpCode.IDIV, reverse)
-  def mod(self, other: Self|Const, reverse: bool=False):                                                     return self._apply_compute_binopcode(other, OpCode.MOD, reverse)
-  def div(self, other: Self|Const, reverse: bool=False): return (self.ufix(other) * self._apply_compute_opcode(OpCode.RECIP)) if reverse else (self * self.ufix(other)._apply_compute_opcode(OpCode.RECIP))
-  def recip(self):                                                                                           return self._apply_compute_opcode(OpCode.RECIP)
-  def trunc(self):                                                                                           return self._apply_compute_opcode(OpCode.TRUNC)
-  def sqrt(self):                                                                                            return self._apply_compute_opcode(OpCode.SQRT)
-  def sin(self):                                                                                             return self._apply_compute_opcode(OpCode.SIN)
-  def log2(self):                                                                                            return self._apply_compute_opcode(OpCode.LOG2)
-  def exp2(self):                                                                                            return self._apply_compute_opcode(OpCode.EXP2)
-  def pow(self, other: Self|Const):                                                                            return self._apply_compute_opcode(OpCode.POW, self.ufix(other))
-  def maximum(self, other: Self|Const):                                                                        return self._apply_compute_opcode(OpCode.MAX, self.ufix(other))
+  def add(self, other: Self|Const, reverse: bool=False):                                                     return self._forward_computebinop(other, OpCode.ADD, reverse)
+  def sub(self, other: Self|Const, reverse: bool=False):                                                     return self.ufix(other)._forward_computeop(OpCode.ADD, -self) if reverse else self._forward_computeop(OpCode.ADD, self.ufix(-x))
+  def mul(self, other: Self|Const, reverse: bool=False):                                                     return self._forward_computebinop(other, OpCode.MUL, reverse)
+  def idiv(self, other: Self|Const, reverse: bool=False):                                                    return self._forward_computebinop(other, OpCode.IDIV, reverse)
+  def mod(self, other: Self|Const, reverse: bool=False):                                                     return self._forward_computebinop(other, OpCode.MOD, reverse)
+  def div(self, other: Self|Const, reverse: bool=False): return (self.ufix(other) * self._forward_computeop(OpCode.RECIP)) if reverse else (self * self.ufix(other)._forward_computeop(OpCode.RECIP))
+  def recip(self):                                                                                           return self._forward_computeop(OpCode.RECIP)
+  def trunc(self):                                                                                           return self._forward_computeop(OpCode.TRUNC)
+  def sqrt(self):                                                                                            return self._forward_computeop(OpCode.SQRT)
+  def sin(self):                                                                                             return self._forward_computeop(OpCode.SIN)
+  def log2(self):                                                                                            return self._forward_computeop(OpCode.LOG2)
+  def exp2(self):                                                                                            return self._forward_computeop(OpCode.EXP2)
+  def pow(self, other: Self|Const):                                                                            return self._forward_computeop(OpCode.POW, self.ufix(other))
+  def maximum(self, other: Self|Const):                                                                        return self._forward_computeop(OpCode.MAX, self.ufix(other))
   def minimum(self, other: Self|Const): return -(-self).maximum(-x)
-  def threefry(self, seed: Self): return self._apply_compute_opcode(OpCode.THREEFRY, seed)
-  def bitwise_and(self, other: Self|Const, reverse: bool=False): self._check_dtype();                        return self._apply_compute_binopcode(OpCode.AND, other, reverse)
-  def bitwise_or(self, other: Self|Const, reverse: bool=False): self._check_dtype();                         return self._apply_compute_binopcode(OpCode.OR, other, reverse)
-  def bitwise_xor(self, other: Self|Const, reverse: bool=False): self._check_dtype();                        return self._apply_compute_binopcode(OpCode.XOR, other, reverse)
-  def lshift(self, other: Self|int, reverse: bool=False): return self._apply_compute_binopcode(other, OpCode.SHL, reverse)
-  def rshift(self, other: Self|int, reverse: bool=False): return self._apply_compute_binopcode(other, OpCode.SHR, reverse)
+  def threefry(self, seed: Self): return self._forward_computeop(OpCode.THREEFRY, seed)
+  def bitwise_and(self, other: Self|Const, reverse: bool=False): self._check_dtype();                        return self._forward_computebinop(OpCode.AND, other, reverse)
+  def bitwise_or(self, other: Self|Const, reverse: bool=False): self._check_dtype();                         return self._forward_computebinop(OpCode.OR, other, reverse)
+  def bitwise_xor(self, other: Self|Const, reverse: bool=False): self._check_dtype();                        return self._forward_computebinop(OpCode.XOR, other, reverse)
+  def lshift(self, other: Self|int, reverse: bool=False): return self._forward_computebinop(other, OpCode.SHL, reverse)
+  def rshift(self, other: Self|int, reverse: bool=False): return self._forward_computebinop(other, OpCode.SHR, reverse)
   def where(self, x: Self|Const, y: Self|Const):
     if isinstance(x, type(self)):
-      return self._apply_compute_opcode(OpCode.WHERE, x, x.ufix(y))
+      return self._forward_computeop(OpCode.WHERE, x, x.ufix(y))
     if isinstance(y, type(self)):
-      return self._apply_compute_opcode(OpCode.WHERE, y.ufix(x), y)
+      return self._forward_computeop(OpCode.WHERE, y.ufix(x), y)
     raise RuntimeError("where needs at least one UOp arg")
   def logical_not(self): return self.ne(True)
   
@@ -149,11 +149,11 @@ class ComputeOpCodeBuilder:
   def __mod__(self, other: Self|Const):                                                                        return self.mod(other)
   def __rmod__(self, other: Self|Const):                                                                       return self.mod(other, True)
   
-  def __lt__(self, other: Self|Const):                                                                         return self._apply_compute_opcode(OpCode.CMPLT, self.ufix(other))
-  def __gt__(self, other: Self|Const):                                                                         return self.ufix(other)._apply_compute_opcode(OpCode.CMPLT, self)
+  def __lt__(self, other: Self|Const):                                                                         return self._forward_computeop(OpCode.CMPLT, self.ufix(other))
+  def __gt__(self, other: Self|Const):                                                                         return self.ufix(other)._forward_computeop(OpCode.CMPLT, self)
   def __ge__(self, other: Self|Const):                                                                         return (self < other).logical_not()
   def __le__(self, other: Self|Const):                                                                         return (self > other).logical_not()
-  def ne(self, other: Self|Const):                                                                             return self._apply_compute_opcode(OpCode.CMPNE, self.ufix(other))
+  def ne(self, other: Self|Const):                                                                             return self._forward_computeop(OpCode.CMPNE, self.ufix(other))
   def eq(self, other: Self|Const):                                                                             return self.ne(other).logical_not()
   def __ne__(self, other: Self|Const):                                                                         return self.ne(other)  # type: ignore[override]
   # NOTE: __eq__ isn't overridden, and means the same thing as is b default
@@ -179,7 +179,7 @@ class ComputeOpCodeBuilder:
 
 class MovementOpCodeBuilder:
   # required
-  def _apply_movement_opcode(self, op: OpCode, payload) -> Self: raise NotImplementedError
+  def _forward_movementop(self, op: OpCode, payload) -> Self: raise NotImplementedError
   @property
   def shape(self) -> tuple[int, ...]: raise NotImplementedError
   
@@ -192,7 +192,7 @@ class MovementOpCodeBuilder:
       else: output_shape = tuple([-helpers.prod(self.shape) // helpers.prod(output_shape) if dim == -1 else dim for dim in output_shape])
     if helpers.prod(self.shape) != helpers.prod(output_shape): raise ValueError(f"size mismatch, can't reshape ({self.shape}) -> ({output_shape})")      # guard
     
-    output = self._apply_movement_opcode(OpCode.RESHAPE, payload=output_shape)                                                                           # apply
+    output = self._forward_movementop(OpCode.RESHAPE, payload=output_shape)                                                                           # apply
     return self if output.shape == self.shape else output                                                                                                # identity return
 
   def shrink(self) -> Self: raise NotImplementedError("todo")
