@@ -5,7 +5,7 @@ import math, itertools, weakref
 
 from picograd import helpers
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
-from picograd.engine.irparser import GroupedOpCode, OpCode, GraphBuilder
+from picograd.engine.irparser import GroupedOpCode, OpCode, TensorDSL
 if TYPE_CHECKING:
   from picograd.runtime.device import Buffer, Device
 from picograd.dtype import Const, ConstLike, DType, ImageDType, PtrDType, dtypes
@@ -47,7 +47,7 @@ class recursive_property(property):
 
 # **************** Expression Graph ****************
 @dataclass(eq=False, slots=True) # NOTE: this should be frozen, but frozen is slower
-class OpNode(GraphBuilder):
+class OpNode(TensorDSL):
   """
   OpNode structs (which Tensor's deusugar into) are vertices that form an
   expression graph G=(V,E) where V is a Set<Op> and E is a Set<(Op,Op)>

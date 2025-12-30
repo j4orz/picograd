@@ -90,7 +90,7 @@ GraphBuilder (at the bottom of the file) is a ComputeOpCodeBuilder and MovementO
 2. acts as the embedded DSL's "parser", by coupling python dunder builtins to be aware of the corresponding OpCode ir
 """
 
-class ComputeOpCodeBuilder:
+class ComputeOpCodeStrategy:
   # required
   def _forward_computeop(self, opcode: OpCode, *inputs: Self) -> Self: raise NotImplementedError
   def const_like(self, b: Const) -> Self: raise NotImplementedError
@@ -99,7 +99,7 @@ class ComputeOpCodeBuilder:
   def _forward_computebinop(self, other: Self|Const, op: OpCode, reverse: bool) -> Self:
     return self.ufix(other)._forward_computeop(op, self) if reverse else self._forward_computeop(op, self.ufix(other))
   def ufix(self, other: Self|Const) -> Self:
-    return self.const_like(other) if not isinstance(other, ComputeOpCodeBuilder) else x
+    return self.const_like(other) if not isinstance(other, ComputeOpCodeStrategy) else x
 
   def neg(self):
     if (dtype := getattr(self, "dtype")) is None:
@@ -177,7 +177,7 @@ class ComputeOpCodeBuilder:
       if not (dtypes.is_bool(dtype) or dtypes.is_int(dtype)):
         raise RuntimeError(f"{dtype} is not supported")
 
-class MovementOpCodeBuilder:
+class MovementOpCodeStrategy:
   # required
   def _forward_movementop(self, op: OpCode, payload) -> Self: raise NotImplementedError
   @property
@@ -207,5 +207,5 @@ class MovementOpCodeBuilder:
   def flatten(self) -> Self: raise NotImplementedError("todo")
   def unflatten(self) -> Self: raise NotImplementedError("todo")
 
-class GraphBuilder(ComputeOpCodeBuilder, MovementOpCodeBuilder):
+class TensorDSL(ComputeOpCodeStrategy, MovementOpCodeStrategy):
   pass
