@@ -1,4 +1,4 @@
-from .irparser import OpCode, TensorDSL
+from .dslir import OpCode, TensorDSL
 from .opnode import OpNode
 from .interpreter import Interpreter
 # from .compiler import Pattern, PatternMatcher

@@ -3,7 +3,7 @@ from typing import Any
 import itertools, time, base64, pickle
 
 from picograd.dtype import DType
-from picograd.engine.irparser import OpCode
+from picograd.engine.dslir import OpCode
 from picograd.engine.compiler import Generator
 from picograd.runtime.device import Allocator, Compiler, CompilerPair, CompilerSet, Runtime
 

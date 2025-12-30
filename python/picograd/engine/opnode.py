@@ -5,7 +5,7 @@ import math, itertools, weakref
 
 from picograd import helpers
 from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
-from picograd.engine.irparser import GroupedOpCode, OpCode, TensorDSL
+from picograd.engine.dslir import GroupedOpCode, OpCode, TensorDSL
 if TYPE_CHECKING:
   from picograd.runtime.device import Buffer, Device
 from picograd.dtype import Const, ConstLike, DType, ImageDType, PtrDType, dtypes

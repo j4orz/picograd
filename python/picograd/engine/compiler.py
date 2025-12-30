@@ -3,7 +3,7 @@ import math
 from typing import Any
 
 from picograd.dtype import DType
-from .irparser import OpCode
+from .dslir import OpCode
 from .opnode import OpNode
 
 # -kernelize: graph rewrites

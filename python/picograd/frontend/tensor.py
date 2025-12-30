@@ -1,7 +1,7 @@
 # inspired by https://github.com/karpathy/micrograd/blob/master/micrograd/engine.py
 #          and https://github.com/tinygrad/tinygrad/blob/master/tinygrad/tensor.py
 from __future__ import annotations
-from typing import Any, Callable, Self, Sequence, TypeGuard,  cast, get_args
+from typing import Any, Callable, Self, Sequence, TypeGuard, cast, get_args
 import math, weakref, struct, pathlib
 
 from picograd import helpers
@@ -193,6 +193,7 @@ class Tensor(TensorDSL):
       other_tensor = inputs[0]
       output_tensor = Tensor(None, self.device)
       output_tensor.buf = self.device.launch_add_kernel(self.buf, other_tensor.buf)
+      foo = Device[self.device]
       return output_tensor
     elif helpers.GRAPH:
       f = lambda *input_opnodes: input_opnodes[0]._apply_compute_opcode(opcode, *input_opnodes[1:])
