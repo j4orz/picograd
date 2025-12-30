@@ -5,7 +5,7 @@ from typing import Any, Callable, Self, Sequence, TypeGuard,  cast, get_args
 import math, weakref, struct, pathlib
 
 from picograd import helpers
-from picograd.engine import OpCode, OpNode, GraphBuilder, Interpreter
+from picograd.engine import OpCode, OpNode, TensorDSL, Interpreter
 from picograd.helpers import DEBUG, EAGER, GRAPH
 from picograd.runtime import Device
 from picograd.dtype import Const, DType, DTypeLike, dtypes
@@ -33,7 +33,7 @@ def get_shape(x) -> tuple[int, ...]:
 
 
 
-class Tensor(GraphBuilder):
+class Tensor(TensorDSL):
   """
   the Tensor class is a *sugared handle* to the expression graph of vertices V=Set<OpNode> and edges E=Set<(OpNode,OpNode)>,
   which represents picograd's primitive understanding (intermediate representation) of the specified expression f(x).
@@ -49,28 +49,41 @@ class Tensor(GraphBuilder):
   """
 
   # ************ Tensor Data + Constructors ************
-  __slots__ = "grad", "requires_grad"
+  __slots__ = "shape", "stride", "buf", "_device" \
+              "opnode", \
+              "grad", "requires_grad"
+
   @property
-  def device(self) -> str|tuple[str, ...]: return self.opnode.device
+  def device(self) -> str|tuple[str, ...]:
+    if helpers.EAGER: return self._device
+    elif helpers.GRAPH: return self.opnode.device
+
   @property
-  def dtype(self) -> DType: return self.opnode.dtype
-  
+  def dtype(self) -> DType:
+    if helpers.EAGER: return self._dtype
+    elif helpers.GRAPH: return self.opnode.dtype
   @property
   def ndim(self) -> int: raise NotImplementedError("TODO")
 
   def __init__(self, input: Const|bytes|list|tuple|None, # removed OpNode, np.ndarray, pathlib.Path support (for now).
-               device: str |tuple|list|None=None, dtype: DTypeLike|None=None, requires_grad: bool|None=None, force_unique: bool=False): # kwargs
+               device: str|tuple|list|None=None, dtype: DTypeLike|None=None, requires_grad: bool|None=None, force_unique: bool=False): # kwargs
     """
     Tensor.__init__() initializes state for self, which includes metadata for device, dtype, gradients, and most importantly, the handle to an OpNode
     """
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
     if DEBUG >= 1: print("START Tensor.__init__() initializing tensor with dtype:", dtype, "on device:", device, "...")
-    dtype: DType | None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
-    device: str | tuple[str, ...] = tuple(Device._canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device._canonicalize_device(device)
     self.grad: Tensor | None = None                                                            # tensors can have gradients if you have called .backward
     self.requires_grad: bool | None = requires_grad                                            # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
+    device: str | tuple[str, ...] = tuple(Device._canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device._canonicalize_device(device)
+    dtype: DType | None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
 
-    if helpers.EAGER: self.shape, self.stride, self.buf, self.offset = [], [], [], 0
+    if helpers.EAGER:
+      self.shape: tuple[int] | None = []
+      self.stride: tuple[int] | None = []
+      self.buf: None = None
+      self.offset: int = 0
+      self._device, self._dtype = device, dtype
+
     elif helpers.GRAPH:
       self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)
       print(f"DONE Tensor.__init__() initializing tensor with dtype: {dtype} on device {device} with input {input}\n")
@@ -199,9 +212,8 @@ class Tensor(GraphBuilder):
     print(f"other: {other}",)
 
     if helpers.EAGER:
-      other_tensor = inputs[0]
       output_tensor = Tensor(None, self.device)
-      output_tensor.buf = self.device.launch_add_kernel(self.buf, other_tensor.buf)
+      output_tensor.buf = self.device.launch_add_kernel(self.buf, other.buf)
       return output_tensor
     elif helpers.GRAPH:
       # 0. construct f, which when applied with y = f(x), produces the opnode y. the call is delegated to OpNode's _apply_compute_opcode
