@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Generic, Self, TypeVar
 import functools,  atexit, re, pathlib, importlib, inspect, os, ctypes
 from picograd.dtype import DType, PtrDType
-from picograd.engine.compiler import Generator
+from picograd.engine.compiler.compiler import Generator
 from picograd.helpers import ALLOW_DEVICE_USAGE, DEBUG, MAX_BUFFER_SIZE, ContextVar, unwrap_class_type
 
 # picograd to tinygrad bridge
