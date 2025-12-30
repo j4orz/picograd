@@ -17,7 +17,8 @@ class Interpreter:
   def __init__(self, device: str):
     self.device: Runtime = Device[device]
 
-  def evaluate(self, schedule: List[OpNode]) -> List[Buffer]:
+  @staticmethod
+  def evaluate(schedule: List[OpNode]) -> List[Buffer]:
     i = 0
     while i < len(schedule):
       opnode = schedule[i]

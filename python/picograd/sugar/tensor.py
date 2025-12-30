@@ -49,38 +49,14 @@ class Tensor(GraphBuilder):
   """
 
   # ************ Tensor Data + Constructors ************
-  __slots__ = "opnode", "grad", "requires_grad", 
+  __slots__ = "grad", "requires_grad"
   @property
   def device(self) -> str|tuple[str, ...]: return self.opnode.device
   @property
-  def shape(self) -> tuple[int, ...]: return self.opnode.shape
-  @property
   def dtype(self) -> DType: return self.opnode.dtype
+  
   @property
   def ndim(self) -> int: raise NotImplementedError("TODO")
-
-  def data(self) -> memoryview:
-    if 0 in self.shape: return memoryview(bytearray(0)).cast(self.dtype.base.fmt)
-    assert all_int(self.shape), f"no data if shape is symbolic, {self.shape=}"
-    return self._buffer().as_typed_buffer(self.shape)
-
-  def item(self) -> Const:
-    assert self.numel() == 1, "must have one element for item"
-    return self.data()[(0,) * len(self.shape)]
-
-
-
-
-
-  # high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
-  @staticmethod
-  def zeros(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 0.0)._evaluate()
-  @staticmethod
-  def ones(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 1.0)._evaluate()  
-  @staticmethod
-  def full(shape: tuple[int, ...], fill: Const) -> Self:
-    new_shape = (1, )*len(helpers.normalize_shape(shape))
-    return Tensor(fill, force_unique=True).reshape(new_shape).expand(new_shape)._evaluate()
 
   def __init__(self, input: Const|bytes|list|tuple|None, # removed OpNode, np.ndarray, pathlib.Path support (for now).
                device: str |tuple|list|None=None, dtype: DTypeLike|None=None, requires_grad: bool|None=None, force_unique: bool=False): # kwargs
@@ -93,12 +69,36 @@ class Tensor(GraphBuilder):
     device: str | tuple[str, ...] = tuple(Device._canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device._canonicalize_device(device)
     self.grad: Tensor | None = None                                                            # tensors can have gradients if you have called .backward
     self.requires_grad: bool | None = requires_grad                                            # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
-    self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)
-    all_tensors[weakref.ref(self)] = None                                                      # add to all_tensors after construction succeeds
 
-    print(f"DONE Tensor.__init__() initializing tensor with dtype: {dtype} on device {device} with input {input}\n")
-    print(f"Tensor.opnode is now: {self.opnode}\n\n\n")
+    if helpers.EAGER: self.shape, self.stride, self.buf, self.offset = [], [], [], 0
+    elif helpers.GRAPH:
+      self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)
+      print(f"DONE Tensor.__init__() initializing tensor with dtype: {dtype} on device {device} with input {input}\n")
+      print(f"Tensor.opnode is now: {self.opnode}\n\n\n")
+    else: raise NotImplementedError("todo")
+
+    all_tensors[weakref.ref(self)] = None                                                      # add to all_tensors after construction succeeds
     return
+
+  def data(self) -> memoryview:
+    if 0 in self.shape: return memoryview(bytearray(0)).cast(self.dtype.base.fmt)
+    assert all_int(self.shape), f"no data if shape is symbolic, {self.shape=}"
+    return self._buffer().as_typed_buffer(self.shape)
+
+  def item(self) -> Const:
+    assert self.numel() == 1, "must have one element for item"
+    return self.data()[(0,) * len(self.shape)]
+
+
+  # high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
+  @staticmethod
+  def zeros(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 0.0)._evaluate()
+  @staticmethod
+  def ones(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 1.0)._evaluate()  
+  @staticmethod
+  def full(shape: tuple[int, ...], fill: Const) -> Self:
+    new_shape = (1, )*len(helpers.normalize_shape(shape))
+    return Tensor(fill, force_unique=True).reshape(new_shape).expand(new_shape)._evaluate()
   
   @staticmethod
   def _input_to_opnode(input: Const|bytes|list|tuple|OpNode|None, device: str, dtype: DType|None, force_unique) -> OpNode:
@@ -172,10 +172,17 @@ class Tensor(GraphBuilder):
     return Interpreter.evaluate(self)
 
   # **************** ComputeOpCodeBuilder/MovementOpCodeBuilder Required Methods ****************
-  def _apply_compute_opcode(self, opcode: OpCode, *inputs):
-    f = lambda *input_opnodes: input_opnodes[0]._apply_compute_opcode(opcode, *input_opnodes[1:])
-    graph = self._forward(f, *inputs)
-    return graph._evaluate()
+  def _apply_compute_opcode(self, opcode: OpCode, *inputs) -> Self:
+    if helpers.EAGER:
+      other_tensor = inputs[0]
+      output_tensor = Tensor(None, self.device)
+      output_tensor.buf = self.device.launch_add_kernel(self.buf, other_tensor.buf)
+      return output_tensor
+    elif helpers.GRAPH:
+      f = lambda *input_opnodes: input_opnodes[0]._apply_compute_opcode(opcode, *input_opnodes[1:])
+      self.opnode = self._forward(f, *inputs)
+    else:
+      raise NotImplementedError("todo")
   
   # def _apply_movement_opcode(self, opcode: OpCode, *inputs):
   #   return self._forward(OpNode._apply_movement_opcode, extra_args=(opcode,), arg=arg)
