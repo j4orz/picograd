@@ -182,6 +182,12 @@ class Tensor(TensorDSL):
     # unrealized_tensors = [tensor for tensor in (self,)+other if not tensor.opnode.is_contiguous()]
     print("evaluating graph ir..")
     return Interpreter.evaluate(self)
+  
+  def kernel_name(opcode: OpCode) -> str:
+    if   opcode is OpCode.ADD:    return "add"
+    elif opcode is OpCode.MUL:    return "mul"
+    elif opcode is OpCode.MATMUL: return "matmul"
+    else: raise NotImplementedError("todo")
 
   # **************** ComputeOpCodeBuilder/MovementOpCodeBuilder Methods ****************
   def _forward_computeop(self, opcode: OpCode, *inputs: Self) -> Self: ## required
@@ -190,14 +196,18 @@ class Tensor(TensorDSL):
     after the IR for function f is applied to the expression graph with .forward(), internal callsites must evaluate with .evaluate()
     """
     if helpers.EAGER:
-      self_tensor, other_tensor, output_tensor = self, inputs[0], Tensor(None, self.device)
-      if   opcode is OpCode.ADD:    kernel = CUDAKernel(Device[self.device], "my_add_kernel")
-      elif opcode is OpCode.MUL:    kernel = CUDAKernel(Device[self.device], "my_mul_kernel")
-      elif opcode is OpCode.MATMUL: kernel = CUDAKernel(Device[self.device], "my_mul_kernel")
-      else: raise NotImplementedError("todo")
-      kernel(output_tensor.buf, self_tensor.buf, other_tensor.buf, global_size=(1024, 1, 1), local_size=(256, 1, 1), vals=(1024,))
+      runtime = Device[self.device]
+      kernel_name, kernel_extension = kernel_name(opcode), kernel_extension(self.device)
+      kernel_src = pathlib.Path(f"python/picograd/engine/eagker/{self.device}/{kernel_name}.{kernel_extension}")
+      kernel_bin = runtime.compiler.compile(kernel_src.read_text())
+      kernel_handle = runtime.kernel(kernel_name, kernel_bin)
 
-      return output_tensor
+      other, output, n = inputs[0], Tensor(None, self.device), self.numel()
+      globals, locals = ((n + 255) // 256, 1, 1), (256, 1, 1)
+      kernel_handle(output.buf, self.buf, other.buf,
+                    globals, locals, vals=(1024,))
+
+      return output
     elif helpers.GRAPH:
       f = lambda *input_opnodes: input_opnodes[0]._apply_compute_opcode(opcode, *input_opnodes[1:])
       self.opnode = self._forward_computeop(f, *inputs)
@@ -205,8 +215,8 @@ class Tensor(TensorDSL):
       needs_input_grad = [t.requires_grad for t in (self,)+other]
       requires_grad = True if any(needs_input_grad) else None if None in needs_input_grad else False
       output_opnode: OpNode = f(*[t.opnode for t in (self,)+other])
-      output_tensor = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
-      return output_tensor
+      output = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
+      return output
     else:
       raise NotImplementedError("todo")
 
@@ -216,12 +226,18 @@ class Tensor(TensorDSL):
     print(f"other: {other}",)
 
     if helpers.EAGER:
-      self_tensor, other_tensor, output_tensor = self, other, Tensor(None, self.device)
-      kernel = CUDAKernel(Device[self.device], "my_add_kernel")
-      kernel(output_tensor.buf, self_tensor.buf, other_tensor.buf,
-             global_size=(1024, 1, 1), local_size=(256, 1, 1), vals=(1024,))
+      runtime = Device[self.device]
+      kernel_name, kernel_extension = kernel_name(opcode), kernel_extension(self.device)
+      kernel_src = pathlib.Path(f"python/picograd/engine/eagker/{self.device}/{kernel_name}.{kernel_extension}")
+      kernel_bin = runtime.compiler.compile(kernel_src.read_text())
+      kernel_handle = runtime.kernel(kernel_name, kernel_bin)
 
-      return output_tensor
+      output, n = Tensor(None, self.device), self.numel()
+      globals, locals = ((n + 255) // 256, 1, 1), (256, 1, 1)
+      kernel_handle(output.buf, self.buf, other.buf,
+                    globals, locals, vals=(1024,))
+
+      return output
     elif helpers.GRAPH:
       # 0. construct f, which when applied with y = f(x), produces the opnode y. the call is delegated to OpNode's _apply_compute_opcode
       f = lambda *input_opnodes: OpNode._forward_computeop(input_opnodes[0], opcode, *input_opnodes[1:])
