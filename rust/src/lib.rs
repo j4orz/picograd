@@ -1,4 +1,4 @@
-// ! picograd: Tensor, Engine, Runtime
+// ! teenygrad: Tensor, Engine, Runtime
 
 use pyo3::prelude::*;
 
@@ -9,6 +9,7 @@ use pyo3::prelude::*;
 
 /// A Python module implemented in Rust.
 #[pymodule] fn _pgrs(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    println!("Hello from Rust!");
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
     let ten = PyModule::new(m.py(), "ten")?;
     let linalg = PyModule::new(m.py(), "linalg")?;

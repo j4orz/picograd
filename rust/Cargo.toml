@@ -1,11 +1,11 @@
 [package]
-name = "picograd"
+name = "teenygrad"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "picograd"
+name = "teenygrad"
 crate-type = ["cdylib"] # necessary to produce a shared lib for python to import from
 
 [dependencies]

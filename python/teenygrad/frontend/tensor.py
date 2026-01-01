@@ -4,12 +4,12 @@ from __future__ import annotations
 from typing import Any, Callable, Self, Sequence, TypeGuard, cast, get_args
 import math, weakref, struct, pathlib
 
-from picograd import helpers
-from picograd.engine import OpCode, OpNode, TensorDSL, Interpreter
-from picograd.helpers import DEBUG, EAGER, GRAPH
-from picograd.runtime import Device
-from picograd.dtype import Const, DType, DTypeLike, dtypes
-import picograd.dtype
+from teenygrad import helpers
+from teenygrad.engine import OpCode, OpNode, TensorDSL, Interpreter
+from teenygrad.helpers import DEBUG, EAGER, GRAPH
+from teenygrad.runtime import Device
+from teenygrad.dtype import Const, DType, DTypeLike, dtypes
+import teenygrad.dtype
 
 all_tensors: dict[weakref.ref[Tensor], None] = {}
 def all_same(items:tuple[T, ...]|list[T]): return all(x == items[0] for x in items)
@@ -36,7 +36,7 @@ def get_shape(x) -> tuple[int, ...]:
 class Tensor(TensorDSL):
   """
   the Tensor class is a *sugared handle* to the expression graph of vertices V=Set<OpNode> and edges E=Set<(OpNode,OpNode)>,
-  which represents picograd's primitive understanding (intermediate representation) of the specified expression f(x).
+  which represents teenygrad's primitive understanding (intermediate representation) of the specified expression f(x).
   the data and functionality you expect to live on Tensor actually lives in OpNode because the Tensor class is a sugared handle *to* the expression graph.
   all methods that framework users apply to Tensors are implemented by calling GraphBuilder's methods, which, in turn, call
   ComputeOpCodeBuilder._apply_compute_opcode() and MovementOpCodeBuilder._apply_movement_opcode(), implemented by OpNode.
@@ -75,7 +75,7 @@ class Tensor(TensorDSL):
     self.grad: Tensor | None = None                                                            # tensors can have gradients if you have called .backward
     self.requires_grad: bool | None = requires_grad                                            # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
     device: str | tuple[str, ...] = tuple(Device._canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device._canonicalize_device(device)
-    dtype: DType | None = picograd.dtype.to_dtype(dtype) if dtype is not None else None
+    dtype: DType | None = teenygrad.dtype.to_dtype(dtype) if dtype is not None else None
 
     if helpers.EAGER:
       self.shape: tuple[int] | None = []
@@ -149,7 +149,7 @@ class Tensor(TensorDSL):
     assert dtype.fmt is not None, f"{dtype=} has None fmt"
     output_opnode = OpNode.new_buffer("HOST", helpers.prod(shape:=get_shape(input)), dtype)
     output_opnode = output_opnode.reshape(shape)
-    something = [picograd.dtype.truncate[dtype](dtypes.as_const(x, dtype)) for x in fully_flatten(input)]
+    something = [teenygrad.dtype.truncate[dtype](dtypes.as_const(x, dtype)) for x in fully_flatten(input)]
     bytes = memoryview(struct.pack(f"{output_opnode.size}{dtype.fmt}", *something))
     output_opnode.buffer.allocate(bytes) # fake realize by passing an opaque_preallocation
     # todo: actually realize(evaluate/materialize)
@@ -198,7 +198,7 @@ class Tensor(TensorDSL):
     if helpers.EAGER:
       runtime = Device[self.device]
       kernel_name, kernel_extension = kernel_name(opcode), kernel_extension(self.device)
-      kernel_src = pathlib.Path(f"python/picograd/engine/eagker/{self.device}/{kernel_name}.{kernel_extension}")
+      kernel_src = pathlib.Path(f"python/teenygrad/engine/eagker/{self.device}/{kernel_name}.{kernel_extension}")
       kernel_bin = runtime.compiler.compile(kernel_src.read_text())
       kernel_handle = runtime.kernel(kernel_name, kernel_bin)
 
@@ -228,7 +228,7 @@ class Tensor(TensorDSL):
     if helpers.EAGER:
       runtime = Device[self.device]
       kernel_name, kernel_extension = kernel_name(opcode), kernel_extension(self.device)
-      kernel_src = pathlib.Path(f"python/picograd/engine/eagker/{self.device}/{kernel_name}.{kernel_extension}")
+      kernel_src = pathlib.Path(f"python/teenygrad/engine/eagker/{self.device}/{kernel_name}.{kernel_extension}")
       kernel_bin = runtime.compiler.compile(kernel_src.read_text())
       kernel_handle = runtime.kernel(kernel_name, kernel_bin)
 

@@ -2,11 +2,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Generic, Self, TypeVar
 import functools,  atexit, re, pathlib, importlib, inspect, os, ctypes
-from picograd.dtype import DType, PtrDType
-from picograd.engine.compiler.compiler import Generator
-from picograd.helpers import ALLOW_DEVICE_USAGE, DEBUG, MAX_BUFFER_SIZE, ContextVar, unwrap_class_type
+from teenygrad.dtype import DType, PtrDType
+from teenygrad.engine.compiler.compiler import Generator
+from teenygrad.helpers import ALLOW_DEVICE_USAGE, DEBUG, MAX_BUFFER_SIZE, ContextVar, unwrap_class_type
 
-# picograd to tinygrad bridge
+# teenygrad to tinygrad bridge
 # - removed Device.Default
 # - removed lruallocator and bufferspec (no need to support advanced allocation options for now)
 # - removed llvmcompiler (requires llvmlite or ffi-llvmctypes)
@@ -205,7 +205,7 @@ def flat_mv(mv:memoryview): return mv if len(mv) == 0 else mv.cast("B", shape=(m
 
 # **************** COMPUTE: (Kernel Compilers) ****************
 class Compiler:
-  def __init__(self): None # TODO (picograd jit compile cache): cachekey:str|None=None): # self.cachekey = None if DISABLE_COMPILER_CACHE else cachekey
+  def __init__(self): None # TODO (teenygrad jit compile cache): cachekey:str|None=None): # self.cachekey = None if DISABLE_COMPILER_CACHE else cachekey
   def compile(self, src:str) -> bytes: return src.encode()   # NOTE: empty compiler is the default
   def disassemble(self, lib:bytes): pass
 

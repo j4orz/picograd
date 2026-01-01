@@ -1,4 +1,4 @@
-import picograd
+import teenygrad
 import unittest
 
 if __name__ == '__main__':

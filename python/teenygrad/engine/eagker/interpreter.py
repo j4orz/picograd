@@ -2,9 +2,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, List
 import pathlib
 
-if TYPE_CHECKING: from picograd.frontend.tensor import Tensor
-from picograd.engine import OpCode, OpNode
-from picograd.runtime.device import Device, Runtime
+if TYPE_CHECKING: from teenygrad.frontend.tensor import Tensor
+from teenygrad.engine import OpCode, OpNode
+from teenygrad.runtime.device import Device, Runtime
 
 @dataclass(frozen=True)
 class ExternalKernel:

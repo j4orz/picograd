@@ -10,8 +10,8 @@ from __future__ import annotations
 from typing import Self
 from enum import Enum, IntEnum, auto
 
-from picograd import helpers
-from picograd.dtype import Const
+from teenygrad import helpers
+from teenygrad.dtype import Const
 
 # **************** Intermediate Representation ****************
 class FastEnum(IntEnum): # wrapper around IntEnum that preserves Enum.__str__ and makes auto() unique across all FastEnum subclasses

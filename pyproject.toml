@@ -3,24 +3,21 @@ requires = ["maturin>=1.9,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "picograd"
+name = "teenygrad"
 requires-python = ">=3.14"
-classifiers = [
-    "Programming Language :: Rust",
-    "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
-]
+classifiers = []
 dynamic = ["version"]
 dependencies = [
     "gpuctypes>=0.3.0",
     "maturin>=1.9.5",
 ]
+
 [tool.maturin]
 features = ["pyo3/extension-module"]
 manifest-path = "rust/Cargo.toml"
 python-source = "python"
-python-packages = ["picograd"]
-module-name = "picograd._pgrs"
+python-packages = ["teenygrad"]
+module-name = "teenygrad._pgrs"
 
 [tool.uv.workspace]
 members = [

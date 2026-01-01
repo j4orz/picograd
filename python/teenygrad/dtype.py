@@ -6,7 +6,7 @@ from typing import Callable, ClassVar, Final, Literal
 from dataclasses import dataclass
 from enum import Enum, auto
 
-# from picograd.engine.opnode import OpNode
+# from teenygrad.engine.opnode import OpNode
 
 # Variable = OpNode
 Const = float|int|bool

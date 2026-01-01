@@ -1,6 +1,6 @@
 # inspired by https://github.com/tinygrad/tinygrad/blob/master/docs/abstractions2.py
 print("******** first, the runtime with it's memory and compute management  ***********")
-# from picograd.runtime.hip_runtime import HIPDevice, HIPCCCompiler, HIPKernel
+# from teenygrad.runtime.hip_runtime import HIPDevice, HIPCCCompiler, HIPKernel
 # device = HIPDevice()
 
 # # 1. memory: allocate and memcpy on device
@@ -24,8 +24,8 @@ DEVICE = "CUDA"
 
 print("******** third, a tensor which is a sugared hanlde to the expression graph  ***********")
 
-from picograd import Tensor
-# from picograd.dtype import dtypes
+from teenygrad import Tensor
+# from teenygrad.dtype import dtypes
 
 x = Tensor([2], device=DEVICE) #, dtype=dtypes.int32, device=DEVICE)
 y = Tensor([3], device=DEVICE) #, dtype=dtypes.int32, device=DEVICE)

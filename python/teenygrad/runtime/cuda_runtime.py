@@ -2,8 +2,8 @@ from __future__ import annotations
 import re
 import functools, ctypes, hashlib, pathlib, subprocess, tempfile
 import gpuctypes.cuda as cuda
-from picograd.runtime.device import Allocator, Compiler, Runtime
-from picograd.helpers import DEBUG, colored, suppress_finalizing, system
+from teenygrad.runtime.device import Allocator, Compiler, Runtime
+from teenygrad.helpers import DEBUG, colored, suppress_finalizing, system
 
 # **************** Python/C Foreign Function Helpers  ****************
 """
@@ -133,7 +133,7 @@ class CUDAKernel:
       for i in range(len(vals)): self.c_args.__setattr__(f'v{i}', vals[i])
     return cu_time_execution(lambda: check(cuda.cuLaunchKernel(self.prg, *global_size, *local_size, self.smem, None, None, self.vargs)), enable=wait)
   
-# TODO: (picograd in process nvrtc for jit)
+# TODO: (teenygrad in process nvrtc for jit)
 # class CUDARTCCompiler(Compiler):
 # class NVCompiler(CUDARTCCompiler):
 

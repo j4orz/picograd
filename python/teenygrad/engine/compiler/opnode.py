@@ -3,14 +3,14 @@ from typing import TYPE_CHECKING, Any, List, Self
 from dataclasses import dataclass
 import math, itertools, weakref
 
-from picograd import helpers
-from picograd.helpers import DEBUG, MAX_BUFFER_SIZE
-from picograd.engine.dslir import GroupedOpCode, OpCode, TensorDSL
+from teenygrad import helpers
+from teenygrad.helpers import DEBUG, MAX_BUFFER_SIZE
+from teenygrad.engine.dslir import GroupedOpCode, OpCode, TensorDSL
 if TYPE_CHECKING:
-  from picograd.runtime.device import Buffer, Device
-from picograd.dtype import Const, ConstLike, DType, ImageDType, PtrDType, dtypes
+  from teenygrad.runtime.device import Buffer, Device
+from teenygrad.dtype import Const, ConstLike, DType, ImageDType, PtrDType, dtypes
 
-# picograd to tinygrad bridge
+# teenygrad to tinygrad bridge
 # - removed buf_op and as_buf used by haldie/tvm schedule/rangify to map high level ops back to buffers
 # - removed buf_target
 # - rename OpMixin.alu() -> OpMixin.eval()
@@ -184,7 +184,7 @@ class OpNode(TensorDSL):
 
   @property
   def buffer(self) -> Buffer:
-    from picograd.runtime.device import Buffer
+    from teenygrad.runtime.device import Buffer
     if self is not self.base: assert self.opcode is OpCode.RESHAPE, f"expected: OpCode.RESHAPE, actual: {self}"; return self.inputs[0].buffer
     assert self.opcode is OpCode.BUFFER, f"expected: OpCode.BUFFER, actual: {self.opcode}"  
 

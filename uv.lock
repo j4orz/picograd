@@ -5,7 +5,7 @@ requires-python = ">=3.14"
 [manifest]
 members = [
     "examples",
-    "picograd",
+    "teenygrad",
 ]
 
 [[package]]
@@ -826,34 +826,6 @@ wheels = [
 ]
 
 [[package]]
-name = "picograd"
-source = { editable = "." }
-dependencies = [
-    { name = "gpuctypes" },
-    { name = "maturin" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "numpy" },
-    { name = "tinygrad" },
-    { name = "torch" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "gpuctypes", specifier = ">=0.3.0" },
-    { name = "maturin", specifier = ">=1.9.5" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "numpy", specifier = ">=1.24.4" },
-    { name = "tinygrad", specifier = ">=0.9.2" },
-    { name = "torch", specifier = ">=2.5.1" },
-]
-
-[[package]]
 name = "pillow"
 version = "11.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1036,6 +1008,34 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl", hash = "sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5", size = 6299353, upload-time = "2025-04-27T18:04:59.103Z" },
+]
+
+[[package]]
+name = "teenygrad"
+source = { editable = "." }
+dependencies = [
+    { name = "gpuctypes" },
+    { name = "maturin" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "numpy" },
+    { name = "tinygrad" },
+    { name = "torch" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "gpuctypes", specifier = ">=0.3.0" },
+    { name = "maturin", specifier = ">=1.9.5" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "numpy", specifier = ">=1.24.4" },
+    { name = "tinygrad", specifier = ">=0.9.2" },
+    { name = "torch", specifier = ">=2.5.1" },
 ]
 
 [[package]]

@@ -1,8 +1,8 @@
 import functools, ctypes, pathlib, hashlib, tempfile, subprocess
 import gpuctypes.hip as hip
-from picograd.helpers import DEBUG, OSX, system
-from picograd.runtime.device import Allocator, BufferSpec, CompileError, Compiler, LRUAllocator, Runtime
-# from picograd.runtime.cpu import LLVMCompiler
+from teenygrad.helpers import DEBUG, OSX, system
+from teenygrad.runtime.device import Allocator, BufferSpec, CompileError, Compiler, LRUAllocator, Runtime
+# from teenygrad.runtime.cpu import LLVMCompiler
 
 # **************** Python/C Foreign Function Helpers  ****************
 """
@@ -23,9 +23,9 @@ def init_c_struct_t(fields: tuple[tuple[str, type[ctypes._SimpleCData]], ...]):
 # **************** Runtime: Host Allocators + Device Compilers ****************
 class HIPDevice(Runtime):
   """
-  picograd's HIPDevice(Runtime) is a thin python/c foreign function shim (this file is ~100loc)
+  teenygrad's HIPDevice(Runtime) is a thin python/c foreign function shim (this file is ~100loc)
   over vendor provided and implemented `hipamd` runtime and `hipcc` compiler.
-  picograd's hip runtime stands in contrast to custom implemented tinygrad hardware command queue runtimes
+  teenygrad's hip runtime stands in contrast to custom implemented tinygrad hardware command queue runtimes
   enabling features like egpu over usb, a valuable feature to applications such as openpilot on comma hardware
 
   1. hip runtime api (accessed through tinygrad/gpuctypes, generated via trolldbois/ctypeslib)
@@ -38,7 +38,7 @@ class HIPDevice(Runtime):
       b. hipcc source https://github.com/ROCm/llvm-project/tree/amd-staging/amd/hipcc
   """
   def __init__(self, device:str=""):
-    # TODO (picograd profiling) self.time_event_st, self.time_event_en = [init_c_var(hip.hipEvent_t(), lambda x: hip.hipEventCreate(ctypes.byref(x), 0)) for _ in range(2)]
+    # TODO (teenygrad profiling) self.time_event_st, self.time_event_en = [init_c_var(hip.hipEvent_t(), lambda x: hip.hipEventCreate(ctypes.byref(x), 0)) for _ in range(2)]
     self.device_id = int(device.split(":")[1]) if ":" in device else 0
     self.arch = f_by_ref(hip.hipDeviceProp_t(), lambda x: check(hip.hipGetDeviceProperties(x, self.device_id))).gcnArchName.decode()
     compilers = [(functools.partial(HIPRenderer, self.arch), functools.partial(HIPCCCompiler, self.arch))]
@@ -97,7 +97,7 @@ class HIPKernel:
   def __del__(self):
     if hasattr(self, 'module'): check(hip.hipModuleUnload(self.module))
 
-# TODO: (picograd in process comgr for jit)
+# TODO: (teenygrad in process comgr for jit)
 # class HIPCOMGRCompiler(Compiler):
 
 class HIPCCCompiler(Compiler):
@@ -121,7 +121,7 @@ class HIPCCCompiler(Compiler):
         return pathlib.Path(libf.name).read_bytes()
   def disassemble(self, lib:bytes): amdgpu_disassemble(lib)
 
-# TODO (picograd amdllvmcompiler) class AMDLLVMCompiler(LLVMCompiler):
+# TODO (teenygrad amdllvmcompiler) class AMDLLVMCompiler(LLVMCompiler):
 def amdgpu_disassemble(lib:bytes):
   asm = system(f"{'/opt/homebrew/opt/llvm/bin/llvm-objdump' if OSX else '/opt/rocm/llvm/bin/llvm-objdump'} -d -", input=lib).splitlines()
   while asm and ("s_nop 0" in asm[-1] or "s_code_end" in asm[-1]): asm.pop()

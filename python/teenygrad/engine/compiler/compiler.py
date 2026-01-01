@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import math
 from typing import Any
 
-from picograd.dtype import DType
+from teenygrad.dtype import DType
 from ..dslir import OpCode
 from .opnode import OpNode
 
@@ -86,7 +86,7 @@ class TensorCore: # D = A * B + C, A is (M x K), B is (K x N), C and D are (M x 
 
 class Generator:
   """
-  picograd follows tinygrad (and torch/xla and swift for tensorflow) with lazy graph capture, see (Suhan et al. https://arxiv.org/abs/2102.13267)
+  teenygrad follows tinygrad (and torch/xla and swift for tensorflow) with lazy graph capture, see (Suhan et al. https://arxiv.org/abs/2102.13267)
   and modifying the semantics of the programming model where users must explicitly materialize data with .realize(),
   as opposed to pt2 which maintains the eager programming model surface via graph capture at the host-language level (python bytecode interception)
   see (Ansel et al. https://docs.pytorch.org/assets/pytorch2-2.pdf)
