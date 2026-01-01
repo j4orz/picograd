@@ -23,24 +23,27 @@ teenygrad comes with a free opensource textbook
 "The Struture and Interpretation of Tensor Programs"
 see: : https://j4orz.ai/sitp/
 
-in *CHAPTER 1* of the SITP book: https://j4orz.ai/sitp/1
-you will develop all the required machinery for the `ndarray`/`Tensor` abstraction including:
-  1. domain specific language
-    0. intermediate representation with `OpNode` graph vertices and their `OpCode` function types
-    1. frontend sugar with `Tensor` ndarray
-    2. middleend engine with an `.evaluate`or that implements BLAS-like CPU kernels
-  2. device runtimes: `Buffer` `Allocator` memory management and `Kernel` `Compiler` compute management
+As a compiler writer for domain specific cloud languages, I became frustrated with the non-constructiveness and disjointedness
+of my learning experience in the discipline of machine learning systems, particularly with domain specific tensor languages.
+These course notes for The Structure and Interpretation of Tensor Programs is my personal answer to these frustrations.  It's:
+- the spiritual successor to LLM101n. You will develop your own deep learning framework teenygrad (sharing 90% of its abstractions with tinygrad)
+  in order to run training and inference for the exact same nanogpt[0] and nanochat[1] models you developed in Eureka's LLM101n[2] course.
+- inspired by the whirlwind tour form of SICP/HTDP/PAPL1 applied to substance of training neural networks, hacking deep learning frameworks, and programming massively parallel processors.
+- opensource book creating an omakase learning experience with the teenygrad codebase and the best high level intuitive visualizers from across the world
 
-in *CHAPTER 2* of the SITP book: https://j4orz.ai/sitp/2
-you will develop the two primary pytorch1 abstractions for training deep `torch.nn`s in the "age of research" including:
-  1. optimization and differentiation with `optim.sgd` and `Tensor.backward()`
-  2. parallel acceleration with cuBLAS-like GPU kernels
+[0]: https://github.com/karpathy/nanogpt
+[1]: https://github.com/karpathy/nanochat
+[2]: https://eurekalabs.ai/
 
-in *CHAPTER 3* of the SITP book: https://j4orz.ai/sitp/3
-you will modify the engine in order to train deep `torch.nn`s in the "age of scaling by updating
-  1. middleend engine's eager interpreter to just-in-time/lazy compiler
-    A. optimizer: todo..
-    B. generator: todo..
+**Contents**
+in part 1 you implement a multidimensional `Tensor` and accelerated `BLAS` kernels.
+in part 2 you implement `.backward()` and accelerated `cuBLAS` kernels for the age of research.
+in part 3 you implement a fusion compiler with `OpNode` graph IR for the age of scaling.
+If you empathize with some of my frustrations, you may benefit from the course too.
+I've intentionally designed it so that the only pre-requisite required is the ability to program with highschool-level math.
+
+Good luck on your journey.
+Are you ready to begin?
 """
 from .frontend import nn, optim
 from .frontend.tensor import Tensor
