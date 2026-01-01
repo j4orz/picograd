@@ -17,7 +17,7 @@ features = ["pyo3/extension-module"]
 manifest-path = "rust/Cargo.toml"
 python-source = "python"
 python-packages = ["teenygrad"]
-module-name = "teenygrad._pgrs"
+module-name = "teenygrad._eagkers"
 
 [tool.uv.workspace]
 members = [

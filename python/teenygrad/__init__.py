@@ -47,4 +47,4 @@ from .frontend.tensor import Tensor
 __all__ = ["Tensor"]
 
 from importlib import import_module as _import_module
-_pgrs = _import_module("teenygrad._pgrs")
+eagkers = _import_module("teenygrad._eagkers")
