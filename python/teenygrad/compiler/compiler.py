@@ -4,7 +4,7 @@ from typing import Any
 
 from teenygrad.dtype import DType
 from .dslir import OpCode
-from .compiler import OpNode
+from .opnode import OpNode
 
 # -kernelize: graph rewrites
 # -schedule_with_vars: feeds graph to scheduler and memory planner
