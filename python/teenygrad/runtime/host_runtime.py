@@ -3,8 +3,8 @@ from typing import Any
 import itertools, time, base64, pickle
 
 from teenygrad.dtype import DType
-from teenygrad.engine.dslir import OpCode
-from teenygrad.engine.compiler.compiler import Generator
+from teenygrad.compiler.dslir import OpCode
+from teenygrad.compiler.compiler import Generator
 from teenygrad.runtime.device import Allocator, Compiler, CompilerPair, CompilerSet, Runtime
 
 class HostDevice(Runtime):

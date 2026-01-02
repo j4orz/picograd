@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Generic, Self, TypeVar
 import functools,  atexit, re, pathlib, importlib, inspect, os, ctypes
 from teenygrad.dtype import DType, PtrDType
-from teenygrad.engine.compiler.compiler import Generator
+from teenygrad.compiler.compiler import Generator
 from teenygrad.helpers import ALLOW_DEVICE_USAGE, DEBUG, MAX_BUFFER_SIZE, ContextVar, unwrap_class_type
 
 # teenygrad to tinygrad bridge

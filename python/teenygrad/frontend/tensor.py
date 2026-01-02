@@ -5,7 +5,7 @@ from typing import Any, Callable, Self, Sequence, TypeGuard, cast, get_args
 import math, weakref, struct, pathlib
 
 from teenygrad import helpers
-from teenygrad.engine import OpCode, OpNode, TensorDSL, Interpreter
+from teenygrad.compiler import OpCode, OpNode, TensorDSL, Interpreter
 from teenygrad.helpers import DEBUG, EAGER, GRAPH
 from teenygrad.runtime import Device
 from teenygrad.dtype import Const, DType, DTypeLike, dtypes

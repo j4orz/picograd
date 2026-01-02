@@ -5,7 +5,7 @@ import math, itertools, weakref
 
 from teenygrad import helpers
 from teenygrad.helpers import DEBUG, MAX_BUFFER_SIZE
-from teenygrad.engine.dslir import GroupedOpCode, OpCode, TensorDSL
+from teenygrad.compiler.dslir import GroupedOpCode, OpCode, TensorDSL
 if TYPE_CHECKING:
   from teenygrad.runtime.device import Buffer, Device
 from teenygrad.dtype import Const, ConstLike, DType, ImageDType, PtrDType, dtypes
