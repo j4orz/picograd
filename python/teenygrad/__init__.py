@@ -50,4 +50,4 @@ from .frontend.tensor import Tensor
 __all__ = ["Tensor"]
 
 from importlib import import_module as _import_module
-eagkers = _import_module("teenygrad._eagkers")
+eagkers = _import_module("teenygrad._rs")
