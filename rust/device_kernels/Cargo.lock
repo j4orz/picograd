@@ -79,6 +79,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "device_kernels"
+version = "0.1.0"
+dependencies = [
+ "cuda_std",
+]
+
+[[package]]
 name = "glam"
 version = "0.30.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -97,13 +104,6 @@ dependencies = [
  "cfg-if",
  "crunchy",
  "zerocopy",
-]
-
-[[package]]
-name = "kernels"
-version = "0.1.0"
-dependencies = [
- "cuda_std",
 ]
 
 [[package]]

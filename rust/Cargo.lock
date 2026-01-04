@@ -296,6 +296,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "device_kernels"
+version = "0.1.0"
+dependencies = [
+ "cuda_std",
+]
+
+[[package]]
 name = "dlopen2"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -493,13 +500,6 @@ checksum = "9afb3de4395d6b3e67a780b6de64b51c978ecf11cb9a462c66be7d4ca9039d33"
 dependencies = [
  "getrandom",
  "libc",
-]
-
-[[package]]
-name = "kernels"
-version = "0.1.0"
-dependencies = [
- "cuda_std",
 ]
 
 [[package]]
@@ -1150,12 +1150,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df7f62577c25e07834649fc3b39fafdc597c0a3527dc1c60129201ccfcbaa50c"
 
 [[package]]
-name = "teenygrad"
+name = "teenygradrs"
 version = "0.1.0"
 dependencies = [
  "cuda_builder",
  "cust",
- "kernels",
+ "device_kernels",
  "opencl3",
  "pyo3",
  "rayon",
