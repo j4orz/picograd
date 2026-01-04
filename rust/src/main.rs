@@ -1,6 +1,6 @@
-use teenygradrs::foo;
+use teenygradrs::device_kernels;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    foo()?;
+    device_kernels::cudars_helloworld()?;
     Ok(())
 }
