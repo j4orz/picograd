@@ -13,9 +13,8 @@ use pyo3::prelude::*;
 /// A Python module implemented in Rust.
 #[pymodule] fn _rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     println!("hello from teenygrad._rs!");
-    let (cpu_kernels_module, gpu_kernels_module) = (PyModule::new(m.py(), "cpu_kernels")?, PyModule::new(m.py(), "gpu_kernels")?);
-    m.add_submodule(&cpu_kernels_module)?;
-    m.add_submodule(&gpu_kernels_module)?;
+    let (cpu_kernels_pymodule, gpu_kernels_pymodule) = (PyModule::new(m.py(), "cpu_kernels")?, PyModule::new(m.py(), "gpu_kernels")?);
+    let (_, _) = (m.add_submodule(&cpu_kernels_pymodule)?, m.add_submodule(&gpu_kernels_pymodule)?);
 
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
     m.add_function(wrap_pyfunction!(cuda_smoke_test, m)?)?;
@@ -30,7 +29,7 @@ use std::error::Error;
 // Embed the PTX code as a static string.
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 
-fn foo() -> Result<(), Box<dyn Error>> {
+pub fn foo() -> Result<(), Box<dyn Error>> {
     let _ctx = cust::quick_init()?; // Initialize the CUDA Driver API. `_ctx` must be kept alive until the end.
     let module = Module::from_ptx(PTX, &[])?; // Create a module from the PTX code compiled by `cuda_builder`.
     let stream = Stream::new(StreamFlags::NON_BLOCKING, None)?; // Create a stream, which is like a thread for dispatching GPU calls.
