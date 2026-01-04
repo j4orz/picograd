@@ -30,7 +30,7 @@ docker build -t rust-cuda-py -f Dockerfile .
 # - The `-v`/`-w` for the workspace mean the current directory will be the
 #   workspace, i.e. the files visible within the container.
 docker create \
-    --name rust-cuda \
+    --name rust-cuda-py \
     --restart unless-stopped \
     --entrypoint "" \
     --gpus all \
@@ -43,4 +43,4 @@ docker create \
     rust-cuda-py \
     sleep infinity
 
-docker start rust-cuda
+docker start rust-cuda-py
