@@ -6,4 +6,4 @@
 # E.g. `./dex cargo build` runs `cargo build` within the container.
 #----------------------------------------------------------------------------
 
-docker exec rust-cuda-py bash -lc "$*"
+docker exec teenygrad-dev bash -lc "$*"

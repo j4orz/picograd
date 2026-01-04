@@ -5,8 +5,8 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "teenygrad"
-crate-type = ["cdylib"] # necessary to produce a shared lib for python to import from
+name = "_rs"
+crate-type = ["cdylib"] # creates a .so for python to import from
 
 [dependencies]
 opencl3 = "0.12.1"

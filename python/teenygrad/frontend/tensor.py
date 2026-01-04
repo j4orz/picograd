@@ -224,29 +224,37 @@ class Tensor(TensorDSL):
   def _forward_computebinop(self, other: Self, opcode: OpCode, reverse): # overriding provided, so Tensor operations go through dtype and broacasting logic below
     print(f"self: {self}",)
     print(f"other: {other}",)
+    import sys
+    print("moose..")
+    sys.stdout.flush()
+    teenygrad._rs.cuda_smoke_test()
+    sys.stdout.flush()
+    print("deer..")
 
-    if helpers.EAGER:
-      runtime = Device[self.device]
-      kernel_name, kernel_extension = kernel_name(opcode), kernel_extension(self.device)
-      kernel_src = pathlib.Path(f"python/teenygrad/engine/eagker/{self.device}/{kernel_name}.{kernel_extension}")
-      kernel_bin = runtime.compiler.compile(kernel_src.read_text())
-      kernel_handle = runtime.kernel(kernel_name, kernel_bin)
+    return
 
-      output, n = Tensor(None, self.device), self.numel()
-      globals, locals = ((n + 255) // 256, 1, 1), (256, 1, 1)
-      kernel_handle(output.buf, self.buf, other.buf,
-                    globals, locals, vals=(1024,))
+    # if helpers.EAGER:
+    #   runtime = Device[self.device]
+    #   kernel_name, kernel_extension = kernel_name(opcode), kernel_extension(self.device)
+    #   kernel_src = pathlib.Path(f"python/teenygrad/engine/eagker/{self.device}/{kernel_name}.{kernel_extension}")
+    #   kernel_bin = runtime.compiler.compile(kernel_src.read_text())
+    #   kernel_handle = runtime.kernel(kernel_name, kernel_bin)
 
-      return output
-    elif helpers.GRAPH:
-      # 0. construct f, which when applied with y = f(x), produces the opnode y. the call is delegated to OpNode's _apply_compute_opcode
-      f = lambda *input_opnodes: OpNode._forward_computeop(input_opnodes[0], opcode, *input_opnodes[1:])
-      graph = self._forward_computeop(f, other); print("applied opnode to expression graph with tensor._forward()")
-      schedule = graph.opnode.toposort(); print("linearized opnode graph into opnode schedule with opnode.toposort()")
-      Interpreter.evaluate(schedule); print("evaluated schedule with Interpreter.evaluate()")
-      return graph
-    else:
-      raise NotImplementedError("todo")
+    #   output, n = Tensor(None, self.device), self.numel()
+    #   globals, locals = ((n + 255) // 256, 1, 1), (256, 1, 1)
+    #   kernel_handle(output.buf, self.buf, other.buf,
+    #                 globals, locals, vals=(1024,))
+
+    #   return output
+    # elif helpers.GRAPH:
+    #   # 0. construct f, which when applied with y = f(x), produces the opnode y. the call is delegated to OpNode's _apply_compute_opcode
+    #   f = lambda *input_opnodes: OpNode._forward_computeop(input_opnodes[0], opcode, *input_opnodes[1:])
+    #   graph = self._forward_computeop(f, other); print("applied opnode to expression graph with tensor._forward()")
+    #   schedule = graph.opnode.toposort(); print("linearized opnode graph into opnode schedule with opnode.toposort()")
+    #   Interpreter.evaluate(schedule); print("evaluated schedule with Interpreter.evaluate()")
+    #   return graph
+    # else:
+    #   raise NotImplementedError("todo")
   
     # 1. normalize other: Const|OpNodes -> Tensors
     # if not isinstance(other, Tensor):

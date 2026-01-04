@@ -20,7 +20,7 @@
 #----------------------------------------------------------------------------
 
 # Build custom image with python3-dev
-docker build -t rust-cuda-py -f Dockerfile .
+docker build -t teenygrad-dev -f Dockerfile .
 
 # Explanation
 # - `--restart`/`sleep infinity` keeps it running (including restarting as
@@ -30,7 +30,7 @@ docker build -t rust-cuda-py -f Dockerfile .
 # - The `-v`/`-w` for the workspace mean the current directory will be the
 #   workspace, i.e. the files visible within the container.
 docker create \
-    --name rust-cuda-py \
+    --name teenygrad-dev \
     --restart unless-stopped \
     --entrypoint "" \
     --gpus all \
@@ -40,7 +40,7 @@ docker create \
     -v rust-cuda-rustup:/rustup \
     -v "$PWD":/workspace \
     -w /workspace \
-    rust-cuda-py \
+    teenygrad-dev \
     sleep infinity
 
-docker start rust-cuda-py
+docker start teenygrad-dev
