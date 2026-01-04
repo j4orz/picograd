@@ -1,5 +1,6 @@
-mod lib;
+use teenygrad::foo;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    lib::foo();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    foo()?;
+    Ok(())
 }

@@ -5,8 +5,8 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "_rs"
-crate-type = ["cdylib"] # creates a .so for python to import from
+name = "teenygrad"
+crate-type = ["cdylib", "rlib"] # creates a .so for python to import from and allows binary to link
 
 [dependencies]
 opencl3 = "0.12.1"
