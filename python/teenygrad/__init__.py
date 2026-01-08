@@ -27,4 +27,5 @@ from .frontend.tensor import Tensor
 __all__ = ["Tensor"]
 
 from importlib import import_module as _import_module
-teenygradrs = _import_module("teenygrad._rs")
+teenygradrs = _import_module("teenygrad.rs")
+# print("moose", teenygradrs)

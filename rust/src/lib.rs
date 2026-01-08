@@ -8,8 +8,8 @@ pub mod device_kernels;
 }
 
 /// A Python module implemented in Rust.
-#[pymodule] fn teenygradrs(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    println!("hello from teenygrad._rs!");
+#[pymodule] fn rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    println!("hello from teenygrad._rs's library crate!");
     let (host_kernels_pymodule, device_kernels_pymodule) = (PyModule::new(m.py(), "cpu_kernels")?, PyModule::new(m.py(), "gpu_kernels")?);
     let (_, _) = (m.add_submodule(&host_kernels_pymodule)?, m.add_submodule(&device_kernels_pymodule)?);
 

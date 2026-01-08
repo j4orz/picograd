@@ -227,7 +227,7 @@ class Tensor(TensorDSL):
     import sys
     print("moose..")
     sys.stdout.flush()
-    teenygrad._rs.cuda_smoke_test()
+    teenygrad.rs.cuda_smoke_test()
     sys.stdout.flush()
     print("deer..")
 
