@@ -1,6 +1,6 @@
 ```
                                                                             ,,  
-  mm                                                                      `7MM  
+  mm         Rest in Pure Land Dr. Thomas Zhang ND., R.TCMP, R.Ac.        `7MM  
   MM                                                                        MM  
 mmMMmm .gP"Ya   .gP"Ya `7MMpMMMb.`7M'   `MF'.P"Ybmmm `7Mb,od8 ,6"Yb.   ,M""bMM  
   MM  ,M'   Yb ,M'   Yb  MM    MM  VA   ,V :MI  I8     MM' "'8)   MM ,AP    MM  
@@ -11,11 +11,9 @@ mmMMmm .gP"Ya   .gP"Ya `7MMpMMMb.`7M'   `MF'.P"Ybmmm `7Mb,od8 ,6"Yb.   ,M""bMM
                                  OOb"      Ybmmmd'                              
 ```
 
-*a teaching deep learning framework: the bridge from [micrograd](https://github.com/karpathy/micrograd) to [tinygrad](https://github.com/tinygrad/tinygrad)*
 
-Take a whirlwind tour with the [SITP lectures and textbook](https://j4orz.ai/sitp/)
-and build your own deep learning framework from scratch
-in order to run training and inference for [nanogpt](https://github.com/karpathy/nanoGPT).
+*[SITP](https://j4orz.ai/sitp/)'s teaching deep learning framework*</br>
+*Train [nanogpt](https://github.com/karpathy/nanoGPT) by building teenygrad in Python and Rust — the bridge from [micrograd](https://github.com/karpathy/micrograd) to [tinygrad](https://github.com/tinygrad/tinygrad)*
 
 **Installation**
 
