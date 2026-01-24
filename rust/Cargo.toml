@@ -8,11 +8,15 @@ edition = "2021"
 name = "rs"
 crate-type = ["cdylib", "rlib"] # creates a .so for python to import from and allows binary to link
 
+[features]
+default = []
+cuda = ["dep:cust", "dep:device_kernels", "dep:cuda_builder"]
+
 [dependencies]
 pyo3 = "0.25.0"
 rayon = "1.11.0"
-cust = { git = "https://github.com/rust-gpu/rust-cuda", rev = "7fa76f3d717038a92c90bf4a482b0b8dd3259344" }
-device_kernels = { path = "device_kernels" }
+cust = { git = "https://github.com/rust-gpu/rust-cuda", rev = "7fa76f3d717038a92c90bf4a482b0b8dd3259344", optional = true }
+device_kernels = { path = "device_kernels", optional = true }
 
 [build-dependencies]
-cuda_builder = { git = "https://github.com/rust-gpu/rust-cuda", rev = "7fa76f3d717038a92c90bf4a482b0b8dd3259344", features = ["rustc_codegen_nvvm"] }
+cuda_builder = { git = "https://github.com/rust-gpu/rust-cuda", rev = "7fa76f3d717038a92c90bf4a482b0b8dd3259344", features = ["rustc_codegen_nvvm"], optional = true }
