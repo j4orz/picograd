@@ -291,7 +291,7 @@ we will add a final decision boundary where</p>
 <p>(FIGURE.MODEL ARCHITECTURE)</p>
 <p>We can vectorize the evaluation of <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathnormal" style="margin-right:0.10764em;">f</span><span class="mopen">(</span><span class="mord mathbf">x</span><span class="mpunct">;</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord mathnormal" style="margin-right:0.02778em;">θ</span><span class="mclose">)</span></span></span></span> on each <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.888em;"></span><span class="mord"><span class="mord mathbf">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.888em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathnormal mtight">i</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span></span></span></span> <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6986em;vertical-align:-0.0391em;"></span><span class="mord mathnormal">i</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">[</span><span class="mord">0..</span><span class="mord mathnormal">n</span><span class="mclose">)</span></span></span></span>
 with a data matrix <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7224em;vertical-align:-0.0391em;"></span><span class="mord mathnormal" style="margin-right:0.07847em;">X</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.8491em;"></span><span class="mord"><span class="mord mathbb">R</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight">n</span><span class="mbin mtight">×</span><span class="mord mathnormal mtight">d</span></span></span></span></span></span></span></span></span></span></span></span> so that</p>
-<div class="repl" data-id="fa71adba-eca3-43a0-86c2-86411217b5e4" data-readonly="false" data-lang="python">
+<div class="repl" data-id="4494ac7a-81b8-41da-ba2e-84dcd8c0cac4" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -374,7 +374,7 @@ which are joint probability distribution over all sequences of tokens.</p>
 <p>Language modeling with ngrams.</p>
 <iframe width="698" height="393" loading="lazy" src="https://www.youtube.com/embed/TCH_1BHY58I?si=pyOwJBGyDinoif5i" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 <p>(1. EXPLAIN MODEL).</p>
-<div class="repl" data-id="943f850b-eb12-4d56-b15b-419135eb417e" data-readonly="false" data-lang="python">
+<div class="repl" data-id="1add91ff-1328-4a0e-98f6-0df0f276e987" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -423,7 +423,7 @@ class MLP():
     return yhat, loss
 </code></pre>
 <p>(2. EXPLAIN DATASET).</p>
-<div class="repl" data-id="89c01102-e6d1-474b-a96e-d46b652b2fbe" data-readonly="false" data-lang="python">
+<div class="repl" data-id="17d9f48b-c813-49e7-8b24-8970e8cf52ff" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -467,7 +467,7 @@ def build_dataset(t):
   return Xtraining, Ytraining
 </code></pre>
 <p>(3. EXPLAIN TRAINING LOOP).</p>
-<div class="repl" data-id="ecfaf26b-216d-447c-a6fe-3b63a16167e7" data-readonly="false" data-lang="python">
+<div class="repl" data-id="f44317a6-bae7-4b40-8b9a-a48e83b71a02" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -591,7 +591,7 @@ fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
 <iframe width="698" height="393" loading="lazy" src="https://www.youtube.com/embed/kCc8FmEb1nY?si=GtHe8YolWoz0sEHR" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 <iframe width="698" height="393" loading="lazy" src="https://www.youtube.com/embed/l8pRSuU81PU?si=gjKMtuMnsP1fvj_u" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 <iframe width="698" height="393" loading="lazy" src="https://www.youtube.com/embed/D8GOeCFFby4?si=VW2DHR4JfSBNgYgx" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-<div class="repl" data-id="6f1734e6-beb6-4535-8f75-ddf9e0135d34" data-readonly="false" data-lang="python">
+<div class="repl" data-id="b0f4f51f-35dc-48df-935e-d62056c194c1" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -796,22 +796,6 @@ class Transformer:
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
 

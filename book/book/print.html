@@ -329,16 +329,17 @@ by defining stochastic maps with linear transformations.</p>
 <li><a href="">1.4.1 From Abstract Linear Algebra to Numerical Linear Algebra</a></li>
 <li><a href="">1.4.2 The Simplest <code>Tensor</code> Implementation with Nested <code>list</code>s</a></li>
 <li><a href="">1.4.3 Improving the Locality of <code>Tensor</code> by Decoupling Copies and Views with Strides</a></li>
-<li><a href="">1.4.4 Implementing <code>SAXPY</code>, <code>SGEMV</code> and <code>SGEMM</code></a></li>
+<li><a href="">1.4.4 Implementing Basic Linear Algebra Subroutines: <code>SAXPY</code>, <code>SGEMV</code> and <code>SGEMM</code></a></li>
 </ul>
 </li>
-<li><a href="1.html#15-programming-teenygrad-level-0-accelerated-basic-linear-algebra-subroutines">1.5 Programming <code>teenygrad</code> <em>Level 0</em>: Accelerating Basic Linear Algebra Subroutines</a>
+<li><a href="1.html#15-programming-teenygrad-level-0-accelerated-basic-linear-algebra-subroutines">1.5 Programming <code>teenygrad</code> <em>Level 0</em>: Accelerating the <code>BLAS</code> with <code>rustc</code> and <code>x86</code></a>
 <ul>
-<li><a href="">1.5.1 Compilers and Chips with <code>rustc</code> and <code>8088</code>: A Programmer's Perspective</a></li>
-<li><a href="">1.5.2 Accelerating <code>CPython</code> with Extension Modules via <code>PyO3</code> and <code>Rust</code></a></li>
-<li><a href="">1.5.3 Benchmarks, Bottlenecks, and Profiles</a></li>
-<li><a href="">1.5.4 Accelerating <code>GEMM</code> on CPU with Locality</a></li>
-<li><a href="">1.5.5 Accelerating <code>GEMM</code> on CPU with Parallelism</a></li>
+<li><a href="">1.5.1 Evaluating Chips and Translating Compilers: A Programmer's Perspective</a></li>
+<li><a href="">1.5.2 A Quantitative Approach: Benchmarks, Rooflines, and Profiles</a></li>
+<li><a href="">1.5.3 Accelerating <code>CPython</code> with Extension Modules via <code>PyO3</code> and <code>Rust</code></a></li>
+<li><a href="">1.5.4 Accelerating <code>GEMM</code> on CPU with Locality of Memory Hierarchies</a></li>
+<li><a href="">1.5.5 Accelerating <code>GEMM</code> on CPU with Instruction Level Parallelism</a></li>
+<li><a href="">1.5.6 Accelerating <code>GEMM</code> on CPU with Data Level Parallelism</a></li>
 </ul>
 </li>
 <li><a href="1.html#16-programming-automatic-differentiation-and-gradient-descent">1.6 Programming <code>teenygrad</code> <em>Level 1</em>: Optimization and Differentiation</a>
@@ -379,7 +380,7 @@ with a probability assignment of <span class="katex"><span class="katex-html" ar
 The experiment can be repeated many times,
 and the frequency between the count of heads and the number of trials will converge to <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6444em;"></span><span class="mord">0.5</span></span></span></span>.
 As programmers, running a simulation of such experiment is quite simple:</p>
-<div class="repl" data-id="6cdbc293-c5b3-4b86-be0f-f237f7ca893d" data-readonly="false" data-lang="python">
+<div class="repl" data-id="cd3ee8e9-7ebf-42b7-abe2-5ae71fdcfa16" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -439,7 +440,7 @@ and then evaluating the <em>ratio</em>:
 i.e <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathbb">P</span><span class="mopen">(</span><span class="mord mathnormal" style="margin-right:0.05764em;">E</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1.53em;vertical-align:-0.52em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.01em;"><span style="top:-2.655em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">∣Ω∣</span></span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.485em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">∣</span><span class="mord mathnormal mtight" style="margin-right:0.05764em;">E</span><span class="mord mtight">∣</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.52em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span></span>, which
 — demonstrating with the earlier coin flip example —
 is evaluated with <code>len</code> and <code>/</code> on Python's <a href="https://docs.python.org/3/library/stdtypes.html#types-set"><code>set</code></a>:</p>
-<div class="repl" data-id="1915a556-5e85-4b17-9bc8-d9bbe37d2f77" data-readonly="false" data-lang="python">
+<div class="repl" data-id="280c1765-ebcf-44d2-bcb7-0476633eeb2b" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -459,7 +460,7 @@ print(f"the probability of {target_e} is {prob_e}")
 <details>
   <summary>Solution 1: ⚠️ STOP and THINK, then click to reveal.</summary>
 </details>
-<div class="repl" data-id="0f40d972-1ccb-4028-95cb-eca80527fbad" data-readonly="false" data-lang="python">
+<div class="repl" data-id="557630c5-df42-42ed-94a2-ead515f50841" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -480,7 +481,7 @@ print(f"the probability of {event} is {prob_event}")
   <summary>Solution 2: ⚠️ STOP and THINK, then click to reveal.</summary>
 <p>This is the hidden spoiler content.
 It can contain more Markdown, like <strong>bold text</strong>, lists, or <a href="">links</a></p>
-<div class="repl" data-id="2fddd3e3-210e-448a-97ca-f7d7d2dbd4bc" data-readonly="false" data-lang="python">
+<div class="repl" data-id="cbacc800-2d4e-48fc-9820-f7199f405ac5" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -499,7 +500,7 @@ print(list(itertools.permutations([1,2,3,4])))
 print(set(itertools.permutations([1,1,2])))
 # {(1, 1, 2), (1, 2, 1), (2, 1, 1)}
 </code></pre>
-<div class="repl" data-id="43fc6ddb-4e32-44f7-b199-dd33b2124785" data-readonly="false" data-lang="python">
+<div class="repl" data-id="8215c758-edcc-434b-96fc-a3c8d79cb765" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -525,7 +526,7 @@ which can be done via Python's builtin support for elementary combinatorics via 
 and <a href="https://docs.python.org/3/library/itertools.html#itertools.combinations"><code>itertools.combinations</code></a>.
 If these builtins were not provided, the set of all permutations or combinations can be generated with <em>backtracking</em>,
 — an exhaustive search (searching through the entire state space) technique that can implemented with either recursion or iteration:</p>
-<div class="repl" data-id="e72c829e-5bfd-4a54-bd9c-ac08312fc4f9" data-readonly="false" data-lang="python">
+<div class="repl" data-id="67e5ee25-767f-48ad-8dac-1336c33a57e5" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -564,7 +565,7 @@ distributions</p>
 standard normla (0,1)</p>
 <p>f(x) = cexp(x^2 / 2)</p>
 <p>mean mu, covariance sigma</p>
-<div class="repl" data-id="401f3ff2-5da8-4043-be38-6624bc53cd0a" data-readonly="false" data-lang="python">
+<div class="repl" data-id="162ed7a4-bb18-4ac5-b06b-1330786c794b" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -616,7 +617,7 @@ that everyone was introduced to in middle school: a <em>coordinate system</em>,
 and there happens to be an "escape hatch" which all programming languages provide —
 simply representing a type with numerical <code>float</code> fields only.
 Try executing the code below:</p>
-<div class="repl" data-id="1b8758b0-04a4-4846-8dd1-c18d1ed99eee" data-readonly="false" data-lang="python">
+<div class="repl" data-id="915ba7c5-3157-4979-bec3-f1f6e1baf1cc" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -653,7 +654,7 @@ can be used to model phenomena too besides that of physical space.
 For instance, consider modeling houses, where each house object is a coordinate in some logical space of homes.
 This is done by replacing the three earlier fields of <code>length</code>, <code>width</code> and <code>height</code>
 that that of <code>size</code>, <code>age</code>, and <code>rooms</code>:</p>
-<div class="repl" data-id="ba52212a-7e7d-46f4-9f36-32d474c594bd" data-readonly="false" data-lang="python">
+<div class="repl" data-id="362307bc-4b0a-4bb0-9a47-5d7033b7ec73" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -683,7 +684,7 @@ if __name__ == "__main__":
 but rather one in a logical space.
 Moving on, there's nothing stopping us from increasing the expressivity of the house type
 adding fourth field whose value is the number of floors.</p>
-<div class="repl" data-id="87163a59-0547-42be-9c9a-a70ff833ca16" data-readonly="false" data-lang="python">
+<div class="repl" data-id="7e635b27-676c-4350-afc7-2f119478d89a" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -716,7 +717,7 @@ share in common is that they are <em>lists of numbers</em>, indexed by interpret
 To generalize and abstract these escape hatches that allow us to represent types continuously,
 we can define a generic <code>Coord4Fields</code> dataclass with fields labeled as <code>xi</code> for <code>0&lt;=i&lt;=4</code>,
 and push the responsibility of keeping track of which field (dimension) corresponds to which attribute to the caller.</p>
-<div class="repl" data-id="e1fbe2c7-b651-4dac-ba2e-44bd993e2e3d" data-readonly="false" data-lang="python">
+<div class="repl" data-id="b354e971-22b5-4919-a489-c49bc96f1cbc" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -750,7 +751,7 @@ When representing types continuously, these lists of numbers are referred to as 
 which is more precisely defined as a mapping from some <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em;"></span><span class="mord mathnormal">n</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.6889em;"></span><span class="mord mathbb">Z</span></span></span></span> to <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6889em;"></span><span class="mord mathbb">R</span></span></span></span>,
 denoted by <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6889em;"></span><span class="mord"><span class="mord mathbb">R</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.6644em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">n</span></span></span></span></span></span></span></span></span></span></span>, which is exactly the functionality that a <code>list[]</code> provides:</p>
 <p>define notions of dependance, basis, and dimension copmutationally..</p>
-<div class="repl" data-id="063bbe59-7b22-405b-97c4-a57cb0aab4fe" data-readonly="false" data-lang="python">
+<div class="repl" data-id="000e59ef-0724-4a9a-b809-0213e32b8b56" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -769,7 +770,7 @@ But now consider writing a program that can <em>update</em> and <em>change</em> 
 i.e given a house, perform a renovation that increases the square feet by 10.0,
 no change to the age, two more rooms, and another floor.
 Perhaps adding the two lists will evaluate the intended result?</p>
-<div class="repl" data-id="e6f723ce-0027-40c8-8e0c-f42161fa3ada" data-readonly="false" data-lang="python">
+<div class="repl" data-id="3e7f6688-74ce-46e2-a15d-665f8edc65a9" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -785,7 +786,7 @@ Perhaps adding the two lists will evaluate the intended result?</p>
   print(f"logical position of house1 renovated {house1_renovated}")
 </code></pre>
 <p>The <code>+</code> operation defined on <code>list[]</code> is clearly non-sensible for our use case.</p>
-<div class="repl" data-id="1203102d-f085-465c-b279-fd783f01f57d" data-readonly="false" data-lang="python">
+<div class="repl" data-id="ee8fd744-5eab-4319-922d-42ce4a8b08b0" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -803,7 +804,7 @@ Perhaps adding the two lists will evaluate the intended result?</p>
 <p>produces another one that's  twice as big,</p>
 <p>develop a <em>linear arithmetic and algebra</em> for these lists of numbers x+y and a*x
 why linear?</p>
-<div class="repl" data-id="de1ddfe7-b44f-4533-82d9-d33c5a1d5028" data-readonly="false" data-lang="python">
+<div class="repl" data-id="7a46ae03-7a89-4ca7-bb41-e8b094528090" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -843,7 +844,7 @@ the data as observations or evidence, and the function as hypotheses or models.<
 <p>For instance, consider the task of <em>house price prediction</em>[^5] where the collected <a href="https://www.cs.toronto.edu/~delve/data/boston/bostonDetail.html">dataset</a>
 <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em;"></span><span class="mord mathnormal">d</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1.1467em;vertical-align:-0.2587em;"></span><span class="mopen">{(</span><span class="mord"><span class="mord mathnormal">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.888em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathnormal mtight">i</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.03588em;">y</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.888em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathnormal mtight">i</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span><span class="mclose">)</span><span class="mclose"><span class="mclose">}</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.6644em;"><span style="top:-2.4413em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">0</span></span></span></span><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">n</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2587em;"><span></span></span></span></span></span></span></span></span></span> are input-output pairs of square feet, and dollars, respectively.
 Let's take a look at this data.</p>
-<div class="repl" data-id="65097d19-8a53-4815-ad87-3c7ce708600b" data-readonly="false" data-lang="python">
+<div class="repl" data-id="f2fc45d7-48d9-4be8-bed9-4e98894e8895" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -902,7 +903,7 @@ between the data so that <span class="katex"><span class="katex-html" aria-hidde
 Implementing computable <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em;"></span><span class="mord mathnormal" style="margin-right:0.10764em;">f</span></span></span></span> looks like the following,
 where each evaluation of <code>fhat()</code> passes in a random number for the slope parameter of <code>x</code>.
 Feel free to modify the range for <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em;"></span><span class="mord mathnormal">m</span></span></span></span> and run the code a few times to see the different values <code>fhat()</code> produces as predictions.</p>
-<div class="repl" data-id="63167ae1-43d9-4eda-82d4-e8484c9678cf" data-readonly="false" data-lang="python">
+<div class="repl" data-id="ce2e7c49-741d-477b-a04f-b9da851b12d2" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -933,7 +934,7 @@ so that the predictions can be evaluated in a single vector-scalar multiplicatio
 but all numerical computing in python which involve the evaluation of
 high dimensional functions are conducted in the <code>numpy</code> package which provides the <code>numpy.ndarray</code> data structure
 and operations <em>accelerated</em> by vector instructions in hardware.</p>
-<div class="repl" data-id="912f7121-e79b-45e9-a689-261875d8cfd5" data-readonly="false" data-lang="python">
+<div class="repl" data-id="e05966a7-f00d-430e-9302-504933780a37" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -968,7 +969,7 @@ the difference in wallclock time between the two implementations becomes more dr
 Run the code below which updates <code>n</code> from <code>3</code> to <code>10,000,000</code> (which will take a few seconds)
 in order to measure the difference in wallclock time.
 (Note that the construction of dataset <code>Y</code> is omitted to simply compare the evaluation of the sequential and vectorized implementations of <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em;"></span><span class="mord mathnormal" style="margin-right:0.10764em;">f</span></span></span></span>.)</p>
-<div class="repl" data-id="cd2b0921-ebd5-442f-b072-36e11e6e9de2" data-readonly="false" data-lang="python">
+<div class="repl" data-id="d88d6f9d-ec54-4b35-9530-fb38dfd70c69" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1019,7 +1020,7 @@ We can still define the <em>batched</em> evaluation over the entire dataset <spa
 <p><span class="katex-display"><span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:3em;vertical-align:-1.25em;"></span><span class="mord"><span class="mtable"><span class="col-align-r"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.75em;"><span style="top:-3.91em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"><span class="mord mathnormal" style="margin-right:0.10764em;">f</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em;"><span style="top:-2.55em;margin-left:-0.1076em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">batched</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span><span style="top:-2.41em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"><span class="mord mathnormal" style="margin-right:0.10764em;">f</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em;"><span style="top:-2.55em;margin-left:-0.1076em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">batched</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord mathbf">X</span><span class="mpunct">;</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord mathnormal" style="margin-right:0.02778em;">θ</span><span class="mclose">)</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.25em;"><span></span></span></span></span></span><span class="col-align-l"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.75em;"><span style="top:-3.91em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"></span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">:</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mord"><span class="mord mathbb">R</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8213em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight">n</span><span class="mbin mtight">×</span><span class="mord mathnormal mtight">m</span></span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">→</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mord"><span class="mord mathbb">R</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.7144em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">n</span></span></span></span></span></span></span></span></span></span><span style="top:-2.41em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"></span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel"><span class="mrel"><span class="mop" style="position:relative;top:-0.0347em;">:</span></span><span class="mrel"><span class="mspace" style="margin-right:-0.0667em;"></span></span><span class="mrel">=</span></span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mord mathbf">X</span><span class="mord mathnormal" style="margin-right:0.02778em;">θ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.25em;"><span></span></span></span></span></span></span></span></span></span></span></span></p>
 <p>where <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6861em;"></span><span class="mord mathbf">X</span></span></span></span> is a <em>data/design</em> matrix which stores <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em;"></span><span class="mord mathnormal">n</span></span></span></span> vectors in <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6889em;"></span><span class="mord"><span class="mord mathbb">R</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.6644em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">m</span></span></span></span></span></span></span></span></span></span></span>.
 In Python, this looks like the following:</p>
-<div class="repl" data-id="d3302634-3d53-4552-9955-a495b1204783" data-readonly="false" data-lang="python">
+<div class="repl" data-id="38a955c3-f8b1-4806-be0f-1be1e211ceaf" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1062,7 +1063,7 @@ then we have that</p>
 <iframe width="698" height="393" loading="lazy" src="https://www.youtube.com/embed/q7seckj1hwM?si=YYH1Z3zRbx-K0AF-" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 <p>Returning to the linear regression model, we can solve this optimization with a <em>direct method</em> using normal equations.
 QR factorization, or SVD.</p>
-<div class="repl" data-id="0326cb88-39fa-429f-aceb-3ce6ad1db9a9" data-readonly="false" data-lang="python">
+<div class="repl" data-id="936d6018-9c5f-4e91-8210-5d33033993c2" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1223,7 +1224,7 @@ We will now dive deeper into how <code>.backward()</code> is implemented.</p>
 <iframe width="698" height="393" loading="lazy" src="https://www.youtube.com/embed/YG15m2VwSjA?si=z6eEC7e_4qDckMeB" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 Consider the function <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em;"></span><span class="mord mathnormal" style="margin-right:0.10764em;">f</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">:</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.8833em;vertical-align:-0.1944em;"></span><span class="mord mathbb">R</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord mathbb">R</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">→</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.6889em;"></span><span class="mord mathbb">R</span></span></span></span> where <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8889em;vertical-align:-0.1944em;"></span><span class="mord mathnormal" style="margin-right:0.10764em;">f</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel"><span class="mrel"><span class="mop" style="position:relative;top:-0.0347em;">:</span></span><span class="mrel"><span class="mspace" style="margin-right:-0.0667em;"></span></span><span class="mrel">=</span></span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mop">exp</span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3011em;"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">∗</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:1.0219em;vertical-align:-0.15em;"></span><span class="mop"><span class="mop">sin</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8719em;"><span style="top:-3.1208em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord"><span class="mord mathnormal">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3011em;"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>,
 and translate it to it's computational counterpart in python with one-dimensional `Tensor`s:
-<div class="repl" data-id="efd91ffb-2179-4de3-8a0b-0ab53a300e68" data-readonly="false" data-lang="python">
+<div class="repl" data-id="515a0a79-58a3-4a40-b6b8-f8211c89094b" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1250,7 +1251,7 @@ that could evaluate functions of the form <span class="katex"><span class="katex
 where <code>Tensor</code> objects stored their values <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathnormal" style="margin-right:0.10764em;">f</span><span class="mopen">(</span><span class="mord mathbf">x</span><span class="mclose">)</span></span></span></span> with the <code>value:</code> field
 and the function types that produced their values with <code>Op</code>.
 For instance, evaluating the specified function <code>f</code> from above with 9 and 10</p>
-<div class="repl" data-id="6360d479-9c93-49fb-9625-91065bc24b71" data-readonly="false" data-lang="python">
+<div class="repl" data-id="246c4885-265f-456d-8df4-dee091947dda" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1318,7 +1319,7 @@ The translation from math to code involves a design decision:
 <em>should we evaluate from outputs to inputs (symbolically outside-in, graphically right-to-left) or from inputs to outputs (symbolically inside-out, graphically left-to-right)?</em>
 Although the former order seems more natural with symbolic expressions,
 there's nothing illegal about the latter.</p>
-<div class="repl" data-id="adec3ec8-4dff-4851-a24c-1a08c0326278" data-readonly="false" data-lang="python">
+<div class="repl" data-id="dcc2c0b4-e18e-4fcf-b649-8e846169d39c" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1394,7 +1395,7 @@ which then become reused many times through automatic differentiation.
 In theory, we can differentiate any expression with f'(x) with only a few derivative
 rules for addition and multiplication, but in practice most frameworks provide sugar for complex derivatives.</p>
 <p>For topological sort, we can simply reversed the ordering produced by a depth-first-search:</p>
-<div class="repl" data-id="30007697-bd39-4b4f-a951-c5dd72cffa84" data-readonly="false" data-lang="python">
+<div class="repl" data-id="af949ca9-904e-485e-a174-14cbde9df3ea" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1424,7 +1425,7 @@ class Tensor():
 <p>We will now use this idea to modify the interpretation of our deep learning framework
 to not only evaluate <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathnormal" style="margin-right:0.10764em;">f</span><span class="mopen">(</span><span class="mord mathbf">x</span><span class="mclose">)</span></span></span></span>, but <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0019em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.10764em;">f</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.7519em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">′</span></span></span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord mathbf">x</span><span class="mclose">)</span></span></span></span> as well. This is done
 by dynamically overloading the operators at runtime[^0] to trace the expression graph</p>
-<div class="repl" data-id="beac9109-c4fe-4b66-8606-4dbab8168390" data-readonly="false" data-lang="python">
+<div class="repl" data-id="d4ef020d-4647-42d5-9bdc-a527d2677e0c" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1671,7 +1672,7 @@ we will add a final decision boundary where</p>
 <p>(FIGURE.MODEL ARCHITECTURE)</p>
 <p>We can vectorize the evaluation of <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathnormal" style="margin-right:0.10764em;">f</span><span class="mopen">(</span><span class="mord mathbf">x</span><span class="mpunct">;</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord mathnormal" style="margin-right:0.02778em;">θ</span><span class="mclose">)</span></span></span></span> on each <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.888em;"></span><span class="mord"><span class="mord mathbf">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.888em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathnormal mtight">i</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span></span></span></span> <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6986em;vertical-align:-0.0391em;"></span><span class="mord mathnormal">i</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">[</span><span class="mord">0..</span><span class="mord mathnormal">n</span><span class="mclose">)</span></span></span></span>
 with a data matrix <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7224em;vertical-align:-0.0391em;"></span><span class="mord mathnormal" style="margin-right:0.07847em;">X</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.8491em;"></span><span class="mord"><span class="mord mathbb">R</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight">n</span><span class="mbin mtight">×</span><span class="mord mathnormal mtight">d</span></span></span></span></span></span></span></span></span></span></span></span> so that</p>
-<div class="repl" data-id="fa71adba-eca3-43a0-86c2-86411217b5e4" data-readonly="false" data-lang="python">
+<div class="repl" data-id="4494ac7a-81b8-41da-ba2e-84dcd8c0cac4" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1754,7 +1755,7 @@ which are joint probability distribution over all sequences of tokens.</p>
 <p>Language modeling with ngrams.</p>
 <iframe width="698" height="393" loading="lazy" src="https://www.youtube.com/embed/TCH_1BHY58I?si=pyOwJBGyDinoif5i" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 <p>(1. EXPLAIN MODEL).</p>
-<div class="repl" data-id="943f850b-eb12-4d56-b15b-419135eb417e" data-readonly="false" data-lang="python">
+<div class="repl" data-id="1add91ff-1328-4a0e-98f6-0df0f276e987" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1803,7 +1804,7 @@ class MLP():
     return yhat, loss
 </code></pre>
 <p>(2. EXPLAIN DATASET).</p>
-<div class="repl" data-id="89c01102-e6d1-474b-a96e-d46b652b2fbe" data-readonly="false" data-lang="python">
+<div class="repl" data-id="17d9f48b-c813-49e7-8b24-8970e8cf52ff" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1847,7 +1848,7 @@ def build_dataset(t):
   return Xtraining, Ytraining
 </code></pre>
 <p>(3. EXPLAIN TRAINING LOOP).</p>
-<div class="repl" data-id="ecfaf26b-216d-447c-a6fe-3b63a16167e7" data-readonly="false" data-lang="python">
+<div class="repl" data-id="f44317a6-bae7-4b40-8b9a-a48e83b71a02" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -1971,7 +1972,7 @@ fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
 <iframe width="698" height="393" loading="lazy" src="https://www.youtube.com/embed/kCc8FmEb1nY?si=GtHe8YolWoz0sEHR" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 <iframe width="698" height="393" loading="lazy" src="https://www.youtube.com/embed/l8pRSuU81PU?si=gjKMtuMnsP1fvj_u" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 <iframe width="698" height="393" loading="lazy" src="https://www.youtube.com/embed/D8GOeCFFby4?si=VW2DHR4JfSBNgYgx" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-<div class="repl" data-id="6f1734e6-beb6-4535-8f75-ddf9e0135d34" data-readonly="false" data-lang="python">
+<div class="repl" data-id="b0f4f51f-35dc-48df-935e-d62056c194c1" data-readonly="false" data-lang="python">
   <iframe
     class="hide"
     loading="lazy"
@@ -2314,22 +2315,6 @@ Static Program Analysis by Anders Møller and Michael I Schwartzbach</p>
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
 
