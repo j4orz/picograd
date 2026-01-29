@@ -1,6 +1,7 @@
 scratch*
 .DS_Store
 .vscode/
+book/book
 
 target
 .python-version
