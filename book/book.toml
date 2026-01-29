@@ -27,9 +27,5 @@ giscus.theme = "book"
 giscus.lang = "en"
 giscus.loading = "eager"
 
-[preprocessor.admonish]
-command = "mdbook-admonish"
-assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
-
 [preprocessor.svgbob] # all fields by default
 after = ["katex"]
