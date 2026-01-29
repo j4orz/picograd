@@ -1,0 +1,35 @@
+[book]
+authors = ["j4orz"]
+language = "en"
+src = "src"
+title = "SITP"
+
+[preprocessor.katex]
+after = ["links"]
+before = ["svgbob"]
+
+[output.html]
+additional-css = ["theme/css/custom.css"]
+
+[preprocessor.repl]
+src = "https://mr-addict.github.io/mdbook-repl/embed/"
+python.enable = true
+python.loading = "lazy"
+
+[preprocessor.embedify]
+giscus.enable = true
+giscus.repo = "j4orz/teenygrad"
+giscus.repo-id = "R_XXXXXXXXXX"
+giscus.category = "General"
+giscus.category-id = "DIC_XXXXXXXXXXXXXXXX"
+giscus.reactions-enabled = "1"
+giscus.theme = "book"
+giscus.lang = "en"
+giscus.loading = "eager"
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
+
+[preprocessor.svgbob] # all fields by default
+after = ["katex"]

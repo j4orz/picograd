@@ -1,0 +1,28 @@
+# Bibliography
+
+- Austin et al., "How to Scale Your Model", Google DeepMind, online, 2025.
+- Ansel et al. 2024. “PyTorch 2: Faster Machine Learning through Dynamic Python Bytecode Transformation and Graph Compilation.” ACM, April.
+- Baydin et al. 2015. “Automatic Differentiation in Machine Learning: A Survey.” ArXiv.org
+- Bakhvalov, Denis. Performance Analysis and Tuning on Modern CPUs. 2024.
+- Bright, Paige, Alan Edelman, and Steven G Johnson. 2025. “Matrix Calculus (for Machine Learning and Beyond).” ArXiv.org
+- Bryant, Randal E, and David R O’hallaron. 2016. Computer Systems: A Programmer’s Perspective. Boston: Pearson Education.
+- Blondel, Mathieu, and Vincent Roulet. 2024. “The Elements of Differentiable Programming.” ArXiv.org
+- Boehm, Simon. 2022. “How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: A Worklog.” Siboehm.com
+- Chen, Tianqi, Thierry Moreau, Ziheng Jiang, Lianmin Zheng, Eddie Yan, Meghan Cowan, Haichen Shen, et al. 2018. “TVM: An Automated End-To-End Optimizing Compiler for Deep Learning.” ArXiv, February.
+- Fog, Agner. “Software Optimization Resources. C++ and Assembly. Windows, Linux, BSD, Mac OS X.” Agner.org.
+- Goodfellow, Ian, Yoshua Bengio, and Aaron Courville. 2016. Deep Learning. Cambridge, Massachusetts: The MIT Press.
+- Griewank, Andreas, and Andrea Walther. 2009. Evaluating Derivatives: Principles and Techniques of Algorithmic Differentiation. Philadelphia, Pa.: Society For Industrial & Applied Mathematics ; Cambridge.
+- Hastie, Trevor, et al. The Elements of Statistical Learning, Second Edition : Data Mining, Inference, and Prediction. 2nd ed., New York, Springer, 2009.
+- Hennessy, John L, and David A Patterson. 2025. Computer Architecture: A Quantitative Approach. Cambridge, Ma: Morgan Kaufmann.
+- Hwu, Wen-Mei W, David B. Kirk, and Izzat El Hajj. 2022. Programming Massively Parallel Processors: A Hands-on Approach. S.L.: Morgan Kaufmann.
+- Jurafsky, Dan, and James H. Martin. 2025. “Speech and Language Processing.” Stanford.edu. 2025.
+- Murphy, Kevin P. 2023. Probabilistic Machine Learning: Advanced Concepts. MIT Press.
+- Murphy, Kevin P. 2022. Probabilistic Machine Learning: An Introduction. Cambridge: MIT Press.
+- Paszke, Adam, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen, et al. 2019. “PyTorch: An Imperative Style, High-Performance Deep Learning Library.” ArXiv.org
+- Ragan-Kelley, Jonathan, Connelly Barnes, Andrew Adams, Sylvain Paris, Frédo Durand, and Saman Amarasinghe. 2013. “Halide.” Proceedings of the 34th ACM SIGPLAN Conference on Programming Language Design and Implementation.
+- Shankhdhar, Pranjal. 2025. “Outperforming cuBLAS on H100: A Worklog.” 2025.
+- Stepanov, Alexander A, and Daniel E Rose. From Mathematics to Generic Programming. Addison-Wesley Professional, 13 Nov. 2014.
+- Suhan, Alex, Davide Libenzi, Ailing Zhang, Parker Schuh, Brennan Saeta, Jie Young Sohn, and Denys Shabalin. 2021. “LazyTensor: Combining Eager Execution with Domain-Specific Compilers.” ArXiv.org
+- Sutton, Richard S, and Andrew Barto. Reinforcement Learning: An Introduction. 2nd ed., Cambridge, Ma ; London, The Mit Press, 2018.
+- Tazi et al., "The Ultra-Scale Playbook: Training LLMs on GPU Clusters", 2025.
+- Uwe Naumann. 2012. The Art of Differentiating Computer Programs: An Introduction to Algorithmic Differentiation. Philadelphia: Society For Industrial And Applied Mathematics.
