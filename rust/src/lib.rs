@@ -1,14 +1,14 @@
-use pyo3::prelude::*;
-pub mod host_kernels;
+#![feature(test)]
 
+use pyo3::prelude::*;
+pub mod cpu;
 #[cfg(feature = "cuda")]
-pub mod device_kernels;
+pub mod gpu;
 
 #[cfg(feature = "cuda")]
 #[pyfunction]
 fn cuda_smoke_test() -> PyResult<()> {
-    device_kernels::cudars_helloworld()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+    gpu::cudars_helloworld().map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
     Ok(())
 }
 
@@ -21,7 +21,8 @@ fn cuda_smoke_test() -> PyResult<()> {
 }
 
 /// A Python module implemented in Rust.
-#[pymodule] fn rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
+#[pymodule]
+fn rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     println!("hello from teenygrad._rs's library crate!");
 
     let host_kernels_pymodule = PyModule::new(m.py(), "cpu_kernels")?;
