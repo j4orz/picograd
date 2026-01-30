@@ -8,3 +8,7 @@
 - [B. Classical Machine Learning]()
   - [Kernel Machines]()
   - [Gaussian Processes]()
+- [C. Classical Compiler Construction]()
+  - [Three Tier Architecture: Parser, Optimizer, Generator]()
+  - [Frances Allen C-Style Optimizations]()
+  - [Function Inlining and Register Allocation]()
