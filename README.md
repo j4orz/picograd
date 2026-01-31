@@ -34,6 +34,7 @@ with the shared object files compiled by driving `cargo` via PyO3's build tool [
     uv pip install maturin                             # install maturin (which drives pyo3)
     cd rust && cargo run                               # run cpu acccelerated gemm kernel
     maturin develop                                    # build shared object for cpython's extension modules
+    uv run examples/abstractions.py                    # run cpu accelerated gemm kernel from python
     ```
 **GPU kernels (PTX)**
 
@@ -46,7 +47,7 @@ To enable GPU acceleration, teenygrad uses [CUDA Rust](https://github.com/Rust-G
     ./dcr.sh                                           # create container with old version of llvm for cuda rust
     ./dex.sh "cd rust && cargo run --features cuda"    # run gpu accelerated gemm kernel
     ./dex.sh "maturin develop"                         # build the shared object for cpython's extension modules
-    ./dex.sh "uv run examples/abstractions.py"         # run gpu accelerated gemm kernel
+    ./dex.sh "uv run examples/abstractions.py"         # run gpu accelerated gemm kernel from python
     ```
 3. Point `rustanalyzer` to the Rust and CUDA Rust source:
     ```json
