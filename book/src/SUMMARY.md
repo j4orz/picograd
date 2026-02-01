@@ -1,7 +1,6 @@
 [Front](./front.md)
 [Dedication](./dedi.md)
 [Preface](./pref.md)
-[Leaderboard]()
 - [Elements of Networks](./1.md)
 - [Neural Networks](./2.md)
 - [Scaling Networks](./3.md)
