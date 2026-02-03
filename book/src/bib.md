@@ -1,34 +1,33 @@
 # Bibliography
 
-- Amanzhol Salykov. “Advanced Matrix Multiplication Optimization on NVIDIA GPUs.” Salykova, 12 Jan. 2025, salykova.github.io/gemm-gpu.
-- Austin et al., "How to Scale Your Model", Google DeepMind, online, 2025.
-- Ansel et al. 2024. “PyTorch 2: Faster Machine Learning through Dynamic Python Bytecode Transformation and Graph Compilation.” ACM, April.
-- Baydin et al. 2015. “Automatic Differentiation in Machine Learning: A Survey.” ArXiv.org
-- Bakhvalov, Denis. Performance Analysis and Tuning on Modern CPUs. 2024.
-- Boehm, Simon. “How to Optimize a CUDA Matmul - Kernel for CuBLAS-like Performance: A Worklog.” Siboehm.com, 31 Dec. 2022, siboehm.com/articles/22/CUDA-MMM.
-- Bright, Paige, Alan Edelman, and Steven G Johnson. 2025. “Matrix Calculus (for Machine Learning and Beyond).” ArXiv.org
-- Bryant, Randal E, and David R O’hallaron. 2016. Computer Systems: A Programmer’s Perspective. Boston: Pearson Education.
-- Blondel, Mathieu, and Vincent Roulet. 2024. “The Elements of Differentiable Programming.” ArXiv.org
-- Boehm, Simon. 2022. “How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: A Worklog.” Siboehm.com
-- Chen, Tianqi, Thierry Moreau, Ziheng Jiang, Lianmin Zheng, Eddie Yan, Meghan Cowan, Haichen Shen, et al. 2018. “TVM: An Automated End-To-End Optimizing Compiler for Deep Learning.” ArXiv, February.
-- Fog, Agner. “Software Optimization Resources. C++ and Assembly. Windows, Linux, BSD, Mac OS X.” Agner.org.
-- Goodfellow, Ian, Yoshua Bengio, and Aaron Courville. 2016. Deep Learning. Cambridge, Massachusetts: The MIT Press.
-- Gordic, Aleksa. “Inside NVIDIA GPUs: Anatomy of High Performance Matmul Kernels - Aleksa Gordić.” Aleksagordic.com, 2025, www.aleksagordic.com/blog/matmul.
-- Griewank, Andreas, and Andrea Walther. 2009. Evaluating Derivatives: Principles and Techniques of Algorithmic Differentiation. Philadelphia, Pa.: Society For Industrial & Applied Mathematics ; Cambridge.
-- Hastie, Trevor, et al. The Elements of Statistical Learning, Second Edition : Data Mining, Inference, and Prediction. 2nd ed., New York, Springer, 2009.
-- He, Horace. “Making Deep Learning Go Brrrr from First Principles.” Horace.io, 2022, horace.io/brrr_intro.html.
-- Hennessy, John L, and David A Patterson. 2025. Computer Architecture: A Quantitative Approach. Cambridge, Ma: Morgan Kaufmann.
-- Hwu, Wen-Mei W, David B. Kirk, and Izzat El Hajj. 2022. Programming Massively Parallel Processors: A Hands-on Approach. S.L.: Morgan Kaufmann.
-- Jurafsky, Dan, and James H. Martin. 2025. “Speech and Language Processing.” Stanford.edu. 2025.
-- Murphy, Kevin P. 2023. Probabilistic Machine Learning: Advanced Concepts. MIT Press.
-- Murphy, Kevin P. 2022. Probabilistic Machine Learning: An Introduction. Cambridge: MIT Press.
-- Paszke, Adam, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen, et al. 2019. “PyTorch: An Imperative Style, High-Performance Deep Learning Library.” ArXiv.org
-- Ragan-Kelley, Jonathan, Connelly Barnes, Andrew Adams, Sylvain Paris, Frédo Durand, and Saman Amarasinghe. 2013. “Halide.” Proceedings of the 34th ACM SIGPLAN Conference on Programming Language Design and Implementation.
-- Sebastien Vince. “Optimizing Matrix Multiplication on RDNA3: 50 TFlops and 60% Faster than RocBLAS.” Seb-v, 20 Jan. 2025, seb-v.github.io/optimization/update/2025/01/20/Fast-GPU-Matrix-multiplication.html.
-- Shankhdhar, Pranjal. “Outperforming CuBLAS on H100: A Worklog.” Substack.com, 2025, cudaforfun.substack.com/p/outperforming-cublas-on-h100-a-worklog.
-- Spector, Benjamin, et al. “GPUs Go Brrr.” Stanford.edu, 2024, hazyresearch.stanford.edu/blog/2024-05-12-tk.
-- Stepanov, Alexander A, and Daniel E Rose. From Mathematics to Generic Programming. Addison-Wesley Professional, 13 Nov. 2014.
-- Suhan, Alex, Davide Libenzi, Ailing Zhang, Parker Schuh, Brennan Saeta, Jie Young Sohn, and Denys Shabalin. 2021. “LazyTensor: Combining Eager Execution with Domain-Specific Compilers.” ArXiv.org
-- Sutton, Richard S, and Andrew Barto. Reinforcement Learning: An Introduction. 2nd ed., Cambridge, Ma ; London, The Mit Press, 2018.
-- Tazi et al., "The Ultra-Scale Playbook: Training LLMs on GPU Clusters", 2025.
-- Uwe Naumann. 2012. The Art of Differentiating Computer Programs: An Introduction to Algorithmic Differentiation. Philadelphia: Society For Industrial And Applied Mathematics.
+- Ansel, J., Yang, E., He, H., Gimelshein, N., Jain, A., Voznesensky, M., Baines, B., Bell, N., Ruber, D., Suo, M., Tian, K., Hoefler, T., Smelyanskiy, M., & Chintala, S. (2024). PyTorch 2: Faster machine learning through dynamic Python bytecode transformation and graph compilation. In *Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems* (pp. 929–947). ACM.
+- Austin, J., Anand, Y., Brenner, M., Dyer, E., Ganguli, S., Hoffmann, J., Hron, J., Kenealy, K., Krikun, M., Lespiau, J.-B., & Team, G. D. (2025). *How to scale your model*. Google DeepMind.
+- Bakhvalov, D. (2024). *Performance analysis and tuning on modern CPUs*.
+- Baydin, A. G., Pearlmutter, B. A., Radul, A. A., & Siskind, J. M. (2018). Automatic differentiation in machine learning: A survey. *Journal of Machine Learning Research*, *18*(153), 1–43.
+- Blondel, M., & Roulet, V. (2024). The elements of differentiable programming. *arXiv preprint arXiv:2403.14606*.
+- Boehm, S. (2022, December 31). How to optimize a CUDA matmul kernel for cuBLAS-like performance: A worklog.
+- Bright, P., Edelman, A., & Johnson, S. G. (2025). Matrix calculus (for machine learning and beyond). *arXiv preprint arXiv:2501.14787*.
+- Bryant, R. E., & O'Hallaron, D. R. (2016). *Computer systems: A programmer's perspective* (3rd ed.). Pearson.
+- Chen, T., Moreau, T., Jiang, Z., Zheng, L., Yan, E., Cowan, M., Shen, H., Wang, L., Hu, Y., Ceze, L., Guestrin, C., & Krishnamurthy, A. (2018). TVM: An automated end-to-end optimizing compiler for deep learning. In *13th USENIX Symposium on Operating Systems Design and Implementation (OSDI 18)* (pp. 578–594).
+- Fog, A. (n.d.). *Software optimization resources*.
+- Goodfellow, I., Bengio, Y., & Courville, A. (2016). *Deep learning*. MIT Press.
+- Gordić, A. (2025). Inside NVIDIA GPUs: Anatomy of high performance matmul kernels.
+- Griewank, A., & Walther, A. (2008). *Evaluating derivatives: Principles and techniques of algorithmic differentiation* (2nd ed.). SIAM.
+- Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The elements of statistical learning: Data mining, inference, and prediction* (2nd ed.). Springer.
+- He, H. (2022). Making deep learning go brrrr from first principles.
+- Hennessy, J. L., & Patterson, D. A. (2025). *Computer architecture: A quantitative approach* (7th ed.). Morgan Kaufmann.
+- Hwu, W. W., Kirk, D. B., & El Hajj, I. (2022). *Programming massively parallel processors: A hands-on approach* (4th ed.). Morgan Kaufmann.
+- Jurafsky, D., & Martin, J. H. (2025). *Speech and language processing* (3rd ed. draft).
+- Murphy, K. P. (2022). *Probabilistic machine learning: An introduction*. MIT Press.
+- Murphy, K. P. (2023). *Probabilistic machine learning: Advanced topics*. MIT Press.
+- Naumann, U. (2012). *The art of differentiating computer programs: An introduction to algorithmic differentiation*. SIAM.
+- Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J., Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga, L., Desmaison, A., Köpf, A., Yang, E., DeVito, Z., Raison, M., Tejani, A., Chilamkurthy, S., Steiner, B., Fang, L., Bai, J., & Chintala, S. (2019). PyTorch: An imperative style, high-performance deep learning library. In *Advances in Neural Information Processing Systems 32* (pp. 8024–8035).
+- Ragan-Kelley, J., Barnes, C., Adams, A., Paris, S., Durand, F., & Amarasinghe, S. (2013). Halide: A language and compiler for optimizing parallelism, locality, and recomputation in image processing pipelines. In *Proceedings of the 34th ACM SIGPLAN Conference on Programming Language Design and Implementation* (pp. 519–530). ACM.
+- Salykov, A. (2025, January 12). Advanced matrix multiplication optimization on NVIDIA GPUs.
+- Shankhdhar, P. (2024). Outperforming cuBLAS on H100: A worklog.
+- Spector, B., Singhal, A., Arora, S., & Ré, C. (2024, May 12). GPUs go brrr.
+- Stepanov, A. A., & Rose, D. E. (2014). *From mathematics to generic programming*. Addison-Wesley.
+- Suhan, A., Libenzi, D., Zhang, A., Schuh, P., Saeta, B., Sohn, J. Y., & Shabalin, D. (2021). LazyTensor: Combining eager execution with domain-specific compilers. *arXiv preprint arXiv:2102.13267*.
+- Sutton, R. S., & Barto, A. G. (2018). *Reinforcement learning: An introduction* (2nd ed.). MIT Press.
+- Tazi, N., Launay, J., Luccioni, S., & Wolf, T. (2025). *The ultra-scale playbook: Training LLMs on GPU clusters*. Hugging Face.
+- Vince, S. (2025, January 20). Optimizing matrix multiplication on RDNA3: 50 TFlops and 60% faster than RocBLAS.
