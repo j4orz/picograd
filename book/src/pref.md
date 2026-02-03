@@ -11,7 +11,7 @@ the book that you are currently reading is my personal answer[^0] to these frust
 and is an experimental CS2 for "software 2.0" which places a heavier focus on
 the statistical inference, numerical linear algebra, low level and parallel systems programming required for deep learning,
 taking the reader from counting, to compilers *for* calculus.
-2. concerns itself with the low-level programming of deep learning systems. So the capstone project `teenygrad` involves programming against language, platform, and architecture specifics with a `Python` core for *user productivty*, and CPU/GPU accelerated kernels implemented with `Rust` and `CUDA Rust` for it's amenability towards *native acceleration*. However, you are more than welcome to follow along with your own choice of host language implementation — for instance, feel free to swap out `Python` for `Javascript`[^2], `Rust` for `C++`, etc[^3].
+2. concerns itself with the low-level programming of deep learning systems. So the capstone project `teenygrad` involves programming against language, platform, and architecture specifics with a `Python` core for *user productivty*, and CPU/GPU accelerated kernels implemented with `Rust` and `CUDA Rust` for it's amenability towards *native acceleration*. However, you are more than welcome to follow along with your own choice of host language implementation — for instance, feel free to swap out `Python` for `Javascript`[^2]/`Lua`, `Rust` for `C++`, etc[^3].
 
 With that said, the book has three parts:
 - in [part 1](./1.md) you implement a multidimensional `Tensor` and accelerated `BLAS` kernels

@@ -42,7 +42,7 @@ I'll see you at work.
 - Stanford CS336: Language Modeling from Scratch by Percy Liang
 - HuggingFace: Ultra-Scale Playbook: Training LLMs on GPU Clusters
 
-### 3. Parallel Programming for Deep Learning
+### 3. Performance Engineering for Deep Learning
 
 ##### Recommended Books
 - Computer Architecture: A Quantitative Approach by Hennessy and Patterson
@@ -61,7 +61,7 @@ I'll see you at work.
 - UIUC ECE408: Programming Massively Parallel Processors by Wen-mei Hwu
 - Stanford CS149: Parallel Computing by Kayvon Fatahalian
 
-### 4. Compilers for Parallel Programming Languages
+### 4. Compiler Engineering for Deep Learning
 
 ##### Recommended Books
 Programming Languages by Shriram Krishnamurthi

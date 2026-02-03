@@ -1,5 +1,5 @@
 .katex-display>.katex {
-  text-align:left!important;
+  text-align: left !important;
 }
 
 #of-tensor-programs {
@@ -11,8 +11,7 @@
 #recommended-books-2,
 #recommended-lectures,
 #recommended-lectures-1,
-#recommended-lectures-2
-{
+#recommended-lectures-2 {
   margin-bottom: -16px;
 }
 
@@ -29,13 +28,72 @@
 }
 
 .full-bleed {
-  width: 75vw;
+  width: 90vw;
   position: relative;
   left: 50%;
-  margin-left: -37.5vw;
+  margin-left: -45vw;
 }
 
 .full-bleed iframe {
   width: 100%;
   display: block;
+}
+
+.sidenote {
+  float: right;
+  clear: right;
+  margin-right: -54%;
+  width: 45%;
+  margin-top: 0.3rem;
+  margin-bottom: 0;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.sidenote-number {
+  counter-increment: sidenote-counter;
+}
+
+.sidenote-number::after,
+.sidenote::before {
+  font-size: 12px;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.sidenote-number::after {
+  content: counter(sidenote-counter);
+  top: -0.5rem;
+  left: 0.1rem;
+  color: #a00;
+}
+
+.sidenote::before {
+  content: counter(sidenote-counter) " ";
+  top: -0.5rem;
+  color: #a00;
+}
+
+.content {
+  counter-reset: sidenote-counter;
+}
+
+@media (max-width: 1000px) {
+  .sidenote {
+    display: none;
+  }
+
+  .sidenote-number::after {
+    content: counter(sidenote-counter);
+    cursor: pointer;
+    text-decoration: underline;
+  }
+}
+
+p:has(> small > a[href="#table-of-contents"]) {
+  margin-top: 0;
+}
+
+h2:has(+ p > small > a[href="#table-of-contents"]) {
+  margin-bottom: 0;
 }
