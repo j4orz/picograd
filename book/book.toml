@@ -6,7 +6,6 @@ title = "SITP"
 
 [preprocessor.katex]
 after = ["links"]
-before = ["svgbob"]
 
 [output.html]
 additional-css = ["theme/css/custom.css"]
@@ -26,6 +25,3 @@ giscus.reactions-enabled = "1"
 giscus.theme = "book"
 giscus.lang = "en"
 giscus.loading = "eager"
-
-[preprocessor.svgbob] # all fields by default
-after = ["katex"]
