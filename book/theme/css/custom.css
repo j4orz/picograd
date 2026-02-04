@@ -3,7 +3,11 @@
 }
 
 #of-tensor-programs {
-  margin-top: -24px
+  margin-top: -24px;
+}
+
+#of-tensor-programs+p {
+  margin-top: 0;
 }
 
 #recommended-books,
@@ -42,8 +46,8 @@
 .sidenote {
   float: right;
   clear: right;
-  margin-right: -54%;
-  width: 45%;
+  margin-right: -44%;
+  width: 35%;
   margin-top: 0.3rem;
   margin-bottom: 0;
   font-size: 12px;
@@ -65,13 +69,13 @@
   content: counter(sidenote-counter);
   top: -0.5rem;
   left: 0.1rem;
-  color: #a00;
+  color: rgb(0, 150, 207)
 }
 
 .sidenote::before {
   content: counter(sidenote-counter) " ";
   top: -0.5rem;
-  color: #a00;
+  color: rgb(0, 150, 207)
 }
 
 .content {

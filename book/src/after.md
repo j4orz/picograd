@@ -53,11 +53,11 @@ I'll see you at work.
 - The CUDA Handbook by Nicholas Wilt
 
 ##### Recommended Lectures
-- CMU 10-414/714: Deep Learning Systems by Tianqi Chen and Zico Kotler
-- MLC: Machine Learning Compilers by Tianqi Chen
 - MIT 6.172: Performance Engineering by Saman Amarasinghe, Charles Leiserson and Julian Shun
 - MIT 6.S894: Accelerated Computing by Jonathan Ragan-Kelley
 - Berkeley CS267: Applications of Parallel Computers by Katthie Yellick
+- Berkeley EECS151: Introduction to Digital Design and Integrated Circuits by Sophia Shao
+- Berkeley EECS152: Computer Architecture by Sophia Shao
 - UIUC ECE408: Programming Massively Parallel Processors by Wen-mei Hwu
 - Stanford CS149: Parallel Computing by Kayvon Fatahalian
 

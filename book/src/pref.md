@@ -11,20 +11,19 @@ the book that you are currently reading is my personal answer[^0] to these frust
 and is an experimental CS2 for "software 2.0" which places a heavier focus on
 the statistical inference, numerical linear algebra, low level and parallel systems programming required for deep learning,
 taking the reader from counting, to compilers *for* calculus.
-2. concerns itself with the low-level programming of deep learning systems. So the capstone project `teenygrad` involves programming against language, platform, and architecture specifics with a `Python` core for *user productivty*, and CPU/GPU accelerated kernels implemented with `Rust` and `CUDA Rust` for it's amenability towards *native acceleration*. However, you are more than welcome to follow along with your own choice of host language implementation — for instance, feel free to swap out `Python` for `Javascript`[^2]/`Lua`, `Rust` for `C++`, etc[^3].
+2. concerns itself with the low-level programming of deep learning systems. So the capstone project `teenygrad` involves programming against language, platform, and architecture specifics with a `Python` core for *user productivty*, and CPU/GPU accelerated kernels implemented with `Rust` and `CUDA Rust` for it's amenability towards *native acceleration*. However, you are more than welcome to follow along with your own choice of host language implementation — for instance, feel free to swap out `Python` for `Javascript`[^1]/`Lua`, `Rust` for `C++`, etc[^2].
 
 With that said, the book has three parts:
 - in [part 1](./1.md) you implement a multidimensional `Tensor` and accelerated `BLAS` kernels
 - in [part 2](./2.md) you implement `.backward()` and accelerated `cuBLAS` kernels for the *age of research*
 - in [part 3](./3.md) you implement a fusion compiler with `OpNode` graph IR for the *age of scaling*
 
-If you empathize with some of my frustrations, you may benefit from the course too[^4].</br>
+If you empathize with some of my frustrations, you may benefit from the course too[^3].</br>
 Good luck on your journey.</br>
 Are you ready to begin?</br>
 
 ---
 [^0]: *As of the time writing in 2026, I am writing this book with myself as the target audience. For a good critique on constructionist learning, refer to [(Ames 2018)](https://dl.acm.org/doi/epdf/10.1145/3274287).*
-[^1]: *Which, in turn, is itself a bridge to PyTorch.*
-[^2]: *For instance, Andrej Karpathy's [convnetjs](https://github.com/karpathy/convnetjs)*
-[^3]: *Or combine the productivity and performance with `Mojo` for instance. The world is your oyster.*
-[^4]: *And if not, I hope this book poses as a good counterexample for what you have in mind — for instance, perhaps Kevin Murphy's excellent [encyclopedic treatment](https://probml.github.io/pml-book/) of the subject*
+[^1]: *For instance, Andrej Karpathy's [convnetjs](https://github.com/karpathy/convnetjs)*
+[^2]: *Or combine the productivity and performance with `Mojo` for instance. The world is your oyster.*
+[^3]: *And if not, I hope this book poses as a good counterexample for what you have in mind — for instance, perhaps Kevin Murphy's excellent [encyclopedic treatment](https://probml.github.io/pml-book/) of the subject*

@@ -9,6 +9,8 @@ after = ["links"]
 
 [output.html]
 additional-css = ["theme/css/custom.css"]
+default-theme = "ayu"
+preferred-dark-theme = "ayu"
 
 [preprocessor.repl]
 src = "https://mr-addict.github.io/mdbook-repl/embed/"
