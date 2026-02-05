@@ -9,8 +9,7 @@ the book that you are currently reading is my personal answer[^0] to these frust
 
 It's inspired by the introductory computer science canon created by Schemers. [SICP](https://mitp-content-server.mit.edu/books/content/sectbyfn/books_pres_0/6515/sicp.zip/index.html) and it's [dual](https://cs.brown.edu/~sk/Publications/Papers/Published/fffk-htdp-vs-sicp-journal/paper.pdf), [HTDP](https://htdp.org/), took you from counting to compilers in an unbroken, logical sequence, which, although has an informal [flânnerie](https://cs.uwaterloo.ca/~plragde/flaneries/) like feel, provides strong foundational edifice for computation. The recent addition of [DCIC](https://dcic-world.org/), spawning from it's phylogonetic cousin [PAPL](https://papl.cs.brown.edu/2020/), was created to cater to the recent [shift in data science](https://cs.brown.edu/~sk/Publications/Papers/Published/kf-data-centric/paper.pdf) with the *table* data structure. This book follows suit, (*aspirationally* titled SITP),
 and is an experimental CS2 for software 2.0 which places a heavier focus on
-the statistical inference, numerical linear algebra, low level and parallel systems programming required for deep learning,
-taking the reader from counting, to compilers *for* calculus.
+the statistical inference, numerical linear algebra, low level and parallel systems programming required for deep learning, taking the reader from counting, to compilers *for* calculus.
 And for now, the book you are reading is still higher quality than prompting a state of the art LLM to *"write me the SICP for software 2.0"*.
 
 If you empathize with some of my frustrations, you may benefit from the course too[^1].</br>

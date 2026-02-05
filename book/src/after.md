@@ -42,33 +42,37 @@ I'll see you at work.
 - Stanford CS336: Language Modeling from Scratch by Percy Liang
 - HuggingFace: Ultra-Scale Playbook: Training LLMs on GPU Clusters
 
-### 3. Performance Engineering for Deep Learning
+### 3. Systems Programming for Deep Learning
 
 ##### Recommended Books
-- Computer Architecture: A Quantitative Approach by Hennessy and Patterson
 - Computer Systems: A Programmer's Perspective by Randal Bryant and David O'Hallaron
-- Performance Analysis And Tuning on Modern CPUs by Denis Bakhvalov
-- Optimization Manuals by Agner Fog
+- Computer Organization and Design RISC-V Edition by David A. Patterson and John L. Hennessy
+- Computer Architecture: A Quantitative Approach by Hennessy and Patterson
 - Programming Massively Parallel Processors by Hwu, Kirk, and Hajj
 - The CUDA Handbook by Nicholas Wilt
 
 ##### Recommended Lectures
+- CMU 414/714 Deep Learning Systems
 - MIT 6.172: Performance Engineering by Saman Amarasinghe, Charles Leiserson and Julian Shun
 - MIT 6.S894: Accelerated Computing by Jonathan Ragan-Kelley
 - Berkeley CS267: Applications of Parallel Computers by Katthie Yellick
-- Berkeley EECS151: Introduction to Digital Design and Integrated Circuits by Sophia Shao
-- Berkeley EECS152: Computer Architecture by Sophia Shao
 - UIUC ECE408: Programming Massively Parallel Processors by Wen-mei Hwu
 - Stanford CS149: Parallel Computing by Kayvon Fatahalian
 
-### 4. Compiler Engineering for Deep Learning
+### 4. Compiler Construction for Deep Learning
 
 ##### Recommended Books
-Programming Languages by Shriram Krishnamurthi
-Optimizing Compilers by Muchnick
-SSA book by Fabrice Rastello and Florent Bouchez Tichadou
-Register Allocation for Programs in SSA Form by Sebastian Hack
-Static Program Analysis by Anders Møller and Michael I Schwartzbach 
+- Machine Learning Compiler by Tianqi Chen
+
+
+<!-- ### 4. Classical Compiler Construction
+
+##### Recommended Books
+- Programming Languages by Shriram Krishnamurthi
+- Optimizing Compilers by Muchnick
+- SSA book by Fabrice Rastello and Florent Bouchez Tichadou
+- Register Allocation for Programs in SSA Form by Sebastian Hack
+- Static Program Analysis by Anders Møller and Michael I Schwartzbach
 
 ##### Recommended Lectures
 - Berkeley CS265: Compiler Optimization by Max Willsey
@@ -77,7 +81,7 @@ Static Program Analysis by Anders Møller and Michael I Schwartzbach
 - Carnegie Mellon 15-411: Compiler Design by Frank Pfenning
 - Carnegie Mellon 15-745: Optimizing Compilers by Phil Gibbons
 - Rice COMP412: Compiler Construction by Keith Cooper
-- Rice COMP512: Advanced Compiler Construction by Keith Cooper
+- Rice COMP512: Advanced Compiler Construction by Keith Cooper -->
 
 ## Tinygrad Teenygrad Abstraction Correspondance
 
