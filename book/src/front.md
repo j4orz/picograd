@@ -7,7 +7,7 @@
 # of Tensor Programs
 
 `High Performance Computational Mathematics for Deep Learning Systems`</br>
-<small>*`Build`[`teenygrad`](https://github.com/j4orz/teenygrad)[^0]`from scratch with Python, Rust, and CUDA Rust`*</small><br/>
+<small>*`Build`[`teenygrad`](https://github.com/j4orz/teenygrad)`from scratch: the bridge from` [`micrograd`](https://github.com/karpathy/micrograd)` to ` [`tinygrad`](https://github.com/tinygrad/tinygrad)` (with Python, Rust, and CUDA Rust)`*</small><br/>
 <small>*`Capable of running training and inference for`[`nanogpt`](http://github.com/karpathy/nanogpt)` and `[`nanochat`](http://github.com/karpathy/nanochat)*</small>
 
 *Made with 🖤  by [Jeffrey Zhang](https://x.com/j4orz), [Waterloo Mathematics](https://academic-calendar-archive.uwaterloo.ca/undergraduate-studies/2022-2023/page/MATH-Degree-Requirements-for-Math-students.html#Table%20II)*<br/>
