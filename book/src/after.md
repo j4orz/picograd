@@ -1,22 +1,20 @@
 # Afterword
 
-To continue deepening your knowledge, the following courses are a good next step.
+To continue deepening your knowledge on deep learning and it's systems,
+the following resources are a good next step.
 You might find this book complementary to your reading, since the three streams outlined below were woven into a single narrative for the book.
 Once you feel comfortable, you should graduate towards contributing to larger deep learning systems.
 
 Good luck on your journey.</br>
 I'll see you at work.
 
-## Recommend Resources
+### 1. Deep Learning
 
-### 1. Mathematics for Deep Learning
+*Mathematics for Deep Learning*
 ##### Recommended Books
 - Introduction to Probability for Data Science by Stanley Chan
 - Introduction to Linear Algebra by Gilbert Strang
 - Foundations of Linear Algebra for Data Science by Wanmo Kang and Kyunghyun Cho
-- Numerical Linear Algebra by Nick Trefethen and David Bau III
-- Numerical Linear Algebra by Yuji Nakatsukasa
-- Numerical Linear Algebra by Eric Darve
 
 ##### Recommended Lectures
 - Sanford CS109: Probability for Computer Scientists by Chris Piech
@@ -24,8 +22,7 @@ I'll see you at work.
 - MIT 18.S096: Matrix Calculus by Alan Edelman and Steven Johnson
 - UPenn STAT 4830: Numerical Optimization for Machine Learning by Damek Davis
 
-### 2. Deep Learning
-
+*Deep Learning*
 ##### Recommended Books
 - Speech and Language Processing by Jurafsky and Martin
 - The Elements of Statistical Learning by Friedman, Tibshirani, and Hastie
@@ -42,8 +39,9 @@ I'll see you at work.
 - Stanford CS336: Language Modeling from Scratch by Percy Liang
 - HuggingFace: Ultra-Scale Playbook: Training LLMs on GPU Clusters
 
-### 3. Systems Programming for Deep Learning
+### 2. Deep Learning Systems
 
+*Performance Engineering for Deep Learning*
 ##### Recommended Books
 - Computer Systems: A Programmer's Perspective by Randal Bryant and David O'Hallaron
 - Computer Organization and Design RISC-V Edition by David A. Patterson and John L. Hennessy
@@ -59,8 +57,7 @@ I'll see you at work.
 - UIUC ECE408: Programming Massively Parallel Processors by Wen-mei Hwu
 - Stanford CS149: Parallel Computing by Kayvon Fatahalian
 
-### 4. Compiler Construction for Deep Learning
-
+*Compiler Engineering for Deep Learning*
 ##### Recommended Books
 - Machine Learning Compiler by Tianqi Chen
 

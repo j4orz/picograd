@@ -13,6 +13,7 @@
 #recommended-books,
 #recommended-books-1,
 #recommended-books-2,
+#recommended-books-3,
 #recommended-lectures,
 #recommended-lectures-1,
 #recommended-lectures-2 {
@@ -23,6 +24,14 @@
 #recommended-lectures-1,
 #recommended-lectures-2 {
   margin-top: 0;
+}
+
+p:has(> em)+h5[id^="recommended-"] {
+  margin-top: 0;
+}
+
+p:has(> em:only-child) {
+  margin: 0;
 }
 
 #mathematics-for-machine-learning,
