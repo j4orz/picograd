@@ -8,12 +8,12 @@ my learning experience in the discipline of machine learning systems —
 the book that you are currently reading is my personal answer[^0] to these frustrations.
 
 It's inspired by the introductory computer science canon created by Schemers,
-which is two books masquerading as one.
+which is two books secretly masquerading as one.
 [SICP](https://mitp-content-server.mit.edu/books/content/sectbyfn/books_pres_0/6515/sicp.zip/index.html) and it's [dual](https://cs.brown.edu/~sk/Publications/Papers/Published/fffk-htdp-vs-sicp-journal/paper.pdf), [HTDP](https://htdp.org/), teach programming
-and programming languages by taking readers through an unbroken logical sequence, with a [flânnerie](https://cs.uwaterloo.ca/~plragde/flaneries/) like feel.
-The recent addition of [DCIC](https://dcic-world.org/), spawning from it's phylogonetic cousin [PAPL](https://papl.cs.brown.edu/2020/), was created to adjust the curriculum to the recent [shift in data science](https://cs.brown.edu/~sk/Publications/Papers/Published/kf-data-centric/paper.pdf) with emphasis on the *table* data structure.
+and programming languages by taking readers through an unbroken logical sequence in a [flânnerie](https://cs.uwaterloo.ca/~plragde/flaneries/)-like style.
+The recent addition of [DCIC](https://dcic-world.org/), spawning from it's phylogonetic cousin [PAPL](https://papl.cs.brown.edu/2020/), was created to adjust the curriculum to the recent [shift in data science](https://cs.brown.edu/~sk/Publications/Papers/Published/kf-data-centric/paper.pdf) by emphasizing the *tabular/table* data structure.
 This book follows suit, (*aspirationally* titled SITP),
-and is an experimental CS1/CS2 for software 2.0 which takes readers from training models to developing their own deep learning frameworks — for now, the book you are about to read is still higher quality than prompting a state of the art LLM to *"write me the SICP for software 2.0"*.
+and is an experimental CS1/CS2 for software 2.0 which takes readers from training models to developing their own deep learning frameworks. This book has been creatively handwritten for humans, and for now, achieves such a goal better than prompting a state of the art LLM to *"write me the SICP for software 2.0"*.
 
 If you empathize with some of my frustrations, you may benefit from the book too[^1].</br>
 Good luck on your journey.</br>
