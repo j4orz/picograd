@@ -110,3 +110,11 @@ p:has(> small > a[href="#table-of-contents"]) {
 h2:has(+ p > small > a[href="#table-of-contents"]) {
   margin-bottom: 0;
 }
+
+p:has(+ ul) {
+  margin-bottom: 0;
+}
+
+p + ul {
+  margin-top: 0;
+}

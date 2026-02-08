@@ -51,11 +51,12 @@ I'll see you at work.
 
 ##### Recommended Lectures
 - CMU 414/714 Deep Learning Systems
+- UTA Linear Algebra: Foundations to Frontiers by Robert van de Geijn and Margaret Meyers
 - MIT 6.172: Performance Engineering by Saman Amarasinghe, Charles Leiserson and Julian Shun
 - MIT 6.S894: Accelerated Computing by Jonathan Ragan-Kelley
+- Stanford CS149: Parallel Computing by Kayvon Fatahalian
 - Berkeley CS267: Applications of Parallel Computers by Katthie Yellick
 - UIUC ECE408: Programming Massively Parallel Processors by Wen-mei Hwu
-- Stanford CS149: Parallel Computing by Kayvon Fatahalian
 
 *Compiler Engineering for Deep Learning*
 ##### Recommended Books
