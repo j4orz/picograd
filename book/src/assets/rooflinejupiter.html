@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roofline — Milk-V Jupiter</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg: #0a0e17;
+    --panel: #111827;
+    --border: #1e293b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #38bdf8;
+    --green: #4ade80;
+    --amber: #fbbf24;
+    --rose: #fb7185;
+    --purple: #a78bfa;
+    --cyan: #22d3ee;
+    --orange: #fb923c;
+    --grid: #1e293b;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    padding: 24px 16px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .container { max-width: 960px; width: 100%; }
+
+  h1 {
+    font-family: 'Inter', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  h1 .sub {
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 15px;
+    margin-left: 12px;
+  }
+
+  .subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+  .subtitle .hl { color: var(--accent); }
+
+  .controls {
+    display: flex;
+    gap: 16px;
+    margin: 14px 0;
+    flex-wrap: wrap;
+  }
+  .controls label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .controls input[type="checkbox"] { accent-color: var(--amber); }
+  .controls .hint { color: var(--muted); font-size: 10px; }
+
+  .plot-wrap {
+    background: var(--panel);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    padding: 8px 4px 4px;
+    overflow: hidden;
+  }
+  .plot-wrap svg { width: 100%; height: auto; display: block; }
+
+  .panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  @media (max-width: 700px) { .panels { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    padding: 16px;
+  }
+  .card h3 {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  thead tr { border-bottom: 1px solid var(--border); }
+  th { text-align: left; padding: 4px 0; color: var(--muted); }
+  th:not(:first-child) { text-align: right; }
+  td { padding: 3px 0; }
+  td:not(:first-child) { text-align: right; }
+
+  .notes {
+    background: var(--panel);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    padding: 16px;
+    margin-top: 16px;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  .notes h3 {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+  .notes p { margin-bottom: 6px; }
+  .notes p:last-child { margin-bottom: 0; }
+  .notes .w { color: var(--text); }
+
+  .ceiling-line { transition: stroke-width 0.15s; }
+  .ceiling-line:hover { stroke-width: 3; }
+  .ceiling-group text { pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Roofline Model<span class="sub">Milk-V Jupiter · SpacemiT K1 (8× X60 @ 1.6 GHz)</span></h1>
+    <p class="subtitle">
+      Peak compute measured via <span class="hl">cpufp vfmacc.vv</span> ·
+      Memory: 32-bit LPDDR4X @ 2666 Mbps ·
+      VLEN=256 DLEN=128 · RVV 1.0 · RVA22
+    </p>
+  </header>
+
+  <div class="controls">
+    <label>
+      <input type="checkbox" id="cbRealistic" checked>
+      <span>Realistic BW (~7 GB/s)</span>
+      <span class="hint" id="bwHint"></span>
+    </label>
+    <label>
+      <input type="checkbox" id="cbGemm" checked>
+      <span>Show GEMM OI markers (FP32)</span>
+    </label>
+  </div>
+
+  <div class="plot-wrap">
+    <svg id="plot" viewBox="0 0 900 540"></svg>
+  </div>
+
+  <div class="panels">
+    <div class="card">
+      <h3 style="color:var(--accent)">Measured Peak Compute (cpufp vfmacc.vv)</h3>
+      <table>
+        <thead><tr><th>Precision</th><th>1 core</th><th>8 cores</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--cyan)">FP16</td><td>63.9</td><td>511.5 GFLOPS</td></tr>
+          <tr><td style="color:var(--accent)">FP32</td><td>32.0</td><td>255.8 GFLOPS</td></tr>
+          <tr><td style="color:var(--green)">FP64</td><td>16.0</td><td>127.9 GFLOPS</td></tr>
+          <tr style="border-top:1px solid var(--border)"><td style="color:var(--purple)">INT8 IME</td><td style="color:var(--muted)">—</td><td>2.05 TOPS (4c only)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--amber)">Ridge Points (FP32, 8 cores)</h3>
+      <table>
+        <thead><tr><th>Bandwidth</th><th>Ridge OI</th><th>Min N for compute-bound</th></tr></thead>
+        <tbody>
+          <tr><td>Theoretical (10.66 GB/s)</td><td>24.0 FLOP/B</td><td>N ≈ 144</td></tr>
+          <tr><td>Realistic (~7 GB/s)</td><td>36.5 FLOP/B</td><td>N ≈ 220</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.5">
+        Square NxN FP32 GEMM: OI = N/6 FLOP/byte.<br>
+        Orange markers show where each N falls on the roofline.
+      </p>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h3>Microarchitecture Notes</h3>
+    <p><span class="w">X60 core:</span> In-order, dual-issue. VLEN=256, DLEN=128 (128-bit execution datapath). Two vector units can execute in parallel to the scalar FP unit. Microarchitecture closely resembles XuanTie C908 but with wider VLEN.</p>
+    <p><span class="w">FP32 per-core throughput:</span> ~32 GFLOPS → ~20 FLOPS/cycle @ 1.6 GHz. This implies ~10 FP32 FMAs/cycle sustained: 2 vector units × (128b / 32b) = 8 FMAs from vector + likely 1-2 scalar FMA contributing.</p>
+    <p><span class="w">IME (Integer Matrix Extension):</span> SpacemiT custom vendor extension for INT8 matrix multiply. Only available on Cluster 0 (cores 0–3). Delivers ~2 TOPS across 4 cores — this is the "2.0 TOPS AI computing power" in SpacemiT's marketing.</p>
+    <p><span class="w">Memory:</span> Single 32-bit LPDDR4X bus @ 2666 MT/s = 10.66 GB/s theoretical peak. Realistic sustained bandwidth with these in-order cores is likely 6–8 GB/s. This makes the ridge point quite high (~24–37 FLOP/byte for FP32 8-core), meaning GEMM needs N≥144–220 to become compute-bound.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ── Data ──
+  const CEILINGS = [
+    { name: "INT8 IME (4c)",  gflops: 2046,   color: "#a78bfa", dash: "4,3" },
+    { name: "FP16 RVV (8c)",  gflops: 511.45, color: "#22d3ee", dash: "4,3" },
+    { name: "FP32 RVV (8c)",  gflops: 255.75, color: "#38bdf8", dash: "" },
+    { name: "FP32 RVV (1c)",  gflops: 31.97,  color: "#38bdf8", dash: "8,4" },
+    { name: "FP64 RVV (8c)",  gflops: 127.86, color: "#4ade80", dash: "4,3" },
+    { name: "FP64 RVV (1c)",  gflops: 15.99,  color: "#4ade80", dash: "8,4" },
+  ];
+
+  const BW_THEORETICAL = 10.66;
+  const BW_REALISTIC   = 7.0;
+
+  const GEMM_SIZES = [4, 8, 16, 32, 64, 128, 256, 512, 1024];
+  const gemmOI = (N) => (2 * N) / (3 * 4); // FP32
+
+  // ── Plot geometry ──
+  const W = 900, H = 540;
+  const pad = { top: 40, right: 30, bottom: 60, left: 72 };
+  const pw = W - pad.left - pad.right;
+  const ph = H - pad.top - pad.bottom;
+
+  const OI_MIN = 0.125, OI_MAX = 512;
+  const PERF_MIN = 0.5, PERF_MAX = 4096;
+  const LOG_OI = [Math.log2(OI_MIN), Math.log2(OI_MAX)];
+  const LOG_P  = [Math.log2(PERF_MIN), Math.log2(PERF_MAX)];
+
+  const xOf = (oi) => pad.left + ((Math.log2(oi) - LOG_OI[0]) / (LOG_OI[1] - LOG_OI[0])) * pw;
+  const yOf = (p)  => pad.top + ph - ((Math.log2(p) - LOG_P[0]) / (LOG_P[1] - LOG_P[0])) * ph;
+  const clampX = (x) => Math.max(pad.left, Math.min(pad.left + pw, x));
+  const clampY = (y) => Math.max(pad.top, Math.min(pad.top + ph, y));
+
+  // ── SVG helpers ──
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const svg = document.getElementById("plot");
+
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+    (parent || svg).appendChild(e);
+    return e;
+  }
+
+  function clear(parent) { while (parent.firstChild) parent.removeChild(parent.firstChild); }
+
+  // ── State ──
+  let showRealistic = true;
+  let showGemm = true;
+
+  // ── Render ──
+  function render() {
+    clear(svg);
+    const bw = showRealistic ? BW_REALISTIC : BW_THEORETICAL;
+    const bwOther = showRealistic ? BW_THEORETICAL : BW_REALISTIC;
+
+    // Defs
+    const defs = el("defs", {});
+    const grad = el("linearGradient", { id: "bwGrad", x1: "0%", y1: "100%", x2: "100%", y2: "0%" }, defs);
+    el("stop", { offset: "0%", "stop-color": "#fbbf24", "stop-opacity": "0.9" }, grad);
+    el("stop", { offset: "100%", "stop-color": "#fb923c", "stop-opacity": "0.9" }, grad);
+    const clip = el("clipPath", { id: "pClip" }, defs);
+    el("rect", { x: pad.left, y: pad.top, width: pw, height: ph }, clip);
+
+    // Grid
+    for (let e = Math.ceil(LOG_OI[0]); e <= Math.floor(LOG_OI[1]); e++) {
+      const t = Math.pow(2, e);
+      el("line", { x1: xOf(t), y1: pad.top, x2: xOf(t), y2: pad.top + ph, stroke: "#1e293b", "stroke-width": 0.5 });
+      el("text", { x: xOf(t), y: H - pad.bottom + 18, "text-anchor": "middle", fill: "#64748b", "font-size": 10, "font-family": "JetBrains Mono, monospace" }).textContent = t >= 1 ? t : "1/" + (1/t);
+    }
+    for (let e = Math.ceil(LOG_P[0]); e <= Math.floor(LOG_P[1]); e++) {
+      const t = Math.pow(2, e);
+      el("line", { x1: pad.left, y1: yOf(t), x2: pad.left + pw, y2: yOf(t), stroke: "#1e293b", "stroke-width": 0.5 });
+      el("text", { x: pad.left - 8, y: yOf(t) + 4, "text-anchor": "end", fill: "#64748b", "font-size": 10, "font-family": "JetBrains Mono, monospace" }).textContent = t;
+    }
+
+    // Axis labels
+    el("text", { x: pad.left + pw / 2, y: H - 8, "text-anchor": "middle", fill: "#64748b", "font-size": 12, "font-family": "Inter, sans-serif", "font-weight": 500 }).textContent = "Operational Intensity (FLOP/byte)";
+    const yLabel = el("text", { x: 14, y: pad.top + ph / 2, "text-anchor": "middle", fill: "#64748b", "font-size": 12, "font-family": "Inter, sans-serif", "font-weight": 500, transform: `rotate(-90, 14, ${pad.top + ph / 2})` });
+    yLabel.textContent = "Performance (GFLOPS)";
+
+    const g = el("g", { "clip-path": "url(#pClip)" });
+
+    // BW roof (main)
+    el("line", {
+      x1: xOf(OI_MIN), y1: yOf(bw * OI_MIN), x2: xOf(OI_MAX), y2: yOf(bw * OI_MAX),
+      stroke: "url(#bwGrad)", "stroke-width": 2.5
+    }, g);
+
+    // BW roof (ghost)
+    el("line", {
+      x1: xOf(OI_MIN), y1: yOf(bwOther * OI_MIN), x2: xOf(OI_MAX), y2: yOf(bwOther * OI_MAX),
+      stroke: "#fbbf24", "stroke-width": 1, "stroke-dasharray": "3,4", opacity: 0.3
+    }, g);
+
+    // Compute ceilings
+    CEILINGS.forEach((c) => {
+      const ridgeOI = c.gflops / bw;
+      const cg = el("g", { class: "ceiling-group" }, g);
+
+      const lineAttrs = {
+        x1: xOf(Math.max(ridgeOI, OI_MIN)), y1: yOf(c.gflops),
+        x2: xOf(OI_MAX), y2: yOf(c.gflops),
+        stroke: c.color, "stroke-width": 1.8, opacity: 0.85, class: "ceiling-line"
+      };
+      if (c.dash) lineAttrs["stroke-dasharray"] = c.dash;
+      el("line", lineAttrs, cg);
+
+      if (ridgeOI >= OI_MIN && ridgeOI <= OI_MAX) {
+        el("circle", { cx: xOf(ridgeOI), cy: yOf(c.gflops), r: 3.5, fill: c.color, stroke: "#0a0e17", "stroke-width": 1.5 }, cg);
+      }
+
+      const label = c.gflops >= 1000 ? (c.gflops / 1000).toFixed(1) + "T" : c.gflops.toFixed(0) + "G";
+      el("text", {
+        x: xOf(OI_MAX) - 4, y: yOf(c.gflops) - 6,
+        "text-anchor": "end", fill: c.color, "font-size": 10,
+        "font-family": "JetBrains Mono, monospace", "font-weight": 400, opacity: 0.9
+      }, cg).textContent = c.name + " = " + label + "FLOPS";
+    });
+
+    // GEMM dots
+    if (showGemm) {
+      GEMM_SIZES.forEach((N) => {
+        const oi = gemmOI(N);
+        if (oi < OI_MIN || oi > OI_MAX) return;
+        const att = Math.min(255.75, bw * oi);
+        if (att < PERF_MIN) return;
+
+        el("line", {
+          x1: xOf(oi), y1: yOf(PERF_MIN), x2: xOf(oi), y2: yOf(att),
+          stroke: "#fb923c", "stroke-width": 0.8, "stroke-dasharray": "2,3", opacity: 0.5
+        }, g);
+        el("circle", { cx: xOf(oi), cy: yOf(att), r: 3, fill: "#fb923c", stroke: "#0a0e17", "stroke-width": 1 }, g);
+        el("text", {
+          x: xOf(oi), y: yOf(PERF_MIN) + 14,
+          "text-anchor": "middle", fill: "#fb923c", "font-size": 8,
+          "font-family": "JetBrains Mono, monospace", opacity: 0.8
+        }, g).textContent = N;
+      });
+    }
+
+    // BW label
+    const lx = xOf(1.5), ly = yOf(bw * 1.5) - 8;
+    const bwLabel = el("text", {
+      x: lx, y: ly, fill: "#fbbf24", "font-size": 10,
+      "font-family": "JetBrains Mono, monospace", "font-weight": 500,
+      transform: `rotate(-38, ${lx}, ${ly})`
+    });
+    bwLabel.textContent = (showRealistic ? "~7" : "10.66") + " GB/s LPDDR4X" + (showRealistic ? " (est. sustained)" : " (theoretical)");
+
+    // Border
+    el("rect", { x: pad.left, y: pad.top, width: pw, height: ph, fill: "none", stroke: "#1e293b", "stroke-width": 1 });
+
+    // Tooltip crosshair layer
+    const ttGroup = el("g", { id: "ttG", style: "pointer-events:none" });
+    const ttLineX = el("line", { stroke: "#64748b", "stroke-width": 0.5, "stroke-dasharray": "3,3", opacity: 0 }, ttGroup);
+    const ttLineY = el("line", { stroke: "#64748b", "stroke-width": 0.5, "stroke-dasharray": "3,3", opacity: 0 }, ttGroup);
+    const ttRect = el("rect", { rx: 4, fill: "#0a0e17", stroke: "#1e293b", opacity: 0 }, ttGroup);
+    const ttText = el("text", { fill: "#e2e8f0", "font-size": 10, "font-family": "JetBrains Mono, monospace", opacity: 0 }, ttGroup);
+
+    // Invisible hover rect
+    const hoverRect = el("rect", { x: pad.left, y: pad.top, width: pw, height: ph, fill: "transparent" });
+    hoverRect.addEventListener("mousemove", (e) => {
+      const rect = svg.getBoundingClientRect();
+      const scale = W / rect.width;
+      const mx = (e.clientX - rect.left) * scale;
+      const my = (e.clientY - rect.top) * scale;
+
+      const logOI = LOG_OI[0] + ((mx - pad.left) / pw) * (LOG_OI[1] - LOG_OI[0]);
+      const logP = LOG_P[1] - ((my - pad.top) / ph) * (LOG_P[1] - LOG_P[0]);
+      const oi = Math.pow(2, logOI);
+      const perf = Math.pow(2, logP);
+
+      ttLineX.setAttribute("x1", mx); ttLineX.setAttribute("y1", pad.top);
+      ttLineX.setAttribute("x2", mx); ttLineX.setAttribute("y2", pad.top + ph);
+      ttLineX.setAttribute("opacity", 0.4);
+      ttLineY.setAttribute("x1", pad.left); ttLineY.setAttribute("y1", my);
+      ttLineY.setAttribute("x2", pad.left + pw); ttLineY.setAttribute("y2", my);
+      ttLineY.setAttribute("opacity", 0.4);
+
+      const tx = Math.min(mx + 10, W - pad.right - 170);
+      ttRect.setAttribute("x", tx); ttRect.setAttribute("y", my - 30);
+      ttRect.setAttribute("width", 160); ttRect.setAttribute("height", 28);
+      ttRect.setAttribute("opacity", 0.95);
+      ttText.setAttribute("x", tx + 8); ttText.setAttribute("y", my - 12);
+      ttText.setAttribute("opacity", 1);
+
+      const fmtN = (n) => n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n >= 1 ? n.toFixed(2) : n.toFixed(3);
+      ttText.textContent = "OI=" + fmtN(oi) + " P=" + fmtN(perf) + "G";
+    });
+
+    hoverRect.addEventListener("mouseleave", () => {
+      ttLineX.setAttribute("opacity", 0);
+      ttLineY.setAttribute("opacity", 0);
+      ttRect.setAttribute("opacity", 0);
+      ttText.setAttribute("opacity", 0);
+    });
+  }
+
+  // ── Controls ──
+  const cbRealistic = document.getElementById("cbRealistic");
+  const cbGemm = document.getElementById("cbGemm");
+  const bwHint = document.getElementById("bwHint");
+
+  function update() {
+    showRealistic = cbRealistic.checked;
+    showGemm = cbGemm.checked;
+    bwHint.textContent = showRealistic ? "" : "theoretical 10.66 GB/s";
+    render();
+  }
+
+  cbRealistic.addEventListener("change", update);
+  cbGemm.addEventListener("change", update);
+  update();
+})();
+</script>
+</body>
+</html>
