@@ -11,7 +11,40 @@ from teenygrad.runtime import Device
 from teenygrad.dtype import Const, DType, DTypeLike, dtypes
 import teenygrad.dtype
 
-all_tensors: dict[weakref.ref[Tensor], None] = {}
+class InterpretedTensor:
+  @staticmethod
+  def arange(end: int) -> Self: return InterpretedTensor((end), list(range(end)))
+  @staticmethod
+  def zeros(shape: tuple[int, ...]) -> Self:
+    size = math.prod(shape)
+    tensor = InterpretedTensor((size,), [0.0]*size).reshape(shape)
+    return tensor
+  @staticmethod
+  def ones(shape: tuple[int, ...]) -> Self:
+    size = math.prod(shape)
+    tensor = InterpretedTensor((size,), [1.0]*size).reshape(shape)
+    return tensor
+  
+  def __init__(self, shape: tuple[int, ...], storage: list[float]) -> Self:
+    self.shape = shape
+    self.stride = [math.prod(shape[i+1:]) for i in range(len(shape))] # math.prod([]) produces 1
+    self.storage = storage
+
+  def reshape(self, shape: tuple[int, ...]) -> Self:
+    self.shape = shape
+    self.stride = [math.prod(shape[i+1:]) for i in range(len(shape))] # math.prod([]) produces 1
+    return self
+  
+  def __repr__(self) -> str:
+    return f"InterpretedTensor({self.chunk(self.storage, self.shape)})"
+
+  @staticmethod
+  def chunk(flat, shape):
+    if len(shape) == 1: return flat[:shape[0]]
+    size = len(flat) // shape[0]
+    return [InterpretedTensor.chunk(flat[i*size:(i+1)*size], shape[1:]) for i in range(shape[0])]
+
+all_tensors: dict[weakref.ref[CompiledTensor], None] = {}
 def all_same(items:tuple[T, ...]|list[T]): return all(x == items[0] for x in items)
 def all_int(t: Sequence[Any]) -> TypeGuard[tuple[int, ...]]: return all(isinstance(s, int) for s in t)
 
@@ -29,9 +62,7 @@ def get_shape(x) -> tuple[int, ...]:
   if not all_same(subs:=[get_shape(xi) for xi in x]): raise ValueError(f"inhomogeneous shape from {x}")
   return (len(subs),) + (subs[0] if subs else ())
 
-
-
-class Tensor(TensorDSL):
+class CompiledTensor(TensorDSL):
   """
   the Tensor class is a *sugared handle* to the expression graph of vertices V=Set<OpNode> and edges E=Set<(OpNode,OpNode)>,
   which represents teenygrad's primitive understanding (intermediate representation) of the specified expression f(x).
@@ -47,21 +78,9 @@ class Tensor(TensorDSL):
   """
 
   # ************ Tensor Data + Constructors ************
-  __slots__ = "shape", "stride", "buf", "_device" \
+  __slots__ = "shape", "stride", "storage", "_device" \
               "opnode", \
               "grad", "requires_grad"
-
-  @property
-  def device(self) -> str|tuple[str, ...]:
-    if helpers.EAGER: return self._device
-    elif helpers.GRAPH: return self.opnode.device
-
-  @property
-  def dtype(self) -> DType:
-    if helpers.EAGER: return self._dtype
-    elif helpers.GRAPH: return self.opnode.dtype
-  @property
-  def ndim(self) -> int: raise NotImplementedError("TODO")
 
   def __init__(self, input: Const|bytes|list|tuple|None, # removed OpNode, np.ndarray, pathlib.Path support (for now).
                device: str|tuple|list|None=None, dtype: DTypeLike|None=None, requires_grad: bool|None=None, force_unique: bool=False): # kwargs
@@ -70,7 +89,7 @@ class Tensor(TensorDSL):
     """
     if device is None and isinstance(input, pathlib.Path): device = f"DISK:{input.resolve()}"  # keep it on the disk if device is None
     if DEBUG >= 1: print("START Tensor.__init__() initializing tensor with dtype:", dtype, "on device:", device, "...")
-    self.grad: Tensor | None = None                                                            # tensors can have gradients if you have called .backward
+    self.grad: CompiledTensor | None = None                                                            # tensors can have gradients if you have called .backward
     self.requires_grad: bool | None = requires_grad                                            # NOTE: this can be in three states. False and None: no gradient, True: gradient. None (the default) will be updated to True if it's put in an optimizer
     device: str | tuple[str, ...] = tuple(Device._canonicalize_device(x) for x in device) if isinstance(device, (tuple, list)) else Device._canonicalize_device(device)
     dtype: DType | None = teenygrad.dtype.to_dtype(dtype) if dtype is not None else None
@@ -78,12 +97,12 @@ class Tensor(TensorDSL):
     if helpers.EAGER:
       self.shape: tuple[int] | None = []
       self.stride: tuple[int] | None = []
-      self.buf: None = None
+      self.storage: None = None
       self.offset: int = 0
       self._device, self._dtype = device, dtype
 
     elif helpers.GRAPH:
-      self.opnode: OpNode = Tensor._input_to_opnode(input, device, dtype, force_unique)
+      self.opnode: OpNode = CompiledTensor._input_to_opnode(input, device, dtype, force_unique)
       print(f"DONE Tensor.__init__() initializing tensor with dtype: {dtype} on device {device} with input {input}\n")
       print(f"Tensor.opnode is now: {self.opnode}\n\n\n")
     else: raise NotImplementedError("todo")
@@ -100,15 +119,27 @@ class Tensor(TensorDSL):
     assert self.numel() == 1, "must have one element for item"
     return self.data()[(0,) * len(self.shape)]
 
+  @property
+  def device(self) -> str|tuple[str, ...]:
+    if helpers.EAGER: return self._device
+    elif helpers.GRAPH: return self.opnode.device
+
+  @property
+  def dtype(self) -> DType:
+    if helpers.EAGER: return self._dtype
+    elif helpers.GRAPH: return self.opnode.dtype
+  @property
+  def ndim(self) -> int: raise NotImplementedError("TODO")
+
   # high level: .randn_like, randint, normal, uniform, scaled_uniform, kaiming_normal, randperm, multinomial
   @staticmethod
-  def zeros(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 0.0)._evaluate()
+  def zeros(*shape, **kwargs) -> Self: return CompiledTensor.full(helpers.normalize_shape(*shape), 0.0)._evaluate()
   @staticmethod
-  def ones(*shape, **kwargs) -> Self: return Tensor.full(helpers.normalize_shape(*shape), 1.0)._evaluate()  
+  def ones(*shape, **kwargs) -> Self: return CompiledTensor.full(helpers.normalize_shape(*shape), 1.0)._evaluate()  
   @staticmethod
   def full(shape: tuple[int, ...], fill: Const) -> Self:
     new_shape = (1, )*len(helpers.normalize_shape(shape))
-    return Tensor(fill, force_unique=True).reshape(new_shape).expand(new_shape)._evaluate()
+    return CompiledTensor(fill, force_unique=True).reshape(new_shape).expand(new_shape)._evaluate()
   
   @staticmethod
   def _input_to_opnode(input: Const|bytes|list|tuple|OpNode|None, device: str, dtype: DType|None, force_unique) -> OpNode:
@@ -116,14 +147,14 @@ class Tensor(TensorDSL):
     
     if input is None:                                                           opnode = OpNode.const(dtype or dtypes.default_float, 0, device, (), unique=force_unique)
     elif isinstance(input, get_args(Const)):                                    opnode = OpNode.const(dtype or dtypes.from_py(input), input, device, (), unique=force_unique)
-    elif isinstance(input, bytes):                                              opnode = Tensor._hostseq2dslopnode(input, dtypes.uint8 if dtype is None else dtype)
+    elif isinstance(input, bytes):                                              opnode = CompiledTensor._hostseq2dslopnode(input, dtypes.uint8 if dtype is None else dtype)
     elif isinstance(input, (list, tuple)):
       if dtype is None:
         if (d := fully_flatten(input)) and all(isinstance(s, bool) for s in d): dtype = dtypes.bool
         else:                                                                   dtype = dtypes.default_int if d and all_int(d) else dtypes.default_float # NOTE: this works because all_int([True, False]) is True
 
-      if dtype in [dtypes.bfloat16, *dtypes.fp8s]:                              opnode = Tensor(Tensor._hostseq2dslopnode(input, dtypes.float32), device=device).cast(dtype).uop
-      else:                                                                     opnode = Tensor._hostseq2dslopnode(input, dtype)
+      if dtype in [dtypes.bfloat16, *dtypes.fp8s]:                              opnode = CompiledTensor(CompiledTensor._hostseq2dslopnode(input, dtypes.float32), device=device).cast(dtype).uop
+      else:                                                                     opnode = CompiledTensor._hostseq2dslopnode(input, dtype)
       if DEBUG >= 1: print("DONE _input_to_opnode converting hostseq to dslopnode...")
     elif isinstance(input, OpNode):
       assert dtype is None or dtype==input.dtype, f"dtype doesn't match ({dtype} vs {input.dtype}), and casting isn't supported"
@@ -200,7 +231,7 @@ class Tensor(TensorDSL):
       kernel_bin = runtime.compiler.compile(kernel_src.read_text())
       kernel_handle = runtime.kernel(kernel_name, kernel_bin)
 
-      other, output, n = inputs[0], Tensor(None, self.device), self.numel()
+      other, output, n = inputs[0], CompiledTensor(None, self.device), self.numel()
       globals, locals = ((n + 255) // 256, 1, 1), (256, 1, 1)
       kernel_handle(output.buf, self.buf, other.buf,
                     globals, locals, vals=(1024,))
@@ -213,13 +244,12 @@ class Tensor(TensorDSL):
       needs_input_grad = [t.requires_grad for t in (self,)+other]
       requires_grad = True if any(needs_input_grad) else None if None in needs_input_grad else False
       output_opnode: OpNode = f(*[t.opnode for t in (self,)+other])
-      output = Tensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
+      output = CompiledTensor(output_opnode, device=output_opnode.device, requires_grad=requires_grad)
       return output
     else:
       raise NotImplementedError("todo")
 
-   # todo: other is Self. not Const or OpNode
-  def _forward_computebinop(self, other: Self, opcode: OpCode, reverse): # overriding provided, so Tensor operations go through dtype and broacasting logic below
+   # todo: other is Self. not Const or OpNodestorage  def _forward_computebinop(self, other: Self, opcode: OpCode, reverse): # overriding provided, so Tensor operations go through dtype and broacasting logic below
     print(f"self: {self}",)
     print(f"other: {other}",)
     import sys
@@ -276,26 +306,25 @@ class Tensor(TensorDSL):
     
     # backward_cast = True
     # self, other = self.cast(sum_acc_dtype(self.dtype) if backward_cast else self.dtype)._broadcast_to(broadcasted_shape).cast(self.dtype), \
-    #        other.cast(sum_acc_dtype(other.dtype) if backward_cast else other.dtype)._broadcast_to(broadcasted_shape).cast(other.dtype)    
-  
+    #        other.cast(sum_acc_dtype(other.dtype) if backward_cast else other.dtype)._broadcast_to(broadcasted_shape).cast(other.dtype)    storage  
   # def _apply_movement_opcode(self, opcode: OpCode, *inputs):
   #   return self._forward(OpNode._apply_movement_opcode, extra_args=(opcode,), arg=arg)
 
-  def _backward(self, grad: Tensor|None=None) -> Self:
+  def _backward(self, grad: CompiledTensor|None=None) -> Self:
     """
     backward performs by collecting tensors, computing gradients with automatic differentiation, and updating said tensors.
     """
     # 1. collect all tensors that requires grad by topologically sorting the graph of uops and filter
     all_uops = self.opnode.toposort()
-    tensors_require_grad: list[Tensor] = [t for tref in all_tensors if (t:=tref()) is not None and t.opnode in all_uops and t.requires_grad]
+    tensors_require_grad: list[CompiledTensor] = [t for tref in all_tensors if (t:=tref()) is not None and t.opnode in all_uops and t.requires_grad]
     uops_require_grad = [t.opnode for t in tensors_require_grad]
     assert grad is not None or self.shape == tuple(), "when no gradient is provided, backward must be called on a scalar tensor"
     if not (self.is_floating_point() and all(t.is_floating_point() for t in tensors_require_grad)): raise RuntimeError("only float Tensors have gradient")
     
     # 2. compute the gradient with a map of tensors to partials
-    if grad is None: grad = Tensor(1.0, dtype=self.dtype, device=self.device, requires_grad=False) # base case is 1.0
-    tens2grads = Tensor._automatically_differentiate(self.opnode, grad.opnode, set(uops_require_grad)) # skipping materializing zerod grads for now
-    grads = [Tensor(g, device=t.device) for t,g in zip(tens2grads.keys, tens2grads.values)] # initialize tensor grads on device
+    if grad is None: grad = CompiledTensor(1.0, dtype=self.dtype, device=self.device, requires_grad=False) # base case is 1.0
+    tens2grads = CompiledTensor._automatically_differentiate(self.opnode, grad.opnode, set(uops_require_grad)) # skipping materializing zerod grads for now
+    grads = [CompiledTensor(g, device=t.device) for t,g in zip(tens2grads.keys, tens2grads.values)] # initialize tensor grads on device
     
     # 3. update the tensors that require grad with the gradient's partials
     for t,g in zip(tensors_require_grad, grads):
@@ -337,4 +366,4 @@ class Tensor(TensorDSL):
 
     return tens2grads
 
-__all__ = ["Tensor"]
+__all__ = ["CompiledTensor"]
