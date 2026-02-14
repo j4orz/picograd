@@ -24,10 +24,14 @@ print("******** second, the expression graph ***********")
 print("******** third, a tensor which is a sugared hanlde to the expression graph  ***********")
 
 from teenygrad import InterpretedTensor
-x = InterpretedTensor.ones((3, 4))
-y = InterpretedTensor.ones((3, 4))
-print(x)
-print(x)
+a = InterpretedTensor.arange(12).reshape((3,4))
+b = InterpretedTensor.arange(12).reshape((4,5))
+print(a)
+print(b)
+c = a@b
+# y = InterpretedTensor.ones((3, 4))
+# print(y)
+# print(x+y)
 
 # from teenygrad import CompiledTensor
 # from teenygrad.dtype import dtypes
