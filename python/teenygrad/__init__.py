@@ -23,8 +23,8 @@ teenygrad comes with free course notes. https://j4orz.ai/sitp/
   - in part 3 you implement a fusion compiler with `OpNode` graph IR for the age of scaling.
 """
 from .frontend import nn, optim
-from .frontend.tensor import Tensor
-__all__ = ["Tensor"]
+from .frontend.tensor import InterpretedTensor, CompiledTensor
+__all__ = ["InterpretedTensor", "CompiledTensor"]
 
 from importlib import import_module as _import_module
 teenygradrs = _import_module("teenygrad.rs")

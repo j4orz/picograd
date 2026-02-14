@@ -19,17 +19,23 @@ print("******** first, the runtime with it's memory and compute management  ****
 # assert val == 5 # check the data out
 
 print("******** second, the expression graph ***********")
-DEVICE = "CUDA"
 # OpNodes are produced by the runtime's compute(kernel compiler) and memory(buffer allocator) 
 
 print("******** third, a tensor which is a sugared hanlde to the expression graph  ***********")
 
-from teenygrad import Tensor
+from teenygrad import InterpretedTensor
+x = InterpretedTensor.ones((3, 4))
+y = InterpretedTensor.ones((3, 4))
+print(x)
+print(x)
+
+# from teenygrad import CompiledTensor
 # from teenygrad.dtype import dtypes
 
-x = Tensor([2], device=DEVICE) #, dtype=dtypes.int32, device=DEVICE)
-y = Tensor([3], device=DEVICE) #, dtype=dtypes.int32, device=DEVICE)
-z = x + y
+# DEVICE = "PYTHON"
+# x = CompiledTensor([2], device=DEVICE) #, dtype=dtypes.int32, device=DEVICE)
+# y = CompiledTensor([3], device=DEVICE) #, dtype=dtypes.int32, device=DEVICE)
+# z = x + y
 
 # check the data out
 # print(val:=z.item())

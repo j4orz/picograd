@@ -1,9 +1,9 @@
-from .tensor import Tensor
+from .tensor import CompiledTensor
 
 class Linear:
   def __init__(self, n, m, bias=True):
-    self.W_nm = Tensor.randn((n, m), generator=g) * (5/3)/n**0.5 # kaiming init (He et al. 2015)
-    self.b_m = Tensor.zeros(m) if bias else None
+    self.W_nm = CompiledTensor.randn((n, m), generator=g) * (5/3)/n**0.5 # kaiming init (He et al. 2015)
+    self.b_m = CompiledTensor.zeros(m) if bias else None
 
   def __call__(self, x_n):
     self.y_m = x_n @ self.W_nm
