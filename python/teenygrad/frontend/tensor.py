@@ -13,16 +13,16 @@ import teenygrad.dtype
 
 class InterpretedTensor:
   @staticmethod
-  def arange(end: int) -> Self: return InterpretedTensor((end), list(range(end)))
+  def arange(end: int) -> Self: return InterpretedTensor((end,), list(range(end)))
   @staticmethod
   def zeros(shape: tuple[int, ...]) -> Self:
-    size = math.prod(shape)
-    tensor = InterpretedTensor((size,), [0.0]*size).reshape(shape)
+    numel = math.prod(shape)
+    tensor = InterpretedTensor((numel,), [0.0]*numel).reshape(shape)
     return tensor
   @staticmethod
   def ones(shape: tuple[int, ...]) -> Self:
-    size = math.prod(shape)
-    tensor = InterpretedTensor((size,), [1.0]*size).reshape(shape)
+    numel = math.prod(shape)
+    tensor = InterpretedTensor((numel,), [1.0]*numel).reshape(shape)
     return tensor
   
   def __init__(self, shape: tuple[int, ...], storage: list[float]) -> Self:
@@ -37,12 +37,50 @@ class InterpretedTensor:
   
   def __repr__(self) -> str:
     return f"InterpretedTensor({self.chunk(self.storage, self.shape)})"
+  
+  @property
+  def numel(self): return math.prod(self.shape) # np (and thus jax) call this .size
+  @property
+  def ndim(self): return len(self.shape)
 
   @staticmethod
   def chunk(flat, shape):
     if len(shape) == 1: return flat[:shape[0]]
     size = len(flat) // shape[0]
     return [InterpretedTensor.chunk(flat[i*size:(i+1)*size], shape[1:]) for i in range(shape[0])]
+  
+  def __radd__(self, other: Self) -> Self: return self.__add__(other)
+  def __add__(self, other: Self) -> Self:
+    return InterpretedTensor(self.shape, [a + b for a, b in zip(self.storage, other.storage)])
+
+  def __rmatmul__(self, other: Self) -> Self: return other.__matmul__(self) # GEMM does not commute: AB != BA
+  def __matmul__(self, other: Self) -> Self:
+    if other.ndim == 1: # gemv
+      import sys, array
+      sys.stdout.flush()
+      m, n = self.shape[0], self.shape[1]
+      alpha, beta = 1, 1
+      a, x, y = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*m)
+      teenygrad.rs.cpu_kernels.sgemv(m, n, alpha, beta, a, x, y)
+      sys.stdout.flush()
+      return InterpretedTensor((m,), list(y))
+    elif other.ndim == 2: # gemm
+      import sys
+      import array
+      sys.stdout.flush()
+      m, n, p = self.shape[0], other.shape[1], self.shape[0]
+      alpha, beta = 1, 1
+      a, b, c = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*(m * n))
+      teenygrad.rs.cpu_kernels.sgemm(m, n, p, alpha, beta, a, b, c)
+      sys.stdout.flush()
+      output_tensor = InterpretedTensor((m,n), list(c))
+      return output_tensor
+      
+    else:
+      raise NotImplementedError("todo")
+
+  
+
 
 all_tensors: dict[weakref.ref[CompiledTensor], None] = {}
 def all_same(items:tuple[T, ...]|list[T]): return all(x == items[0] for x in items)
