@@ -23,12 +23,17 @@ print("******** second, the expression graph ***********")
 
 print("******** third, a tensor which is a sugared hanlde to the expression graph  ***********")
 
-from teenygrad import InterpretedTensor
-a = InterpretedTensor.arange(12).reshape((3,4))
-b = InterpretedTensor.arange(12).reshape((4,5))
-print(a)
-print(b)
+import numpy as np
+a, b = np.arange(12.0).reshape((3,4)), np.arange(20).reshape((4,5))
 c = a@b
+print(c)
+
+from teenygrad import InterpretedTensor
+a, b = InterpretedTensor.arange(12).reshape((3,4)), InterpretedTensor.arange(20).reshape((4,5))
+c = a@b
+print(c)
+
+
 # y = InterpretedTensor.ones((3, 4))
 # print(y)
 # print(x+y)

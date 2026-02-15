@@ -11,6 +11,10 @@ from teenygrad.runtime import Device
 from teenygrad.dtype import Const, DType, DTypeLike, dtypes
 import teenygrad.dtype
 
+
+
+import array
+
 class InterpretedTensor:
   @staticmethod
   def arange(end: int) -> Self: return InterpretedTensor((end,), list(range(end)))
@@ -51,12 +55,15 @@ class InterpretedTensor:
   
   def __radd__(self, other: Self) -> Self: return self.__add__(other)
   def __add__(self, other: Self) -> Self:
-    return InterpretedTensor(self.shape, [a + b for a, b in zip(self.storage, other.storage)])
+    n, alpha = self.numel, 1
+    x, y = array.array('f', self.storage), array.array('f', other.storage)
+    teenygrad.rs.cpu.saxpy(n, alpha, x, y) # y=axpy
+    return InterpretedTensor(self.shape, list(y))
 
   def __rmatmul__(self, other: Self) -> Self: return other.__matmul__(self) # GEMM does not commute: AB != BA
   def __matmul__(self, other: Self) -> Self:
     if other.ndim == 1: # gemv
-      import sys, array
+      import sys
       sys.stdout.flush()
       m, n = self.shape[0], self.shape[1]
       alpha, beta = 1, 1
@@ -68,14 +75,13 @@ class InterpretedTensor:
       import sys
       import array
       sys.stdout.flush()
-      m, n, p = self.shape[0], other.shape[1], self.shape[0]
+      m, n, p = self.shape[0], other.shape[1], self.shape[1]
       alpha, beta = 1, 1
       a, b, c = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*(m * n))
-      teenygrad.rs.cpu_kernels.sgemm(m, n, p, alpha, beta, a, b, c)
+      teenygrad.rs.cpu.sgemm(m, n, p, alpha, beta, a, b, c)
       sys.stdout.flush()
       output_tensor = InterpretedTensor((m,n), list(c))
-      return output_tensor
-      
+      return output_tensor      
     else:
       raise NotImplementedError("todo")
 
