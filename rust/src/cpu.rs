@@ -14,6 +14,20 @@ pub fn saxpy(n: usize, alpha: f32, x: &[f32], y: &mut [f32]) {
   for i in 0..n { y[i] = alpha * x[i] + y[i] }
 }
 
+#[pyfunction]
+#[pyo3(name = "smul")]
+pub fn smulpy(n: usize, x: PyBuffer<f32>, y: PyBuffer<f32>, z: PyBuffer<f32>) -> PyResult<()> {
+  let x = unsafe { std::slice::from_raw_parts(x.buf_ptr() as *const f32, n) };
+  let y = unsafe { std::slice::from_raw_parts(y.buf_ptr() as *mut f32, n) };
+  let z = unsafe { std::slice::from_raw_parts_mut(z.buf_ptr() as *mut f32, n) };
+  smul(n, x, y, z);
+  Ok(())
+}
+
+pub fn smul(n: usize, x: &[f32], y: &[f32], z: &mut [f32]) {
+  for i in 0..n { z[i] = x[i] * y[i] }
+}
+
 // level 2
 
 // level 3

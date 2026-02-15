@@ -29,10 +29,18 @@ class InterpretedTensor:
     tensor = InterpretedTensor((numel,), [1.0]*numel).reshape(shape)
     return tensor
   
-  def __init__(self, shape: tuple[int, ...], storage: list[float]) -> Self:
-    self.shape = shape
-    self.stride = [math.prod(shape[i+1:]) for i in range(len(shape))] # math.prod([]) produces 1
-    self.storage = storage
+  def __init__(self, shape: tuple[int, ...], storage: list[float], inputs: tuple[Self, ...]=(), requires_grad: bool=False) -> Self:
+    self.shape: tuple[int, ...] = shape
+    self.stride: tuple[int, ...] = [math.prod(shape[i+1:]) for i in range(len(shape))] # math.prod([]) produces 1
+    self.storage: list[float] = storage
+
+    self.inputs: tuple[Self, ...] = inputs
+    self._backward = lambda: None # callers override after init with self captured in closure
+    self.grad: InterpretedTensor = InterpretedTensor.zeros(shape) if requires_grad else None # python can recursively type (no need for Box<_>) bc everything is a heap-allocated reference
+  @property
+  def numel(self): return math.prod(self.shape) # np (and thus jax) call this .size
+  @property
+  def ndim(self): return len(self.shape)
 
   def reshape(self, shape: tuple[int, ...]) -> Self:
     self.shape = shape
@@ -41,24 +49,51 @@ class InterpretedTensor:
   
   def __repr__(self) -> str:
     return f"InterpretedTensor({self.chunk(self.storage, self.shape)})"
-  
-  @property
-  def numel(self): return math.prod(self.shape) # np (and thus jax) call this .size
-  @property
-  def ndim(self): return len(self.shape)
-
   @staticmethod
   def chunk(flat, shape):
     if len(shape) == 1: return flat[:shape[0]]
     size = len(flat) // shape[0]
     return [InterpretedTensor.chunk(flat[i*size:(i+1)*size], shape[1:]) for i in range(shape[0])]
   
+  # backward f'(x)
+  @staticmethod
+  def topo(node: InterpretedTensor, seen: set[InterpretedTensor], output: list[InterpretedTensor]) -> None:
+    if node in seen: return
+    seen.add(node)
+    for input in node.inputs: InterpretedTensor.topo(input, seen, output)
+    output.append(node)
+
+  def backward(self) -> None:
+    seen, topologically_sorted_expression_graph = set(), []
+    InterpretedTensor.topo(self, seen, topologically_sorted_expression_graph)
+
+    self.grad = InterpretedTensor.ones(self.shape) # base case
+    for tensor in reversed(topologically_sorted_expression_graph): tensor._backward()
+  
+  # forwards f(x)
   def __radd__(self, other: Self) -> Self: return self.__add__(other)
   def __add__(self, other: Self) -> Self:
     n, alpha = self.numel, 1
-    x, y = array.array('f', self.storage), array.array('f', other.storage)
+    x, y, z = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*(n))
     teenygrad.rs.cpu.saxpy(n, alpha, x, y) # y=axpy
-    return InterpretedTensor(self.shape, list(y))
+    output_tensor = InterpretedTensor(self.shape, list(y), (self, other))
+    def _backward():
+      self.grad += output_tensor.grad
+      other.grad += output_tensor.grad
+    output_tensor._backward = _backward
+    return output_tensor
+  
+  def __rmul__(self, other: Self) -> Self: return  self.__mul__(other)
+  def __mul__(self, other: Self) -> Self:
+    n = self.numel
+    x, y, z = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*n)
+    teenygrad.rs.cpu.smul(n, x, y, z)
+    output_tensor = InterpretedTensor(self.shape, list(z), (self, other))
+    def _backward():
+      self.grad += output_tensor.grad * other
+      other.grad += output_tensor.grad * self
+    output_tensor._backward = _backward
+    return output_tensor
 
   def __rmatmul__(self, other: Self) -> Self: return other.__matmul__(self) # GEMM does not commute: AB != BA
   def __matmul__(self, other: Self) -> Self:
@@ -70,7 +105,7 @@ class InterpretedTensor:
       a, x, y = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*m)
       teenygrad.rs.cpu_kernels.sgemv(m, n, alpha, beta, a, x, y)
       sys.stdout.flush()
-      return InterpretedTensor((m,), list(y))
+      return InterpretedTensor((m,), list(y), (self, other))
     elif other.ndim == 2: # gemm
       import sys
       import array
@@ -80,8 +115,8 @@ class InterpretedTensor:
       a, b, c = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*(m * n))
       teenygrad.rs.cpu.sgemm(m, n, p, alpha, beta, a, b, c)
       sys.stdout.flush()
-      output_tensor = InterpretedTensor((m,n), list(c))
-      return output_tensor      
+      output_tensor = InterpretedTensor((m,n), list(c), (self, other))
+      return output_tensor
     else:
       raise NotImplementedError("todo")
 

@@ -8,6 +8,7 @@ fn rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
   let cpu = PyModule::new(m.py(), "cpu")?;
   cpu.add_function(wrap_pyfunction!(cpu::saxpypy, &cpu)?)?;
+  cpu.add_function(wrap_pyfunction!(cpu::smulpy, &cpu)?)?;
   cpu.add_function(wrap_pyfunction!(cpu::sgemmpy, &cpu)?)?;
   m.add_submodule(&cpu)?;
 
