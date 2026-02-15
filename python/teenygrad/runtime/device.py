@@ -76,11 +76,11 @@ ALL_DEVICES = ["CUDA", "HIP"] # "CPU", "CL"/"MOJO"
 DeviceType = TypeVar('DeviceType', bound='Runtime')
 class _RuntimeRegistry:
   def __init__(self) -> None:
-    print("initializing _RuntimeRegistry")
+    # print("initializing _RuntimeRegistry")
     self._devices = [path.stem[len("ops_"):].upper() for path in (pathlib.Path(__file__).parent).iterdir() if path.stem.endswith("runtime.py")]
     self._opened_devices: set[str] = set()
-    print("_RuntimeRegistry's devices", self._devices)
-    print("_RuntimeRegistry's openeddevices", self._opened_devices)
+    # print("_RuntimeRegistry's devices", self._devices)
+    # print("_RuntimeRegistry's openeddevices", self._opened_devices)
     print("")
   def __getitem__(self, device:str) -> Runtime: return self._get_runtime(self._canonicalize_device(device))
 

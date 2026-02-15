@@ -12,9 +12,9 @@ mod benches {
     let (a, b, mut c) = (vec![1.0f32; m * k], vec![1.0; k * n], vec![0.0; m * n]);
 
     let (warmup, iterations)  = (3, 10);
-    for _ in 0..warmup { rs::cpu::sgemm(m, n, k, 1.0, 0.0, &a, &b, &mut c); }
+    for _ in 0..warmup { rs::cpu::sgemmrs(m, n, k, 1.0, 0.0, &a, &b, &mut c); }
     let start = Instant::now();
-    for _ in 0..iterations { rs::cpu::sgemm(m, n, k, 1.0, 0.0, &a, &b, &mut c); }
+    for _ in 0..iterations { rs::cpu::sgemmrs(m, n, k, 1.0, 0.0, &a, &b, &mut c); }
     let elapsed = start.elapsed();
 
     let gflop_count = (2 * m * n * k * iterations) as f64 / 1e9;
