@@ -41,6 +41,13 @@ class InterpretedTensor:
   def numel(self): return math.prod(self.shape) # np (and thus jax) call this .size
   @property
   def ndim(self): return len(self.shape)
+  @property
+  def T(self) -> Self:
+    assert self.ndim == 2
+    m, n = self.shape
+    t = InterpretedTensor((n, m), self.storage)
+    t.stride = [self.stride[1], self.stride[0]]
+    return t
 
   def reshape(self, shape: tuple[int, ...]) -> Self:
     self.shape = shape
@@ -116,16 +123,17 @@ class InterpretedTensor:
       requires_grad = self.grad is not None or other.grad is not None
       return InterpretedTensor((m,), list(y), (self, other), requires_grad=requires_grad)
     elif other.ndim == 2: # gemm
-      import sys
-      import array
-      sys.stdout.flush()
       m, n, p = self.shape[0], other.shape[1], self.shape[1]
-      alpha, beta = 1, 1
+      atr, btr = self.stride[1] != 1, other.stride[1] != 1
+      lda, ldb = self.stride[1] if atr else self.stride[0], other.stride[1] if btr else other.stride[0]
       a, b, c = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*(m * n))
-      teenygrad.rs.cpu.sgemm(m, n, p, alpha, beta, a, b, c)
-      sys.stdout.flush()
+      teenygrad.rs.cpu.sgemm(atr, btr, m, n, p, 1, 0, a, lda, b, ldb, c, n)
       requires_grad = self.grad is not None or other.grad is not None
       output_tensor = InterpretedTensor((m,n), list(c), (self, other), requires_grad=requires_grad)
+      def _backward():
+        self.grad += output_tensor.grad @ other.T # dL/dA = dL/dC @ B^T
+        other.grad += self.T @ output_tensor.grad # dL/dB = A^T @ dL/dC
+      output_tensor._backward = _backward
       return output_tensor
     else:
       raise NotImplementedError("todo")

@@ -37,3 +37,16 @@ def test_backward_scalar():
   # f(x)=x^2 ==> f'(x)=2x
   #   x =3   ==> f'(x)=6
   assert x.grad.storage == [x_pt.grad.item()]
+
+def test_backward_gemm():
+  a_pt, b_pt = torch.arange(12.0).reshape(3,4).requires_grad_(True), torch.arange(20.0).reshape(4,5).requires_grad_(True)
+  c_pt = a_pt @ b_pt # f: R^n->R^m, f(x):= GEMM(x)
+  l = c_pt.sum() # f○g: R^n->R, g(x):= sum(x)
+  l.backward() # .backward() evaluates grad, and requires output y∈R
+
+  a, b = InterpretedTensor.arange(12, requires_grad=True).reshape((3,4)), InterpretedTensor.arange(20, requires_grad=True).reshape((4,5))
+  c = a @ b
+  c.backward()
+
+  assert a.grad.storage == [float(x) for x in a_pt.grad.flatten()] # dL/dA = dL/dC @ B^T
+  assert b.grad.storage == [float(x) for x in b_pt.grad.flatten()] # dL/dB = A^T @ dL/dC
