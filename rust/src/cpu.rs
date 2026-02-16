@@ -28,6 +28,20 @@ pub fn smul(n: usize, x: &[f32], y: &[f32], z: &mut [f32]) {
   for i in 0..n { z[i] = x[i] * y[i] }
 }
 
+#[pyfunction]
+#[pyo3(name = "stanh")]
+pub fn stanhpy(n: usize, x: PyBuffer<f32>, y: PyBuffer<f32>) -> PyResult<()> {
+  // SAFETY: x, y are array.array('f') buffers from Python with length n.
+  let x = unsafe { std::slice::from_raw_parts(x.buf_ptr() as *const f32, n) };
+  let y = unsafe { std::slice::from_raw_parts_mut(y.buf_ptr() as *mut f32, n) };
+  stanh(n, x, y);
+  Ok(())
+}
+
+pub fn stanh(n: usize, x: &[f32], y: &mut [f32]) {
+  for i in 0..n { y[i] = x[i].tanh() }
+}
+
 // level 2
 
 // level 3

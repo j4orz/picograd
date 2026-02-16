@@ -31,7 +31,7 @@ class InterpretedTensor:
   
   def __init__(self, shape: tuple[int, ...], storage: list[float], inputs: tuple[Self, ...]=(), requires_grad: bool=False) -> Self:
     self.shape: tuple[int, ...] = shape
-    self.stride: tuple[int, ...] = [math.prod(shape[i+1:]) for i in range(len(shape))] # math.prod([]) produces 1
+    self.stride: tuple[int, ...] = [math.prod(shape[i+1:]) for i in range(len(shape))] # row major, and math.prod([]) produces 1
     self.storage: list[float] = storage
 
     self.inputs: tuple[Self, ...] = inputs
@@ -94,6 +94,12 @@ class InterpretedTensor:
       other.grad += output_tensor.grad * self
     output_tensor._backward = _backward
     return output_tensor
+
+  def tanh(self) -> Self:
+    n = self.numel
+    x, y = array.array('f', self.storage), array.array('f', [0.0]*n)
+    teenygrad.rs.cpu.stanh(n, x, y)
+    return InterpretedTensor(self.shape, list(y))
 
   def __rmatmul__(self, other: Self) -> Self: return other.__matmul__(self) # GEMM does not commute: AB != BA
   def __matmul__(self, other: Self) -> Self:

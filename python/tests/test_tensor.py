@@ -18,6 +18,12 @@ def test_gemm():
   assert c.shape == (3, 5)
   assert c.storage == [float(x) for x in c_np.flatten()]
 
+def test_tanh():
+  x, x_np = InterpretedTensor.arange(12).reshape((3,4)), np.arange(12.0, dtype=np.float32).reshape((3,4))
+  y, y_np = x.tanh(), np.tanh(x_np)
+
+  assert y.storage == [float(x) for x in y_np.flatten()]
+
 def test_backward_scalar():
   x_pt = torch.tensor(3.0, requires_grad=True)
   y_pt = x_pt*x_pt
