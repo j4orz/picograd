@@ -16,20 +16,20 @@ import teenygrad.dtype
 import array
 
 class InterpretedTensor:
-  @staticmethod
-  def arange(end: int, requires_grad: bool=False) -> Self: return InterpretedTensor((end,), list(range(end)), requires_grad=requires_grad)
-  @staticmethod
-  def zeros(shape: tuple[int, ...]) -> Self:
+  @classmethod
+  def arange(cls, end: int, requires_grad: bool=False) -> Self: return InterpretedTensor((end,), list(range(end)), requires_grad=requires_grad)
+  @classmethod
+  def zeros(cls, shape: tuple[int, ...]) -> Self:
     numel = math.prod(shape)
     tensor = InterpretedTensor((numel,), [0.0]*numel).reshape(shape)
     return tensor
-  @staticmethod
-  def ones(shape: tuple[int, ...]) -> Self:
+  @classmethod
+  def ones(cls, shape: tuple[int, ...]) -> Self:
     numel = math.prod(shape)
     tensor = InterpretedTensor((numel,), [1.0]*numel).reshape(shape)
     return tensor
   
-  def __init__(self, shape: tuple[int, ...], storage: list[float], inputs: tuple[Self, ...]=(), requires_grad: bool=False) -> Self:
+  def __init__(self, shape: tuple[int, ...], storage: list[float], inputs: tuple[Self, ...]=(), requires_grad: bool=False) -> None:
     self.shape: tuple[int, ...] = shape
     self.stride: tuple[int, ...] = [math.prod(shape[i+1:]) for i in range(len(shape))] # row major, and math.prod([]) produces 1
     self.storage: list[float] = storage
