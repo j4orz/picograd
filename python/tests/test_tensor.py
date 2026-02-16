@@ -50,3 +50,14 @@ def test_backward_gemm():
 
   assert a.grad.storage == [float(x) for x in a_pt.grad.flatten()] # dL/dA = dL/dC @ B^T
   assert b.grad.storage == [float(x) for x in b_pt.grad.flatten()] # dL/dB = A^T @ dL/dC
+
+def test_backward_tanh():
+  x_pt = torch.arange(12.0, dtype=torch.float32).reshape(3,4).requires_grad_(True)
+  y_pt = x_pt.tanh()
+  y_pt.sum().backward()
+
+  x = InterpretedTensor.arange(12, requires_grad=True).reshape((3,4))
+  y = x.tanh()
+  y.backward()
+
+  np.testing.assert_allclose(x.grad.storage, [float(v) for v in x_pt.grad.flatten()], rtol=1e-5, atol=1e-6) # d/dx tanh(x) = 1 - tanh(x)^2

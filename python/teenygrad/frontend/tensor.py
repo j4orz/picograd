@@ -104,11 +104,39 @@ class InterpretedTensor:
     output_tensor._backward = _backward
     return output_tensor
 
+  def __neg__(self) -> Self:
+    n = self.numel
+    x, y = array.array('f', self.storage), array.array('f', [0.0]*n)
+    teenygrad.rs.cpu.saxpy(n, -1, x, y)
+    requires_grad = self.grad is not None
+    output_tensor = InterpretedTensor(self.shape, list(y), (self,), requires_grad=requires_grad)
+    def _backward():
+      self.grad += -output_tensor.grad
+    output_tensor._backward = _backward
+    return output_tensor
+
+  def __sub__(self, other: Self) -> Self:
+    n = self.numel
+    x, y = array.array('f', other.storage), array.array('f', self.storage)
+    teenygrad.rs.cpu.saxpy(n, -1, x, y)
+    requires_grad = self.grad is not None or other.grad is not None
+    output_tensor = InterpretedTensor(self.shape, list(y), (self, other), requires_grad=requires_grad)
+    def _backward():
+      self.grad += output_tensor.grad
+      other.grad += -output_tensor.grad
+    output_tensor._backward = _backward
+    return output_tensor
+
   def tanh(self) -> Self:
     n = self.numel
     x, y = array.array('f', self.storage), array.array('f', [0.0]*n)
     teenygrad.rs.cpu.stanh(n, x, y)
-    return InterpretedTensor(self.shape, list(y), (self,), requires_grad=self.grad is not None)
+    requires_grad = self.grad is not None
+    output_tensor = InterpretedTensor(self.shape, list(y), (self,), requires_grad=requires_grad)
+    def _backward():
+      self.grad += output_tensor.grad * (InterpretedTensor.ones(self.shape) - output_tensor * output_tensor) # f(x) = tanh(x) ==> f'(x) = 1 - tanh(x)^2
+    output_tensor._backward = _backward
+    return output_tensor
 
   def __rmatmul__(self, other: Self) -> Self: return other.__matmul__(self) # GEMM does not commute: AB != BA
   def __matmul__(self, other: Self) -> Self:
