@@ -17,7 +17,7 @@ import array
 
 class InterpretedTensor:
   @staticmethod
-  def arange(end: int) -> Self: return InterpretedTensor((end,), list(range(end)))
+  def arange(end: int, requires_grad: bool=False) -> Self: return InterpretedTensor((end,), list(range(end)), requires_grad=requires_grad)
   @staticmethod
   def zeros(shape: tuple[int, ...]) -> Self:
     numel = math.prod(shape)
@@ -76,19 +76,21 @@ class InterpretedTensor:
     n, alpha = self.numel, 1
     x, y, z = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*(n))
     teenygrad.rs.cpu.saxpy(n, alpha, x, y) # y=axpy
-    output_tensor = InterpretedTensor(self.shape, list(y), (self, other))
+    requires_grad = self.grad is not None or other.grad is not None
+    output_tensor = InterpretedTensor(self.shape, list(y), (self, other), requires_grad=requires_grad)
     def _backward():
       self.grad += output_tensor.grad
       other.grad += output_tensor.grad
     output_tensor._backward = _backward
     return output_tensor
-  
+
   def __rmul__(self, other: Self) -> Self: return  self.__mul__(other)
   def __mul__(self, other: Self) -> Self:
     n = self.numel
     x, y, z = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*n)
     teenygrad.rs.cpu.smul(n, x, y, z)
-    output_tensor = InterpretedTensor(self.shape, list(z), (self, other))
+    requires_grad = self.grad is not None or other.grad is not None
+    output_tensor = InterpretedTensor(self.shape, list(z), (self, other), requires_grad=requires_grad)
     def _backward():
       self.grad += output_tensor.grad * other
       other.grad += output_tensor.grad * self
@@ -99,7 +101,7 @@ class InterpretedTensor:
     n = self.numel
     x, y = array.array('f', self.storage), array.array('f', [0.0]*n)
     teenygrad.rs.cpu.stanh(n, x, y)
-    return InterpretedTensor(self.shape, list(y))
+    return InterpretedTensor(self.shape, list(y), (self,), requires_grad=self.grad is not None)
 
   def __rmatmul__(self, other: Self) -> Self: return other.__matmul__(self) # GEMM does not commute: AB != BA
   def __matmul__(self, other: Self) -> Self:
@@ -111,7 +113,8 @@ class InterpretedTensor:
       a, x, y = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*m)
       teenygrad.rs.cpu_kernels.sgemv(m, n, alpha, beta, a, x, y)
       sys.stdout.flush()
-      return InterpretedTensor((m,), list(y), (self, other))
+      requires_grad = self.grad is not None or other.grad is not None
+      return InterpretedTensor((m,), list(y), (self, other), requires_grad=requires_grad)
     elif other.ndim == 2: # gemm
       import sys
       import array
@@ -121,7 +124,8 @@ class InterpretedTensor:
       a, b, c = array.array('f', self.storage), array.array('f', other.storage), array.array('f', [0.0]*(m * n))
       teenygrad.rs.cpu.sgemm(m, n, p, alpha, beta, a, b, c)
       sys.stdout.flush()
-      output_tensor = InterpretedTensor((m,n), list(c), (self, other))
+      requires_grad = self.grad is not None or other.grad is not None
+      output_tensor = InterpretedTensor((m,n), list(c), (self, other), requires_grad=requires_grad)
       return output_tensor
     else:
       raise NotImplementedError("todo")
