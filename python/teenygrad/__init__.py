@@ -13,12 +13,12 @@ mmMMmm .gP"Ya   .gP"Ya `7MMpMMMb.`7M'   `MF'.P"Ybmmm `7Mb,od8 ,6"Yb.   ,M""bMM
 teenygrad is a teaching deep learning framework that is the bridge from micrograd to tinygrad capable of training nanogpt
 teenygrad comes with free course notes. https://j4orz.ai/sitp/
   - in part 1 you implement a multidimensional `Tensor` and accelerated `BLAS` kernels.
-  - in part 2 you implement `.backward()` and accelerated `cuBLAS` kernels for the age of research.
-  - in part 3 you implement a fusion compiler with `OpNode` graph IR for the age of scaling.
+  - in part 2 you implement `.backward()` and accelerated `cuBLAS` kernels for the "age of research"
+  - in part 3 you implement a fusion compiler with `OpNode` graph IR for the "age of scaling"
 """
 from .frontend import nn, optim
 from .frontend.tensor import InterpretedTensor, CompiledTensor
-__all__ = ["InterpretedTensor", "CompiledTensor"]
+__all__ = ["optim", "nn", "InterpretedTensor", "CompiledTensor"]
 
 from importlib import import_module as _import_module
 teenygradrs = _import_module("teenygrad.rs")
