@@ -61,3 +61,20 @@ def test_backward_tanh():
   y.backward()
 
   np.testing.assert_allclose(x.grad.storage, [float(v) for v in x_pt.grad.flatten()], rtol=1e-5, atol=1e-6) # d/dx tanh(x) = 1 - tanh(x)^2
+
+def test_linear_forward():
+  torch.manual_seed(42)
+  din, dout, batch = 4, 3, 2
+
+  linear_pt = torch.nn.Linear(din, dout, bias=False)
+  x_pt = torch.randn(batch, din)
+  y_pt = linear_pt(x_pt)
+
+  from teenygrad.frontend.nn import Linear
+  weight = InterpretedTensor((dout, din), linear_pt.weight.detach().numpy().flatten().tolist())
+  linear = Linear(din, dout, weight=weight, bias=False)
+
+  x = InterpretedTensor((batch, din), x_pt.detach().numpy().flatten().tolist())
+  y = linear(x)
+
+  np.testing.assert_allclose(y.storage, [float(v) for v in y_pt.detach().numpy().flatten()], rtol=1e-5, atol=1e-5)

@@ -1,16 +1,12 @@
-from .tensor import CompiledTensor
+from .tensor import InterpretedTensor
 
 class Linear:
-  def __init__(self, n, m, bias=True):
-    self.W_nm = CompiledTensor.randn((n, m), generator=g) * (5/3)/n**0.5 # kaiming init (He et al. 2015)
-    self.b_m = CompiledTensor.zeros(m) if bias else None
+  def __init__(self, din: int, dout: int, weight=None, bias=True):
+    self.din, self.dout = din, dout
+    self.weight = weight if weight is not None else InterpretedTensor((dout, din), [0.0]*(dout*din))
+    self.bias = InterpretedTensor((dout,), [0.0]*dout) if bias else None
 
-  def __call__(self, x_n):
-    self.y_m = x_n @ self.W_nm
-    if self.b_m is not None: self.y_m += self.b_m
-    return self.y_m
-
-  def parameters(self):
-    return [self.W_nm] + ([] if self.b_m is None else [self.b_m])
-
-__all__ = ["Linear", "BatchNorm"]
+  def __call__(self, x):
+    output = x @ self.weight.T
+    if self.bias is not None: output = output + self.bias
+    return output
