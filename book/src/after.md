@@ -8,12 +8,6 @@ Once you feel comfortable, you should graduate towards contributing to larger de
 Good luck on your journey.</br>
 I'll see you at work.
 
-## Acknowledgements
-*Reviewers*
-
-*Errata*
-- [Jashanpreet Singh](https://github.com/Jashanpreet2)
-
 ## Futher Reading
 
 ### 1. Deep Learning
@@ -34,9 +28,9 @@ I'll see you at work.
 ##### Recommended Books
 - Speech and Language Processing by Jurafsky and Martin
 - The Elements of Statistical Learning by Friedman, Tibshirani, and Hastie
+- Probabilistic Machine Learning by Kevin Murphy
 - Deep Learning by Goodfellow, Bengio and Courville
 - Reinforcement Learning by Sutton and Barto
-- Probabilistic Machine Learning by Kevin Murphy
 
 ##### Recommended Lectures
 - Stanford CS124: From Languages to Information by Dan Jurafsky
