@@ -16,7 +16,7 @@ This book follows suit, (*aspirationally* titled SITP), and is an experimental C
 
 If you are more experienced, you may benefit in jumping straight to part three of the book
 which develops a "graph mode" fusion compiler with tinygrad's RISC-y IR,
-which borrows ideas from ThunderKitten's tile registers and Halide/TVM schedules.
+which borrows ideas from ThunderKitten's tile registers, MegaKernels, and Halide/TVM schedules.
 Beyond helping those like myself interested in the systems of deep learning,
 developing the low level performance primitives of deep neural networks will shed light on the open research question of
 how domain specific tensor languages of deep learning frameworks can best support the development and compilation of accelerated kernels for novel network architectures (inductive biases) beyond the attention mechanism of transformers?

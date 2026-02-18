@@ -8,6 +8,14 @@ Once you feel comfortable, you should graduate towards contributing to larger de
 Good luck on your journey.</br>
 I'll see you at work.
 
+## Acknowledgements
+*Reviewers*
+
+*Errata*
+- [Jashanpreet Singh](https://github.com/Jashanpreet2)
+
+## Futher Reading
+
 ### 1. Deep Learning
 
 *Mathematics for Deep Learning*
@@ -33,10 +41,9 @@ I'll see you at work.
 ##### Recommended Lectures
 - Stanford CS124: From Languages to Information by Dan Jurafsky
 - Stanford CS229: Machine Learning by Andrew Ng
-- Stanford CS230: Deep Learning by Andrew Ng
 - Stanford CS224N: NLP with Deep Learning by Christopher Manning
-- Eureka LLM101N: Neural Networks Zero to Hero by Andrej Karpathy
 - Stanford CS336: Language Modeling from Scratch by Percy Liang
+- Eureka LLM101N: Neural Networks Zero to Hero by Andrej Karpathy
 - HuggingFace: Ultra-Scale Playbook: Training LLMs on GPU Clusters
 
 ### 2. Deep Learning Systems
