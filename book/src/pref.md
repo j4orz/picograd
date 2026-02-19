@@ -15,7 +15,7 @@ The recent addition of [DCIC](https://dcic-world.org/), spawning from it's phylo
 This book follows suit, (*aspirationally* titled SITP), and is an experimental CS2 for software 2.0 whose only prereqisite is a familiarity of CS1 programming from, well, software 1.0.
 
 If you are more experienced, you may benefit in jumping straight to part three of the book
-which develops a "graph mode" fusion compiler with tinygrad's RISC-y IR,
+which develops a "graph mode" fusion compiler and inference engine with tinygrad's RISC-y IR,
 which borrows ideas from ThunderKitten's tile registers, MegaKernels, and Halide/TVM schedules.
 Beyond helping those like myself interested in the systems of deep learning,
 developing the low level performance primitives of deep neural networks will shed light on the open research question of
