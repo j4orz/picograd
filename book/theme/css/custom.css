@@ -49,6 +49,22 @@ p:has(> em:only-child) {
 
 .full-bleed iframe {
   width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+}
+
+.full-bleed-side {
+  width: 90vw;
+  position: relative;
+  left: 50%;
+  margin-left: -45vw;
+  display: flex;
+  gap: 1rem;
+}
+
+.full-bleed-side iframe {
+  width: 100%;
+  aspect-ratio: 16 / 9;
   display: block;
 }
 
