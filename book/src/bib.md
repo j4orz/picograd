@@ -1,0 +1,38 @@
+# Bibliography
+
+- https://dl.acm.org/doi/pdf/10.1145/355841.355847
+- https://dl.acm.org/doi/epdf/10.1145/42288.42291
+- https://hammarling.com/sven/pubs/Level2BLAS-2-TOMS14-88.pdf
+- https://dl.acm.org/doi/pdf/10.1145/77626.79170
+- https://dl.acm.org/doi/pdf/10.1145/1377603.1377607
+- https://www.cs.utexas.edu/~flame/pubs/GotoTOMS_final.pdf
+- https://www.cs.utexas.edu/~flame/pubs/GotoTOMS2.pdf
+- https://sci-hub.box/10.1109/IPDPS.2014.110
+- Boehm, S. (2022, December 31). How to optimize a CUDA matmul kernel for cuBLAS-like performance: A worklog.
+- Salykov, A. (2025, January 12). Advanced matrix multiplication optimization on NVIDIA GPUs.
+- Shankhdhar, P. (2024). Outperforming cuBLAS on H100: A worklog.
+- Gordić, A. (2025). Inside NVIDIA GPUs: Anatomy of high performance matmul kernels.
+- He, H. (2022). Making deep learning go brrrr from first principles.
+- Spector, B., Singhal, A., Arora, S., & Ré, C. (2024, May 12). GPUs go brrr.
+- Tazi, N., Launay, J., Luccioni, S., & Wolf, T. (2025). *The ultra-scale playbook: Training LLMs on GPU clusters*. Hugging Face.
+- Vince, S. (2025, January 20). Optimizing matrix multiplication on RDNA3: 50 TFlops and 60% faster than RocBLAS.
+- numpy
+- numpy autograd
+- torch
+- torchautograd
+- tensorflow
+- pt1
+- pt2 graph
+- lazytensor
+- lazytensor for swift
+- halide
+- tvm
+- triton
+- thunderkittens
+- megakernel
+- cutlass
+- vllm
+- sglang
+- nanotron
+- monarch
+- autovectorization papers

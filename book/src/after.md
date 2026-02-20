@@ -20,9 +20,9 @@ I'll see you at work.
 
 ##### Recommended Lectures
 - Sanford CS109: Probability for Computer Scientists by Chris Piech
+- UPenn STAT 4830: Numerical Optimization for Machine Learning by Damek Davis
 - MIT 18.06 Linear Algebra by Gilbert Strang
 - MIT 18.S096: Matrix Calculus by Alan Edelman and Steven Johnson
-- UPenn STAT 4830: Numerical Optimization for Machine Learning by Damek Davis
 
 *Deep Learning*
 ##### Recommended Books
