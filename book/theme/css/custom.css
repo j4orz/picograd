@@ -118,3 +118,9 @@ p:has(+ ul) {
 p + ul {
   margin-top: 0;
 }
+
+.ayu .playground-iframe,
+.navy .playground-iframe,
+.coal .playground-iframe {
+  filter: invert(1) hue-rotate(180deg);
+}
